@@ -1,0 +1,633 @@
+import React, { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useManagerPopulation } from "@/hooks/useManagerPopulation";
+import { Search, Plus, User, Mail, ChevronRight, LayoutGrid, List, Building2, Briefcase, X, Filter } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useCollaborateurNotifications } from "@/hooks/useCollaborateurNotifications";
+import CollabNotifBadge from "@/components/CollabNotifBadge";
+import CollaborateursFiltresAvances, {
+  EMPTY_FILTRES,
+  countFiltres,
+  type FiltresAvances,
+} from "@/components/collaborateurs/CollaborateursFiltresAvances";
+
+interface Collaborateur {
+  id: string;
+  matricule: string;
+  nom: string;
+  prenom: string;
+  code_genre: string;
+  code_nationalite?: string;
+  statut_collaborateur: string;
+  gsm?: string;
+  email_professionnel?: string;
+  photo_path?: string;
+  created_at: string;
+  archive: boolean;
+}
+
+interface ListeInfo {
+  poste_code?: string;
+  poste_libelle?: string;
+  uo_id?: string;
+  uo_libelle?: string;
+  etablissement_id?: string;
+  societe_id?: string;
+  type_contrat_code?: string;
+  type_contrat_libelle?: string;
+  date_embauche?: string;          // 1ère date de début de contrat
+  has_mandat_syndical?: boolean;
+}
+
+const STATUTS = [
+  { value: "hors_sortis", label: "Tous (hors sortis)" },
+  { value: "all", label: "Tous" },
+  { value: "ACTIF", label: "Actif" },
+  { value: "EN_DEPART", label: "En départ" },
+  { value: "SORTI", label: "Sorti" },
+  { value: "INACTIF", label: "Inactif" },
+  { value: "SUSPENDU", label: "Suspendu" },
+];
+
+const CollaborateursPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { role } = useAuth();
+  const isManager = role === "manager";
+  const { collaborateurIds: managerCollabIds, loading: popLoading } = useManagerPopulation();
+  const { notifMap } = useCollaborateurNotifications();
+
+  const [collaborateurs, setCollaborateurs] = useState<Collaborateur[]>([]);
+  const [listeInfoMap, setListeInfoMap] = useState<Record<string, ListeInfo>>({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+
+  const [retentionYears, setRetentionYears] = useState<number | null>(null);
+
+  // Filtres avancés
+  const [filtresAvances, setFiltresAvances] = useState<FiltresAvances>(EMPTY_FILTRES);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Options pour les multi-selects (chargées en même temps que la liste)
+  const [optTypesContrat, setOptTypesContrat] = useState<{ value: string; label: string }[]>([]);
+  const [optSocietes, setOptSocietes] = useState<{ value: string; label: string }[]>([]);
+  const [optEtablissements, setOptEtablissements] = useState<{ value: string; label: string }[]>([]);
+  const [optUOs, setOptUOs] = useState<{ value: string; label: string }[]>([]);
+  const [optGenres, setOptGenres] = useState<{ value: string; label: string }[]>([]);
+  const [optNationalites, setOptNationalites] = useState<{ value: string; label: string }[]>([]);
+
+  // Lire le filtre depuis l'URL (paramètre ?statut=…) — par défaut hors sortis
+  const urlStatut = searchParams.get("statut") || "hors_sortis";
+  const filterStatut = urlStatut;
+  const setFilterStatut = (val: string) => {
+    if (val === "hors_sortis") {
+      searchParams.delete("statut");
+      setSearchParams(searchParams, { replace: true });
+    } else {
+      setSearchParams({ statut: val }, { replace: true });
+    }
+  };
+
+  useEffect(() => {
+    // Pour le manager, attendre que la population soit chargée
+    if (isManager && popLoading) return;
+    loadAll();
+  }, [isManager, popLoading, managerCollabIds.join(",")]);
+
+  const loadAll = async () => {
+    setLoading(true);
+
+    // RG-MGR-POP-01 : le manager ne voit que sa population
+    if (isManager && managerCollabIds.length === 0) {
+      setCollaborateurs([]);
+      setListeInfoMap({});
+      setLoading(false);
+      return;
+    }
+
+    let collabQuery = supabase
+      .from("collaborateurs")
+      .select("*")
+      .eq("archive", false)
+      .order("nom", { ascending: true });
+
+    // Filtrer par population du manager
+    if (isManager) {
+      collabQuery = collabQuery.in("id", managerCollabIds);
+    }
+
+    const [{ data: collabs }, { data: affectations }, { data: contrats }, { data: refPostes }, { data: refUOs }, { data: refTypeContrats }, { data: retentionParam }, { data: departsData }] =
+      await Promise.all([
+        collabQuery,
+        supabase.from("collaborateur_affectations").select("collaborateur_id, code_poste, unite_id, date_fin_uo").eq("archive", false),
+        supabase.from("collaborateur_contrats").select("collaborateur_id, code_type_contrat, code_statut_contrat").eq("archive", false),
+        supabase.from("ref_poste" as never).select("code, libelle"),
+        supabase.from("unites_organisationnelles" as never).select("id, libelle"),
+        supabase.from("ref_type_contrat" as never).select("code, libelle"),
+        supabase.from("parametres_rh").select("valeur").eq("code", "DUREE_RETENTION_SORTIS").eq("actif", true).single(),
+        supabase.from("collaborateur_departs").select("collaborateur_id, date_depart").eq("statut", "TRAITE"),
+      ]);
+
+    // CNDP : durée de rétention des sortis
+    const retYears = retentionParam?.valeur ? parseInt(retentionParam.valeur, 10) : null;
+    setRetentionYears(retYears);
+
+    // Build departure date map for retention filtering
+    const departDateMap: Record<string, string> = {};
+    ((departsData as any[]) || []).forEach((d: any) => {
+      if (!departDateMap[d.collaborateur_id] || d.date_depart > departDateMap[d.collaborateur_id]) {
+        departDateMap[d.collaborateur_id] = d.date_depart;
+      }
+    });
+
+    // Filter out SORTI beyond retention
+    let filteredCollabs = collabs || [];
+    if (retYears && retYears > 0) {
+      const cutoffDate = new Date();
+      cutoffDate.setFullYear(cutoffDate.getFullYear() - retYears);
+      const cutoffStr = cutoffDate.toISOString().split("T")[0];
+      filteredCollabs = filteredCollabs.filter((c: any) => {
+        if (c.statut_collaborateur !== "SORTI") return true;
+        const lastDepart = departDateMap[c.id];
+        if (!lastDepart) return true;
+        return lastDepart >= cutoffStr;
+      });
+    }
+
+    if (filteredCollabs) setCollaborateurs(filteredCollabs as Collaborateur[]);
+
+    // Build reference maps
+    const posteMap: Record<string, string> = {};
+    ((refPostes as any[]) || []).forEach((r: any) => { posteMap[r.code] = r.libelle; });
+
+    const uoMap: Record<string, string> = {};
+    ((refUOs as any[]) || []).forEach((r: any) => { uoMap[r.id] = r.libelle; });
+
+    const typeContratMap: Record<string, string> = {};
+    ((refTypeContrats as any[]) || []).forEach((r: any) => { typeContratMap[r.code] = r.libelle; });
+
+    // Build per-collaborateur info map
+    const infoMap: Record<string, ListeInfo> = {};
+
+    const resolvePosteLibelle = (codeInstance: string): string | undefined => {
+      if (posteMap[codeInstance]) return posteMap[codeInstance];
+      const parentCode = codeInstance.includes("-") ? codeInstance.split("-").slice(0, -1).join("-") : codeInstance;
+      return posteMap[parentCode] || codeInstance;
+    };
+
+    ((affectations as any[]) || []).forEach((a: any) => {
+      const cid = a.collaborateur_id;
+      if (!infoMap[cid]) infoMap[cid] = {};
+      if (!a.date_fin_uo || new Date(a.date_fin_uo) >= new Date()) {
+        infoMap[cid].poste_code = a.code_poste;
+        infoMap[cid].poste_libelle = a.code_poste ? resolvePosteLibelle(a.code_poste) : undefined;
+        infoMap[cid].uo_id = a.unite_id;
+        infoMap[cid].uo_libelle = a.unite_id ? (uoMap[a.unite_id] || undefined) : undefined;
+      }
+    });
+
+    ((contrats as any[]) || []).forEach((c: any) => {
+      const cid = c.collaborateur_id;
+      if (!infoMap[cid]) infoMap[cid] = {};
+      if (c.code_statut_contrat === "ACTIF" || !infoMap[cid].type_contrat_code) {
+        infoMap[cid].type_contrat_code = c.code_type_contrat;
+        infoMap[cid].type_contrat_libelle = c.code_type_contrat ? (typeContratMap[c.code_type_contrat] || c.code_type_contrat) : undefined;
+      }
+    });
+
+    // Compléter infoMap avec date d'embauche (1ère date_debut de contrat)
+    ((contrats as any[]) || []).forEach((c: any) => {
+      const cid = c.collaborateur_id;
+      if (!infoMap[cid]) infoMap[cid] = {};
+      if (c.date_debut) {
+        if (!infoMap[cid].date_embauche || c.date_debut < infoMap[cid].date_embauche!) {
+          infoMap[cid].date_embauche = c.date_debut;
+        }
+      }
+    });
+
+    // Charger les données complémentaires pour les filtres avancés.
+    // NB : étab et société se déduisent via UO → étab → société (3 jointures côté JS)
+    const [
+      { data: etabs },
+      { data: societes2 },
+      { data: uoFull },
+      { data: refGenres },
+      { data: refNats },
+      { data: syndiques },
+    ] = await Promise.all([
+      supabase.from("etablissements" as never).select("id, libelle, societe_id").eq("actif" as never, true as never),
+      supabase.from("societes" as never).select("id, raison_sociale").eq("actif" as never, true as never),
+      supabase.from("unites_organisationnelles" as never).select("id, etablissement_id"),
+      supabase.from("ref_genre" as never).select("code, libelle"),
+      supabase.from("ref_nationalite" as never).select("code, libelle"),
+      supabase.from("collaborateur_syndiques").select("collaborateur_id").eq("archive", false),
+    ]);
+
+    // Maps pour enrichir infoMap
+    const etabLibMap: Record<string, string> = {};      // etab_id → libelle
+    const etabToSoc: Record<string, string> = {};        // etab_id → societe_id
+    ((etabs as any[]) || []).forEach((e: any) => {
+      etabLibMap[e.id] = e.libelle;
+      if (e.societe_id) etabToSoc[e.id] = e.societe_id;
+    });
+    const societeMap: Record<string, string> = {};       // soc_id → raison_sociale
+    ((societes2 as any[]) || []).forEach((s: any) => { societeMap[s.id] = s.raison_sociale; });
+    const uoToEtab: Record<string, string> = {};         // uo_id → etab_id
+    ((uoFull as any[]) || []).forEach((u: any) => {
+      if (u.etablissement_id) uoToEtab[u.id] = u.etablissement_id;
+    });
+
+    // Pour chaque collab : on a déjà uo_id dans infoMap (via affectations).
+    // On déduit etablissement_id puis societe_id.
+    Object.keys(infoMap).forEach((cid) => {
+      const uoId = infoMap[cid].uo_id;
+      if (uoId && uoToEtab[uoId]) {
+        const etabId = uoToEtab[uoId];
+        infoMap[cid].etablissement_id = etabId;
+        if (etabToSoc[etabId]) {
+          infoMap[cid].societe_id = etabToSoc[etabId];
+        }
+      }
+    });
+
+    // Mandats syndicaux (set d'IDs)
+    const syndiqueIds = new Set<string>(((syndiques as any[]) || []).map((s: any) => s.collaborateur_id));
+    Object.keys(infoMap).forEach((cid) => { infoMap[cid].has_mandat_syndical = syndiqueIds.has(cid); });
+    // Et pour ceux qui n'ont aucune autre info :
+    syndiqueIds.forEach((cid) => {
+      if (!infoMap[cid]) infoMap[cid] = { has_mandat_syndical: true };
+    });
+
+    setListeInfoMap(infoMap);
+
+    // Construire les options pour les multi-selects
+    setOptTypesContrat(
+      Object.entries(typeContratMap).map(([code, libelle]) => ({ value: code, label: libelle as string }))
+    );
+    setOptSocietes(
+      Object.entries(societeMap).map(([id, lib]) => ({ value: id, label: lib as string }))
+    );
+    setOptEtablissements(
+      Object.entries(etabLibMap).map(([id, lib]) => ({ value: id, label: lib as string }))
+    );
+    setOptUOs(
+      Object.entries(uoMap).map(([id, lib]) => ({ value: id, label: lib as string }))
+    );
+    setOptGenres(
+      ((refGenres as any[]) || []).map((g: any) => ({ value: g.code, label: g.libelle }))
+    );
+    setOptNationalites(
+      ((refNats as any[]) || []).map((n: any) => ({ value: n.code, label: n.libelle }))
+    );
+
+    setLoading(false);
+  };
+
+  /** Calcule l'ancienneté en années depuis la date d'embauche. */
+  const calcAnciennete = (dateEmbauche?: string): number | null => {
+    if (!dateEmbauche) return null;
+    const d = new Date(dateEmbauche);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 365.25));
+  };
+
+  const filtered = collaborateurs.filter((c) => {
+    const info = listeInfoMap[c.id] || {};
+
+    // 1) Recherche texte
+    const matchSearch = `${c.prenom} ${c.nom} ${c.matricule} ${c.email_professionnel || ""} ${info.poste_libelle || ""} ${info.uo_libelle || ""}`.toLowerCase().includes(search.toLowerCase());
+
+    // 2) Filtre statut (filtres rapides)
+    let matchStatut: boolean;
+    if (filterStatut === "all") matchStatut = true;
+    else if (filterStatut === "hors_sortis") matchStatut = c.statut_collaborateur !== "SORTI";
+    else matchStatut = c.statut_collaborateur === filterStatut;
+
+    // 3) Filtres avancés (cumulables)
+    const f = filtresAvances;
+
+    if (f.type_contrat_codes.length > 0 && (!info.type_contrat_code || !f.type_contrat_codes.includes(info.type_contrat_code))) return false;
+    if (f.societe_ids.length > 0 && (!info.societe_id || !f.societe_ids.includes(info.societe_id))) return false;
+    if (f.etablissement_ids.length > 0 && (!info.etablissement_id || !f.etablissement_ids.includes(info.etablissement_id))) return false;
+    if (f.uo_ids.length > 0 && (!info.uo_id || !f.uo_ids.includes(info.uo_id))) return false;
+    if (f.genres.length > 0 && (!c.code_genre || !f.genres.includes(c.code_genre))) return false;
+    if (f.code_nationalites.length > 0 && (!c.code_nationalite || !f.code_nationalites.includes(c.code_nationalite))) return false;
+
+    if (f.date_embauche_debut && (!info.date_embauche || info.date_embauche < f.date_embauche_debut)) return false;
+    if (f.date_embauche_fin && (!info.date_embauche || info.date_embauche > f.date_embauche_fin)) return false;
+
+    if (f.anciennete_min || f.anciennete_max) {
+      const anc = calcAnciennete(info.date_embauche);
+      if (anc === null) return false;
+      if (f.anciennete_min && anc < parseInt(f.anciennete_min, 10)) return false;
+      if (f.anciennete_max && anc > parseInt(f.anciennete_max, 10)) return false;
+    }
+
+    if (f.has_mandat_syndical !== null && (info.has_mandat_syndical ?? false) !== f.has_mandat_syndical) return false;
+
+    return matchSearch && matchStatut;
+  });
+
+  const nbFiltresActifs = countFiltres(filtresAvances);
+
+  const getStatutStyle = (s: string) => {
+    if (s === "ACTIF") return { bg: "hsl(84 55% 50% / 0.15)", color: "hsl(84 55% 35%)" };
+    if (s === "INACTIF") return { bg: "hsl(215 20% 55% / 0.15)", color: "hsl(215 20% 40%)" };
+    return { bg: "hsl(39 95% 50% / 0.15)", color: "hsl(39 95% 35%)" };
+  };
+
+  const getInitials = (prenom: string, nom: string) =>
+    `${prenom?.[0] || ""}${nom?.[0] || ""}`.toUpperCase();
+
+  const showLoadingSpinner = loading || (isManager && popLoading);
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Collaborateurs</h1>
+          <p className="page-subtitle">
+            {showLoadingSpinner ? "Chargement…" : `${filtered.length} collaborateur(s)`}
+            {isManager && !showLoadingSpinner && (
+              <span className="ml-2 text-xs px-2 py-0.5 rounded-full"
+                style={{ background: "hsl(39 95% 50% / 0.15)", color: "hsl(39 95% 35%)" }}>
+                Ma population
+              </span>
+            )}
+          </p>
+        </div>
+        {/* RG-MGR-COLLAB-01 : le manager ne peut pas créer de collaborateur */}
+        {!isManager && (
+          <Button
+            onClick={() => navigate("/collaborateurs/nouveau")}
+            className="flex items-center gap-2"
+            style={{ background: "hsl(var(--accent))", color: "white" }}
+          >
+            <Plus size={16} /> Nouveau collaborateur
+          </Button>
+        )}
+      </div>
+
+      {/* Filtres + toggle vue */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher (nom, matricule, poste, UO)…"
+              className="pl-9 pr-4 py-2 rounded-lg text-sm border outline-none w-80"
+              style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {STATUTS.map((s) => (
+              <button
+                key={s.value}
+                onClick={() => setFilterStatut(s.value)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
+                style={{
+                  background: filterStatut === s.value ? "hsl(var(--accent))" : "transparent",
+                  borderColor: filterStatut === s.value ? "hsl(var(--accent))" : "hsl(var(--border))",
+                  color: filterStatut === s.value ? "white" : "hsl(var(--foreground))",
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Bouton Filtres avancés */}
+        <button
+          onClick={() => setShowFilters(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-colors relative"
+          style={{
+            borderColor: nbFiltresActifs > 0 ? "hsl(var(--accent))" : "hsl(var(--border))",
+            background: nbFiltresActifs > 0 ? "hsl(var(--accent) / 0.08)" : "transparent",
+            color: nbFiltresActifs > 0 ? "hsl(var(--accent))" : "hsl(var(--foreground))",
+          }}
+          type="button"
+        >
+          <Filter size={14} /> Filtres avancés
+          {nbFiltresActifs > 0 && (
+            <span
+              className="ml-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full w-5 h-5"
+              style={{ background: "hsl(var(--accent))", color: "white" }}
+            >
+              {nbFiltresActifs}
+            </span>
+          )}
+        </button>
+
+        {/* Boutons de bascule mode étiquette / liste */}
+        <div className="flex items-center rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+          <button
+            onClick={() => setViewMode("card")}
+            title="Mode étiquettes"
+            className="p-2 transition-colors"
+            style={{
+              background: viewMode === "card" ? "hsl(var(--accent))" : "hsl(var(--card))",
+              color: viewMode === "card" ? "white" : "hsl(var(--muted-foreground))",
+            }}
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            title="Mode liste"
+            className="p-2 transition-colors"
+            style={{
+              background: viewMode === "list" ? "hsl(var(--accent))" : "hsl(var(--card))",
+              color: viewMode === "list" ? "white" : "hsl(var(--muted-foreground))",
+            }}
+          >
+            <List size={15} />
+          </button>
+        </div>
+      </div>
+
+      {/* Contenu */}
+      {showLoadingSpinner ? (
+        <div className="flex items-center justify-center h-40">
+          <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "hsl(var(--accent))", borderTopColor: "transparent" }} />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 rounded-xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+          <User size={32} className="mb-3" style={{ color: "hsl(var(--muted-foreground))" }} />
+          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+            {isManager ? "Aucun collaborateur dans votre population" : "Aucun collaborateur trouvé"}
+          </p>
+        </div>
+      ) : viewMode === "card" ? (
+        /* ── Mode étiquettes (grille de cartes) ── */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map((c) => {
+            const statut = getStatutStyle(c.statut_collaborateur);
+            const info = listeInfoMap[c.id] || {};
+            return (
+              <div
+                key={c.id}
+                onClick={() => navigate(`/collaborateurs/${c.id}`)}
+                className="text-left rounded-xl p-4 border transition-all hover:shadow-md group cursor-pointer relative"
+                style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))", boxShadow: "var(--shadow-sm)" }}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    {c.photo_path ? (
+                      <img src={c.photo_path} alt={`${c.prenom} ${c.nom}`} className="w-10 h-10 rounded-full object-cover flex-shrink-0 border" style={{ borderColor: "hsl(var(--border))" }} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                        style={{ background: "hsl(var(--primary) / 0.1)", color: "hsl(var(--primary))" }}>
+                        {getInitials(c.prenom, c.nom)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: "hsl(var(--foreground))" }}>{c.prenom} {c.nom}</p>
+                      <p className="text-xs font-bold" style={{ color: "hsl(var(--accent))" }}>#{c.matricule}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {(notifMap[c.id] || []).length > 0 && (
+                      <CollabNotifBadge collaborateurId={c.id} notifications={notifMap[c.id]} />
+                    )}
+                    <ChevronRight size={14} className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "hsl(var(--accent))" }} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  {info.poste_libelle && (
+                    <div className="flex items-center gap-1.5 text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <Briefcase size={11} /><span className="truncate">{info.poste_libelle}</span>
+                    </div>
+                  )}
+                  {info.uo_libelle && (
+                    <div className="flex items-center gap-1.5 text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <Building2 size={11} /><span className="truncate">{info.uo_libelle}</span>
+                    </div>
+                  )}
+                  {c.email_professionnel && (
+                    <div className="flex items-center gap-1.5 text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <Mail size={11} /><span className="truncate">{c.email_professionnel}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: statut.bg, color: statut.color }}>
+                    {c.statut_collaborateur}
+                  </span>
+                  {info.type_contrat_libelle && (
+                    <span className="text-xs truncate max-w-[100px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {info.type_contrat_libelle}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── Mode liste (tableau) ── */
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "hsl(var(--muted))", borderBottom: "1px solid hsl(var(--border))" }}>
+                <th className="text-left px-4 py-3 font-medium text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Matricule</th>
+                <th className="text-left px-4 py-3 font-medium text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Collaborateur</th>
+                <th className="text-left px-4 py-3 font-medium text-xs hidden md:table-cell" style={{ color: "hsl(var(--muted-foreground))" }}>Poste</th>
+                <th className="text-left px-4 py-3 font-medium text-xs hidden lg:table-cell" style={{ color: "hsl(var(--muted-foreground))" }}>UO</th>
+                <th className="text-left px-4 py-3 font-medium text-xs hidden lg:table-cell" style={{ color: "hsl(var(--muted-foreground))" }}>Type de contrat</th>
+                <th className="text-left px-4 py-3 font-medium text-xs hidden xl:table-cell" style={{ color: "hsl(var(--muted-foreground))" }}>Email professionnel</th>
+                <th className="text-left px-4 py-3 font-medium text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Statut</th>
+                <th className="w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c, idx) => {
+                const statut = getStatutStyle(c.statut_collaborateur);
+                const info = listeInfoMap[c.id] || {};
+                return (
+                  <tr
+                    key={c.id}
+                    onClick={() => navigate(`/collaborateurs/${c.id}`)}
+                    className="cursor-pointer transition-colors group"
+                    style={{
+                      background: idx % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)",
+                      borderBottom: "1px solid hsl(var(--border))",
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--accent) / 0.05)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = idx % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)")}
+                  >
+                    <td className="px-4 py-3 text-xs font-bold font-mono" style={{ color: "hsl(var(--accent))" }}>#{c.matricule}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        {c.photo_path ? (
+                          <img src={c.photo_path} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0 border" style={{ borderColor: "hsl(var(--border))" }} />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                            style={{ background: "hsl(var(--primary) / 0.1)", color: "hsl(var(--primary))" }}>
+                            {getInitials(c.prenom, c.nom)}
+                          </div>
+                        )}
+                        <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>{c.prenom} {c.nom}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs hidden md:table-cell" style={{ color: "hsl(var(--foreground))" }}>
+                      {info.poste_libelle || <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs hidden lg:table-cell max-w-[160px] truncate" style={{ color: "hsl(var(--foreground))" }}>
+                      {info.uo_libelle || <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs hidden lg:table-cell" style={{ color: "hsl(var(--foreground))" }}>
+                      {info.type_contrat_libelle || <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs hidden xl:table-cell truncate max-w-[180px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {c.email_professionnel || "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: statut.bg, color: statut.color }}>
+                        {c.statut_collaborateur}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        {(notifMap[c.id] || []).length > 0 && (
+                          <CollabNotifBadge collaborateurId={c.id} notifications={notifMap[c.id]} />
+                        )}
+                        <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "hsl(var(--accent))" }} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modale Filtres avancés */}
+      <CollaborateursFiltresAvances
+        open={showFilters}
+        onClose={() => setShowFilters(false)}
+        value={filtresAvances}
+        onApply={setFiltresAvances}
+        optTypesContrat={optTypesContrat}
+        optSocietes={optSocietes}
+        optEtablissements={optEtablissements}
+        optUOs={optUOs}
+        optGenres={optGenres}
+        optNationalites={optNationalites}
+      />
+    </div>
+  );
+};
+
+export default CollaborateursPage;

@@ -1,0 +1,85 @@
+name: PersonaHub HR — CI/CD
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Tests unitaires et d'intégration ───────────────────────────────────────
+  test:
+    name: Tests Python
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurer Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Lancer les tests
+        env:
+          DATABASE_URL: sqlite:///./test_ci.db
+          SECRET_KEY: test-secret-key-pour-ci-seulement
+          APP_ENV: test
+          ALLOWED_ORIGINS: http://localhost:5173
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+
+      - name: Vérification des types (mypy)
+        run: |
+          pip install mypy
+          mypy app/ --ignore-missing-imports --no-error-summary || true
+
+  # ── Build Docker ────────────────────────────────────────────────────────────
+  build:
+    name: Build Docker
+    runs-on: ubuntu-22.04
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build et push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/personahub-api:latest
+            ${{ secrets.DOCKER_USERNAME }}/personahub-api:${{ github.sha }}
+
+  # ── Déploiement (SSH sur VPS) ───────────────────────────────────────────────
+  deploy:
+    name: Déploiement production
+    runs-on: ubuntu-22.04
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Déployer via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/personahub
+            docker compose pull api
+            docker compose up -d api
+            docker compose exec api alembic upgrade head
+            echo "✅ Déploiement terminé — $(date)"

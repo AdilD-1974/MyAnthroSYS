@@ -1,0 +1,19 @@
+# Environnements virtuels
+personahub-api/venv312/
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Fichiers de configuration sensibles
+personahub-api/.env
+personahub-api/.envOld
+*.backup
+*.bak
+
+# IDE et OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

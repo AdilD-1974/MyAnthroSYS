@@ -1,0 +1,9 @@
+# ✅ Garder uniquement ceci
+VITE_API_URL=http://localhost:8000/api/v1
+
+# ❌ Supprimer ou commenter tout le reste
+# SUPABASE_PUBLISHABLE_KEY="eyJ..."
+# SUPABASE_URL="https://wozly..."
+# VITE_SUPABASE_PROJECT_ID="..."
+# VITE_SUPABASE_PUBLISHABLE_KEY="eyJ..."
+# VITE_SUPABASE_URL="https://wozly..."

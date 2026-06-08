@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700;800&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;600;700&family=Lato:wght@300;400;700&family=Nunito:wght@300;400;600;700&family=Source+Sans+3:wght@300;400;600;700&family=Raleway:wght@300;400;600;700&family=Montserrat:wght@300;400;600;700&family=Merriweather:wght@300;400;700&family=Playfair+Display:wght@400;600;700&family=Ubuntu:wght@300;400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* =============================================
+   ANTHRO-SYS SIRH – Design System
+   Couleurs : bleu marine (#0D2145), vert (#8DC63F), cyan (#00AEEF)
+   ============================================= */
+
+@layer base {
+  :root {
+    /* Brand – palette issue des images ANTHRO-SYS */
+    --brand-navy:       200 60% 22%;   /* #0E3D5C bleu pétrole foncé */
+    --brand-navy-light: 195 50% 30%;   /* #1A5A73 */
+    --brand-teal:       180 55% 45%;   /* #34A1A1 teal */
+    --brand-cyan:       175 80% 55%;   /* #1DCFCF cyan vif */
+
+    /* Semantic tokens */
+    --background:       195 20% 96%;   /* #F1F6F8 */
+    --foreground:       200 60% 18%;   /* navy foncé */
+
+    --card:             0 0% 100%;
+    --card-foreground:  200 50% 15%;
+
+    --popover:          0 0% 100%;
+    --popover-foreground: 200 50% 15%;
+
+    --primary:          200 60% 22%;   /* navy */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary:        180 55% 45%;   /* teal */
+    --secondary-foreground: 0 0% 100%;
+
+    --accent:           175 80% 40%;   /* cyan */
+    --accent-foreground: 0 0% 100%;
+
+    --muted:            195 20% 92%;
+    --muted-foreground: 200 20% 50%;
+
+    --destructive:      0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Statuts sémantiques (sens stable, non modifiables via Apparence) */
+    --success:               142 64% 36%;
+    --success-foreground:    0 0% 100%;
+    --warning:               38 92% 45%;
+    --warning-foreground:    0 0% 100%;
+    --info:                  210 80% 48%;
+    --info-foreground:       0 0% 100%;
+
+    --border:           195 20% 88%;
+    --input:            195 20% 88%;
+    --ring:             175 80% 40%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-background:          200 60% 16%;
+    --sidebar-foreground:          0 0% 95%;
+    --sidebar-primary:             175 80% 40%;
+    --sidebar-primary-foreground:  0 0% 100%;
+    --sidebar-accent:              200 50% 25%;
+    --sidebar-accent-foreground:   0 0% 95%;
+    --sidebar-border:              200 40% 22%;
+    --sidebar-ring:                175 80% 40%;
+
+    /* Gradients */
+    --gradient-brand:   linear-gradient(135deg, hsl(200 60% 22%), hsl(195 50% 30%));
+    --gradient-hero:    linear-gradient(160deg, hsl(200 60% 16%) 0%, hsl(195 50% 30%) 50%, hsl(175 80% 40% / 0.3) 100%);
+    --gradient-green:   linear-gradient(135deg, hsl(180 55% 40%), hsl(175 80% 50%));
+
+    /* Shadows */
+    --shadow-sm:   0 1px 3px hsl(200 60% 22% / 0.08);
+    --shadow-md:   0 4px 12px hsl(200 60% 22% / 0.12);
+    --shadow-lg:   0 8px 24px hsl(200 60% 22% / 0.16);
+    --shadow-glow: 0 0 20px hsl(175 80% 40% / 0.25);
+  }
+
+  .dark {
+    --background:       200 50% 8%;
+    --foreground:       195 40% 96%;
+    --card:             200 45% 12%;
+    --card-foreground:  195 40% 96%;
+    --popover:          200 45% 12%;
+    --popover-foreground: 195 40% 96%;
+    --primary:          175 80% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary:        200 40% 22%;
+    --secondary-foreground: 195 40% 96%;
+    --accent:           175 80% 45%;
+    --accent-foreground: 0 0% 100%;
+    --muted:            200 40% 18%;
+    --muted-foreground: 200 20% 60%;
+    --destructive:      0 62% 45%;
+    --destructive-foreground: 195 40% 98%;
+    --success:               142 55% 45%;
+    --success-foreground:    0 0% 100%;
+    --warning:               38 90% 55%;
+    --warning-foreground:    0 0% 12%;
+    --info:                  210 75% 58%;
+    --info-foreground:       0 0% 100%;
+    --border:           200 30% 20%;
+    --input:            200 30% 20%;
+    --ring:             175 80% 40%;
+    --sidebar-background: 200 50% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-accent: 200 40% 15%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 200 30% 15%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+  }
+  h1, h2, h3, h4, h5, h6 { font-family: 'Poppins', sans-serif; }
+}
+
+@layer components {
+  /* Navigation sidebar */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer;
+    color: hsl(var(--sidebar-foreground) / 0.8);
+  }
+  .nav-item:hover {
+    background: hsl(var(--sidebar-accent));
+    color: hsl(var(--sidebar-foreground));
+  }
+  .nav-item.active {
+    background: hsl(var(--sidebar-primary));
+    color: hsl(var(--sidebar-primary-foreground));
+    box-shadow: var(--shadow-sm);
+  }
+  .nav-section-title {
+    @apply text-xs font-semibold uppercase tracking-widest px-3 py-2;
+    color: hsl(var(--sidebar-foreground) / 0.45);
+  }
+
+  /* Cards */
+  .card-stat {
+    @apply rounded-xl p-5 flex flex-col gap-2;
+    background: hsl(var(--card));
+    box-shadow: var(--shadow-md);
+    border: 1px solid hsl(var(--border));
+  }
+  .card-stat-value {
+    @apply text-3xl font-bold;
+    font-family: 'Poppins', sans-serif;
+    color: hsl(var(--primary));
+  }
+
+  /* Badges de rôle */
+  .badge-role {
+    @apply text-xs font-semibold px-2.5 py-0.5 rounded-full;
+  }
+  .badge-administrateur { background: hsl(200 60% 22%); color: white; }
+  .badge-gestionnaire_rh { background: hsl(175 80% 40%); color: white; }
+  .badge-gestionnaire_paie { background: hsl(180 55% 45%); color: white; }
+  .badge-manager { background: hsl(39 95% 55%); color: white; }
+  .badge-collaborateur { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+  /* Page header */
+  .page-header {
+    @apply flex flex-col gap-1 mb-6;
+  }
+  .page-title {
+    @apply text-2xl font-bold;
+    font-family: 'Poppins', sans-serif;
+    color: hsl(var(--foreground));
+  }
+  .page-subtitle {
+    @apply text-sm;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Ref table chip */
+  .ref-chip {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all duration-150 border;
+    background: hsl(var(--card));
+    border-color: hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .ref-chip:hover { border-color: hsl(var(--accent)); color: hsl(var(--accent)); }
+  .ref-chip.active { background: hsl(var(--accent)); color: white; border-color: hsl(var(--accent)); }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
