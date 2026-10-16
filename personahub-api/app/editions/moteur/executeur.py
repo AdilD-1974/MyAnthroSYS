@@ -14,6 +14,7 @@ RG-EDT-SECU-01 (Adil DAIA) : les champs sensibles sont masqués à la lecture, a
 from __future__ import annotations
 
 import hashlib
+from decimal import Decimal
 import json
 import logging
 import re
@@ -26,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.editions import expressions as ex
 from app.editions.definition import Definition, Jeu, Tableau
-from app.editions.moteur.mise_en_page import Anomalie, Contexte, composer
+from app.editions.moteur.mise_en_page import Anomalie, Composeur, Contexte, composer
 from app.editions.moteur.rendu_pdf import RenduPDF
 from app.editions.sources import REGISTRE, ContexteSecurite, ErreurSource
 from app.editions.sources.paie import _rubriques_paie, constantes_a_date, index_rubriques
@@ -150,9 +151,22 @@ def _sensibles(db: Session, source: str) -> Optional[set[str]]:
 # ---------------------------------------------------------------------------
 # Exécution
 # ---------------------------------------------------------------------------
-def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSecurite, *,
-             registre_masques: Optional[dict] = None, racine_fichiers: str = "storage",
-             filigrane: Optional[str] = None, contexte_fixe: Optional[dict] = None) -> list[DocumentProduit]:
+@dataclass
+class Preparation:
+    """Tout ce qu'il faut pour composer : données lues, une seule fois par demande."""
+    definition: Definition
+    parametres: dict
+    lignes: list[dict]
+    contexte: dict           # arguments communs de Contexte (hors définition et lignes)
+
+
+def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSecurite, *,
+              registre_masques: Optional[dict], racine_fichiers: str, contexte_fixe: Optional[dict],
+              forme: Optional[str]) -> Preparation:
+    try:
+        d = d.avec_forme(forme or d.usages.forme_par_defaut)     # « Multiple modèle »
+    except ValueError as e:
+        raise ErreurSource(str(e))
     parametres = resoudre_parametres(db, d, parametres_bruts, sec)
     principal = d.jeu_principal()
     if principal is None or principal.source not in REGISTRE:
@@ -182,14 +196,29 @@ def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSe
     a_date = periode["date_fin"] if isinstance(periode, dict) else date.today()
     constantes = constantes_a_date(db, sec.societe_id, a_date)
 
-    # libellés d'édition des rubriques citées dans les plans de lignes (RG-EDT-LIGNES-01)
-    codes_plans = {lr.code.strip().upper() for b in d.bandes for el in b.elements if isinstance(el, Tableau)
-                   for s in el.sections for lr in s.rubriques}
-    libelles = {code: (r.get("libelle_edition") or r.get("libelle"))
-                for code, r in _rubriques_paie(db, codes_plans, sec.societe_id).items()} if codes_plans else {}
+    # paramétrage des rubriques citées dans les plans de lignes et les corps (libellés, ne_editer_si_*)
+    codes = {lr.code.strip().upper() for b in d.bandes for el in b.elements if isinstance(el, Tableau)
+             for s in el.sections for lr in s.rubriques}
+    codes |= {a.rubrique.strip().upper() for c in d.corps for a in c.affectations if a.rubrique}
+    parametrage = _rubriques_paie(db, codes, sec.societe_id) if codes else {}
+    libelles = {code: (r.get("libelle_edition") or r.get("libelle")) for code, r in parametrage.items()}
 
     logo = societe.get("logo_path")
     fixe = {"CHARTE.logo": _chemin_relatif(logo) if logo else None, **(contexte_fixe or {})}
+    return Preparation(d, parametres, lignes, dict(
+        enfants=enfants, parametres=parametres, societe=societe, constantes=constantes, rubriques=rubriques,
+        contexte_fixe=fixe, registre_masques=registre_masques, racine_fichiers=racine_fichiers,
+        libelles_rubriques=libelles, parametrage_rubriques=parametrage))
+
+
+def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSecurite, *,
+             registre_masques: Optional[dict] = None, racine_fichiers: str = "storage",
+             filigrane: Optional[str] = None, contexte_fixe: Optional[dict] = None,
+             forme: Optional[str] = None) -> list[DocumentProduit]:
+    prep = _preparer(db, d, parametres_bruts, sec, registre_masques=registre_masques,
+                     racine_fichiers=racine_fichiers, contexte_fixe=contexte_fixe, forme=forme)
+    d, parametres, lignes = prep.definition, prep.parametres, prep.lignes
+    societe = prep.contexte["societe"]
 
     # éclatement : un document par valeur du champ, dans l'ordre du jeu
     if d.sortie.eclatement:
@@ -202,10 +231,7 @@ def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSe
 
     produits = []
     for cle, lot in lots:
-        ctx = Contexte(definition=d, lignes=lot, enfants=enfants, parametres=parametres, societe=societe,
-                       constantes=constantes, rubriques=rubriques, contexte_fixe=fixe,
-                       registre_masques=registre_masques, racine_fichiers=racine_fichiers,
-                       libelles_rubriques=libelles)
+        ctx = Contexte(definition=d, lignes=lot, **prep.contexte)
         pages, anomalies = composer(ctx)
         r = ex.ResolverEdition(ligne={**(lot[0] if lot else {}), "societe": societe}, parametres=parametres)
         try:
@@ -220,6 +246,39 @@ def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSe
         produits.append(DocumentProduit(nom, pdf, "PDF", None if cle is None else str(cle),
                                         len(pages), empreinte, anomalies))
     return produits
+
+
+def _json(v: Any) -> Any:
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    if isinstance(v, dict):
+        return {k: _json(x) for k, x in v.items() if not str(k).startswith("_")}
+    if isinstance(v, (list, tuple)):
+        return [_json(x) for x in v]
+    return v
+
+
+def donnees_brutes(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSecurite, *,
+                   max_lignes: int = 5) -> dict:
+    """Aperçu tabulaire (RG-EDT-DONNEES-01) : corps et variables des premières
+    lignes principales, sans aucune mise en page. Vérifier le contenu avant le format."""
+    prep = _preparer(db, d, parametres_bruts, sec, registre_masques=None, racine_fichiers="storage",
+                     contexte_fixe=None, forme=None)
+    resultat = []
+    for l in prep.lignes[:max_lignes]:
+        comp = Composeur(Contexte(definition=prep.definition, lignes=[l], **prep.contexte))
+        donnees = comp._donnees(l)
+        ident = l.get("identite") or {}
+        resultat.append({
+            "id": str(l.get("id")),
+            "titre": " ".join(str(x) for x in (l.get("matricule"), ident.get("nom"), ident.get("prenom")) if x),
+            "corps": _json(donnees["corps"]),
+            "variables": _json(donnees["var"]),
+            "anomalies": [{"element": a.source_id, "message": a.message} for a in comp.anomalies],
+        })
+    return {"nb_lignes": len(prep.lignes), "lignes": resultat}
 
 
 def _chemin_relatif(p: str) -> str:

@@ -181,7 +181,9 @@ class Section(Strict):
 
 class Tableau(ElementBase):
     type: Literal["TABLEAU"]
-    jeu: str
+    jeu: str = ""                             # jeu SECONDAIRE affiché (mode expert)…
+    corps: Optional[str] = None               # …ou corps de données « lignes » (RG-EDT-DONNEES-01)
+    grouper: bool = True                      # corps : un titre par groupe d'affectations
     colonnes: list[Colonne] = Field(min_length=1)
     sections: list[Section] = []
     repeter_entete: bool = True
@@ -263,13 +265,106 @@ class Sortie(Strict):
     qr_verification: bool = False
 
 
-class Definition(Strict):
-    schema_version: Literal[1] = SCHEMA_VERSION
-    parametres: list[Parametre] = []
-    jeux: list[Jeu] = Field(min_length=1)
+# ---------------------------------------------------------------------------
+# Données de l'état, définies AVANT la forme (lot 2 bis, Report Manager AGIRH)
+# ---------------------------------------------------------------------------
+CodeDonnee = Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_]*$", max_length=40)]
+ATTRIBUTS_AFFECTABLES = ("NB", "MT", "TX", "BASE", "PAT")
+
+
+class ColonneCorps(Strict):
+    code: CodeDonnee
+    libelle: str
+    sigle: Optional[str] = None
+    type: Literal["MONTANT", "NOMBRE", "TAUX", "TEXTE", "DATE"] = "MONTANT"
+    masque: Optional[str] = None
+    total: bool = False
+
+
+class LigneCorps(Strict):
+    code: CodeDonnee
+    libelle: str
+
+
+class Affectation(Strict):
+    """Une rubrique (ou une formule) et les colonnes qui reçoivent ses valeurs
+    (onglet « Rubriques » du Report Manager). RG-EDT-DONNEES-02 à 05."""
+    rubrique: Optional[str] = Field(default=None, max_length=40)
+    formule: Optional[Expr] = None            # à la place d'une rubrique : cible « VAL »
+    periode: Literal["MOIS", "CUMUL"] = "MOIS"
+    cibles: dict[str, str] = {}               # NB|MT|TX|BASE|PAT|VAL → colonne (LIGNES) ou « ligne.colonne » (CASES)
+    groupe: Optional[str] = None              # titre d'impression (corps LIGNES)
+    libelle: Optional[str] = None
+    negatif: bool = False                     # « en – »
+    nulle: bool = False                       # « Nulls » : imprimée même nulle
+
+
+class Corps(Strict):
+    code: CodeDonnee
+    libelle: str
+    nature: Literal["LIGNES", "CASES"]
+    colonnes: list[ColonneCorps] = Field(min_length=1)
+    lignes: list[LigneCorps] = []             # CASES
+    affectations: list[Affectation] = []
+    tri: Literal["AFFECTATION", "PAIE", "CODE"] = "AFFECTATION"
+
+
+class Variable(Strict):
+    code: CodeDonnee
+    libelle: str
+    type: Literal["TEXTE", "NOMBRE", "MONTANT", "DATE", "BOOLEEN"] = "TEXTE"
+    valeur: Expr
+
+
+class Usages(Strict):
+    confidentialite: int = Field(default=0, ge=0, le=5)
+    formes_au_choix: bool = False             # « Autoriser choix Qrp »
+    forme_par_defaut: Optional[str] = None    # code de la mise en forme imprimée sans choix (défaut : forme_code)
+    nb_exemplaires: int = Field(default=1, ge=1, le=20)
+    duplicata: bool = False
+    interdire_copies: bool = False
+    export_texte: bool = False
+    nom_export: Optional[Expr] = None
+    frequence: Optional[str] = None
+
+
+class FormeAlternative(Strict):
+    """Autre mise en forme des mêmes données (« Multiple modèle »)."""
+    code: CodeDonnee
+    libelle: str
     page: Page = Page()
     bandes: list[Bande] = Field(min_length=1)
     sortie: Sortie = Sortie()
+
+
+class Definition(Strict):
+    schema_version: Literal[1] = SCHEMA_VERSION
+    # ---- données (le « quoi ») ----
+    parametres: list[Parametre] = []
+    jeux: list[Jeu] = Field(min_length=1)
+    corps: list[Corps] = []
+    variables: list[Variable] = []
+    usages: Usages = Usages()
+    # ---- mise en forme par défaut (le « comment ») ----
+    forme_code: CodeDonnee = "standard"
+    forme_libelle: str = "Mise en forme standard"
+    page: Page = Page()
+    bandes: list[Bande] = Field(min_length=1)
+    sortie: Sortie = Sortie()
+    formes: list[FormeAlternative] = []       # autres mises en forme des mêmes données
+
+    def avec_forme(self, code: Optional[str]) -> "Definition":
+        """La même définition avec la mise en forme `code` à la place de celle par défaut."""
+        if not code or code == self.forme_code:
+            return self
+        f = next((x for x in self.formes if x.code == code), None)
+        if f is None:
+            raise ValueError(f"Mise en forme inconnue : {code}")
+        return self.model_copy(update={"forme_code": f.code, "forme_libelle": f.libelle,
+                                       "page": f.page, "bandes": f.bandes, "sortie": f.sortie})
+
+    def corps_par_code(self, code: str) -> Optional[Corps]:
+        return next((c for c in self.corps if c.code == code), None)
 
     def json_canonique(self) -> str:
         return json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"),

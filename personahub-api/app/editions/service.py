@@ -56,7 +56,7 @@ from app.editions import expressions as ex
 from app.editions import format as fmt
 from app.editions import variantes
 from app.editions.definition import Definition
-from app.editions.moteur.executeur import DocumentProduit, executer
+from app.editions.moteur.executeur import DocumentProduit, donnees_brutes, executer
 from app.editions.sources import ContexteSecurite, ErreurSource
 from app.editions.validation import CatalogueValidation, Rapport, valider
 
@@ -546,18 +546,19 @@ def _definition_executable(db: Session, u: Utilisateur, v: dict, avec_variante: 
 
 
 def _executer(db: Session, u: Utilisateur, m: dict, v: dict, d: Definition, parametres: dict,
-              filigrane: Optional[str] = None) -> tuple[list[DocumentProduit], bool]:
+              filigrane: Optional[str] = None, forme: Optional[str] = None) -> tuple[list[DocumentProduit], bool]:
     sec = contexte_securite(db, u, m)
     bruts = {**(parametres or {}), "_modele": m["code"], "_version": v["numero"]}
     try:
         docs = executer(db, d, bruts, sec, registre_masques=registre_masques(db, u.societe_id),
-                        racine_fichiers=str(racine_stockage()), filigrane=filigrane)
+                        racine_fichiers=str(racine_stockage()), filigrane=filigrane, forme=forme)
     except ErreurSource as e:
         raise ErreurEdition(str(e))
     return docs, sec.donnees_sensibles
 
 
-def apercu(db: Session, u: Utilisateur, version_id: str, parametres: dict) -> tuple[bytes, dict]:
+def apercu(db: Session, u: Utilisateur, version_id: str, parametres: dict,
+           forme: Optional[str] = None) -> tuple[bytes, dict]:
     """PDF filigrané d'une version quelconque (brouillon compris), non conservé :
     les premiers documents sont réunis en un seul fichier."""
     v, m = lire_version(db, u, version_id)
@@ -566,7 +567,7 @@ def apercu(db: Session, u: Utilisateur, version_id: str, parametres: dict) -> tu
         d, _ = _definition_executable(db, u, v, avec_variante=False)
     except Exception as e:                                   # définition invalide (brouillon)
         raise Invalide("Le modèle comporte des erreurs : aperçu impossible", {"message": str(e)[:2000]})
-    docs, _ = _executer(db, u, m, v, d, parametres, filigrane=FILIGRANE_APERCU)
+    docs, _ = _executer(db, u, m, v, d, parametres, filigrane=FILIGRANE_APERCU, forme=forme)
     auditer(db, u, "APERCU", "VERSION", version_id, {"modele": m["code"], "documents": len(docs)})
     info = {"documents": len(docs), "affiches": min(len(docs), APERCU_MAX_DOCUMENTS),
             "anomalies": [{"element": a.source_id, "message": a.message}
@@ -585,6 +586,22 @@ def apercu(db: Session, u: Utilisateur, version_id: str, parametres: dict) -> tu
     return sortie.getvalue(), info
 
 
+def donnees(db: Session, u: Utilisateur, version_id: str, parametres: dict) -> dict:
+    """Aperçu tabulaire des données (corps, variables) d'une version, sans mise en page."""
+    v, m = lire_version(db, u, version_id)
+    exiger(db, u, "CONCEVOIR" if v["statut"] != "PUBLIEE" else "LANCER", m)
+    try:
+        d = Definition.model_validate(v["definition"])
+    except Exception as e:
+        raise Invalide("Le modèle comporte des erreurs : aperçu impossible", {"message": str(e)[:2000]})
+    try:
+        res = donnees_brutes(db, d, parametres or {}, contexte_securite(db, u, m))
+    except ErreurSource as e:
+        raise ErreurEdition(str(e))
+    auditer(db, u, "APERCU_DONNEES", "VERSION", version_id, {"modele": m["code"]})
+    return res
+
+
 def racine_stockage() -> Path:
     """Fichiers lus par les modèles (logos, images) : le dossier storage de l'API."""
     return Path("storage")
@@ -598,7 +615,7 @@ def racine_documents() -> Path:
     return Path(os.environ.get("EDITIONS_DOCUMENTS", "donnees_privees/editions"))
 
 
-def lancer(db: Session, u: Utilisateur, modele_id: str, parametres: dict) -> dict:
+def lancer(db: Session, u: Utilisateur, modele_id: str, parametres: dict, forme: Optional[str] = None) -> dict:
     """Production synchrone (lot 1) de la version publiée : demande + documents
     conservés sous <racine_documents>/<société>/<AAAA>/<MM>/<demande>/."""
     m = lire_modele(db, u, modele_id)
@@ -607,6 +624,9 @@ def lancer(db: Session, u: Utilisateur, modele_id: str, parametres: dict) -> dic
         raise Conflit("Ce modèle n'a pas de version publiée")
     v, _ = lire_version(db, u, m["version_publiee_id"])
     d, variante_version = _definition_executable(db, u, v, avec_variante=True)
+    defaut = d.usages.forme_par_defaut or d.forme_code
+    if forme and forme != defaut and not d.usages.formes_au_choix:            # « Autoriser choix Qrp »
+        raise Interdit("Cet état n'autorise pas le choix de la mise en forme")
     demande_id = str(uuid.uuid4())
     db.execute(text("""INSERT INTO edt_demande (id, version_id, variante_version_id, parametres, formats, origine,
                           statut, demandeur_id, societe_id, debut)
@@ -614,7 +634,7 @@ def lancer(db: Session, u: Utilisateur, modele_id: str, parametres: dict) -> dic
                {"id": demande_id, "v": v["id"], "vv": variante_version, "p": json.dumps(parametres or {}, default=str),
                 "u": _uuid(u.id), "s": u.societe_id})
     try:
-        docs, sensible = _executer(db, u, m, v, d, parametres)
+        docs, sensible = _executer(db, u, m, v, d, parametres, forme=forme)
     except ErreurEdition as e:
         db.execute(text("""UPDATE edt_demande SET statut = 'ECHEC', fin = CURRENT_TIMESTAMP, erreur = :e
                            WHERE id = :id"""), {"e": e.message[:2000], "id": demande_id})
@@ -746,6 +766,8 @@ def analyser_expression(db: Session, u: Utilisateur, expression: str, source: Op
     if source:
         c: CatalogueValidation = cat.charger(db, u.societe_id)
         for champ in sorted(a.champs):
+            if champ.startswith(("var.", "corps.")):
+                continue                  # données de l'état : contrôlées à l'enregistrement, avec la définition
             ok = c.champ_existe(source, champ) or (
                 champ.startswith("societe.") and c.champ_existe("SOCIETE", champ.split(".", 1)[1]))
             if not ok:

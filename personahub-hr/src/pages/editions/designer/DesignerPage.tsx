@@ -20,11 +20,12 @@ import { toast } from "@/hooks/use-toast";
 import {
   editionsApi, ErreurEdition, type ErreurValidation, type Fonction, type Masque, type SourceCatalogue, type Version,
 } from "@/lib/editionsApi";
-import { cibleErreur, copie, type Definition, type Element } from "@/pages/editions/types";
+import { activerForme, cibleErreur, copie, type Definition, type Element } from "@/pages/editions/types";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
 import Canevas from "./Canevas";
 import Inspecteur, { renommerSousParties } from "./Inspecteur";
 import Structure from "./Structure";
+import Donnees from "./Donnees";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
 
@@ -49,6 +50,8 @@ export default function DesignerPage() {
   const [erreurs, setErreurs] = useState<ErreurValidation[] | null>(null);
   const [occupe, setOccupe] = useState<"" | "enregistrer" | "valider" | "publier" | "apercu" | "brouillon">("");
   const [zoom, setZoom] = useState(1);
+  // RG-EDT-DONNEES-01 : on définit ce que l'état contient (Données) avant sa mise en forme
+  const [etape, setEtape] = useState<"donnees" | "forme">("donnees");
   const [apercu, setApercu] = useState<{ ouvert: boolean; url?: string; valeurs: Valeurs }>({ ouvert: false, valeurs: {} });
   const [json, setJson] = useState<{ ouvert: boolean; texte: string; erreur?: string }>({ ouvert: false, texte: "" });
   const [copieDlg, setCopieDlg] = useState<{ ouvert: boolean; code: string; libelle: string }>({ ouvert: false, code: "", libelle: "" });
@@ -188,7 +191,7 @@ export default function DesignerPage() {
     if (!lectureSeule && !(await enregistrer(true))) return;
     setOccupe("apercu");
     try {
-      const blob = await editionsApi.apercu(version.id, apercu.valeurs);
+      const blob = await editionsApi.apercu(version.id, apercu.valeurs, editeur.definition.forme_code);
       if (apercu.url) URL.revokeObjectURL(apercu.url);
       setApercu((a) => ({ ...a, url: URL.createObjectURL(blob) }));
     } catch (e: any) {
@@ -203,7 +206,7 @@ export default function DesignerPage() {
       if (cible && (cible.tagName === "INPUT" || cible.tagName === "TEXTAREA" || cible.tagName === "SELECT" || cible.isContentEditable)) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key.toLowerCase() === "s") { e.preventDefault(); enregistrer(); return; }
-      if (lectureSeule) return;
+      if (lectureSeule || etape !== "forme") return;
       if (ctrl && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); editeur.annuler(); return; }
       if (ctrl && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); editeur.retablir(); return; }
       const sel = editeur.selection;
@@ -243,7 +246,7 @@ export default function DesignerPage() {
     };
     window.addEventListener("keydown", touche);
     return () => window.removeEventListener("keydown", touche);
-  }, [editeur, lectureSeule, enregistrer]);
+  }, [editeur, lectureSeule, enregistrer, etape]);
 
   // ── erreurs rattachées aux éléments du canevas ───────────────────────────
   const erreursParElement = useMemo(() => {
@@ -331,15 +334,29 @@ export default function DesignerPage() {
           </div>
         )}
 
-        {/* trois panneaux */}
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-64 shrink-0 border-r"><Structure editeur={editeur} lectureSeule={lectureSeule} /></aside>
-          <main className="min-w-0 flex-1 overflow-auto bg-muted/40 p-4"
-            onPointerDown={(e) => { if (e.target === e.currentTarget) editeur.setSelection({ bande: null, element: null }); }}>
-            <Canevas editeur={editeur} zoom={zoom} lectureSeule={lectureSeule} erreursParElement={erreursParElement} />
-          </main>
-          <aside className="w-96 shrink-0 overflow-auto border-l"><Inspecteur editeur={editeur} lectureSeule={lectureSeule} /></aside>
+        {/* étapes : 1. Données  2. Mise en forme */}
+        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
+          {([["donnees", "1. Données", "ce que l'état contient"], ["forme", "2. Mise en forme", "où et comment l'imprimer"]] as const).map(([k, l, aide]) => (
+            <button key={k} type="button" onClick={() => setEtape(k)}
+              className={`rounded-md px-3 py-1 text-sm ${etape === k ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+              <b>{l}</b> <span className={`text-xs ${etape === k ? "opacity-80" : "text-muted-foreground"}`}>— {aide}</span>
+            </button>
+          ))}
+          {etape === "forme" && <SelecteurForme editeur={editeur} lectureSeule={lectureSeule} />}
         </div>
+
+        {etape === "donnees" ? (
+          <div className="min-h-0 flex-1"><Donnees editeur={editeur} version={version} lectureSeule={lectureSeule} enregistrer={enregistrer} /></div>
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <aside className="w-64 shrink-0 border-r"><Structure editeur={editeur} lectureSeule={lectureSeule} /></aside>
+            <main className="min-w-0 flex-1 overflow-auto bg-muted/40 p-4"
+              onPointerDown={(e) => { if (e.target === e.currentTarget) editeur.setSelection({ bande: null, element: null }); }}>
+              <Canevas editeur={editeur} zoom={zoom} lectureSeule={lectureSeule} erreursParElement={erreursParElement} />
+            </main>
+            <aside className="w-96 shrink-0 overflow-auto border-l"><Inspecteur editeur={editeur} lectureSeule={lectureSeule} /></aside>
+          </div>
+        )}
 
         {/* erreurs */}
         {erreurs && erreurs.length > 0 && (
@@ -417,5 +434,62 @@ export default function DesignerPage() {
         </DialogContent>
       </Dialog>
     </ContexteDesigner.Provider>
+  );
+}
+
+const codeForme = (v: string) => v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "_$1").slice(0, 40);
+
+/** Plusieurs mises en forme des mêmes données (« Multiple modèle ») : choix, création, défaut. */
+function SelecteurForme({ editeur, lectureSeule }: { editeur: ReturnType<typeof useEditeur>; lectureSeule: boolean }) {
+  const d = editeur.definition!;
+  const courante = d.forme_code ?? "standard";
+  const formes = [{ code: courante, libelle: d.forme_libelle ?? "Mise en forme standard" }, ...(d.formes ?? [])];
+  const defaut = d.usages?.forme_par_defaut ?? courante;
+  const choisir = (code: string) => {
+    if (code === courante) return;
+    editeur.modifier((x) => activerForme(x, code), "forme");
+    editeur.setSelection({ bande: null, element: null });
+  };
+  const nouvelle = () => {
+    const libelle = prompt("Nom de la nouvelle mise en forme (copie de la mise en forme affichée) :", "Bulletin paysage");
+    if (!libelle?.trim()) return;
+    let code = codeForme(libelle) || "forme";
+    const codes = new Set(formes.map((f) => f.code));
+    for (let n = 2; codes.has(code); n++) code = `${codeForme(libelle)}_${n}`;
+    editeur.modifier((x) => {
+      x.formes = [...(x.formes ?? []), { code, libelle: libelle.trim(), page: copie(x.page), bandes: copie(x.bandes), sortie: copie(x.sortie) }];
+      activerForme(x, code);
+    }, "forme-nouvelle");
+  };
+  const renommer = () => {
+    const libelle = prompt("Nouveau nom :", d.forme_libelle ?? "Mise en forme standard");
+    if (libelle?.trim()) editeur.modifier((x) => { x.forme_libelle = libelle.trim(); }, "forme-nom");
+  };
+  const supprimer = () => {
+    if (!(d.formes ?? []).length || !confirm(`Supprimer la mise en forme « ${d.forme_libelle} » ?`)) return;
+    editeur.modifier((x) => {
+      const supprimee = x.forme_code ?? "standard";
+      const f = x.formes!.shift()!;
+      x.forme_code = f.code; x.forme_libelle = f.libelle; x.page = f.page; x.bandes = f.bandes; x.sortie = f.sortie;
+      if (x.usages?.forme_par_defaut === supprimee) x.usages = { ...x.usages, forme_par_defaut: f.code };
+      if (!x.formes!.length) delete x.formes;
+    }, "forme-suppr");
+    editeur.setSelection({ bande: null, element: null });
+  };
+  return (
+    <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-muted-foreground">Mise en forme</span>
+      <select className="rounded border bg-background px-2 py-1 text-sm" value={courante} onChange={(e) => choisir(e.target.value)}>
+        {formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}{f.code === defaut ? " ★" : ""}</option>)}
+      </select>
+      {courante === defaut
+        ? <span className="text-muted-foreground" title="Imprimée quand on ne choisit pas">★ par défaut</span>
+        : !lectureSeule && <button type="button" className="text-primary underline" onClick={() => editeur.modifier((x) => { x.usages = { ...(x.usages ?? {}), forme_par_defaut: courante }; }, "forme-defaut")}>Définir par défaut</button>}
+      {!lectureSeule && <>
+        <button type="button" className="text-primary underline" onClick={nouvelle}>Nouvelle</button>
+        <button type="button" className="text-primary underline" onClick={renommer}>Renommer</button>
+        {(d.formes ?? []).length > 0 && <button type="button" className="text-destructive underline" onClick={supprimer}>Supprimer</button>}
+      </>}
+    </div>
   );
 }

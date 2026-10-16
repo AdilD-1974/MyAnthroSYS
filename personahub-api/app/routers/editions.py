@@ -83,6 +83,7 @@ class VersionEcriture(BaseModel):
 
 class Execution(BaseModel):
     parametres: dict = {}
+    forme: Optional[str] = None               # mise en forme choisie (« Multiple modèle »)
 
 
 class ExpressionAnalyse(BaseModel):
@@ -117,6 +118,16 @@ def analyser(corps: ExpressionAnalyse, u: sv.Utilisateur = Depends(utilisateur),
     return sv.analyser_expression(db, u, corps.expression, corps.source, corps.parametres)
 
 
+@router.get("/parametres/periodes")
+def periodes(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return sv.periodes(db, u)
+
+
+@router.get("/parametres/plans-paie")
+def plans_paie(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return sv.plans_paie(db, u)
+
+
 # ---------------------------------------------------------------- modèles
 @router.get("/modeles")
 def lister_modeles(categorie: Optional[str] = None, archives: bool = False,
@@ -148,7 +159,7 @@ def brouillon(modele_id: str, u: sv.Utilisateur = Depends(utilisateur), db: Sess
 def lancer(modele_id: str, corps: Execution, u: sv.Utilisateur = Depends(utilisateur),
            db: Session = Depends(get_db)):
     """Production synchrone de la version publiée (lot 1 ; file d'attente au lot 4)."""
-    return _ecriture(db, sv.lancer, u, modele_id, corps.parametres)
+    return _ecriture(db, sv.lancer, u, modele_id, corps.parametres, corps.forme)
 
 
 # ---------------------------------------------------------------- versions
@@ -187,7 +198,7 @@ def publier(version_id: str, if_match: Optional[str] = Header(None, alias="If-Ma
 @router.post("/versions/{version_id}/apercu")
 def apercu(version_id: str, corps: Execution, u: sv.Utilisateur = Depends(utilisateur),
            db: Session = Depends(get_db)):
-    pdf, info = _ecriture(db, sv.apercu, u, version_id, corps.parametres)
+    pdf, info = _ecriture(db, sv.apercu, u, version_id, corps.parametres, corps.forme)
     return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": 'inline; filename="apercu.pdf"',
         "X-Edition-Documents": str(info["documents"]),
@@ -195,6 +206,13 @@ def apercu(version_id: str, corps: Execution, u: sv.Utilisateur = Depends(utilis
         "X-Edition-Anomalies": str(len(info["anomalies"])),
         "Cache-Control": "no-store",
     })
+
+
+@router.post("/versions/{version_id}/donnees")
+def donnees(version_id: str, corps: Execution, u: sv.Utilisateur = Depends(utilisateur),
+            db: Session = Depends(get_db)):
+    """Aperçu tabulaire : corps et variables des premiers documents, sans mise en page."""
+    return _ecriture(db, sv.donnees, u, version_id, corps.parametres)
 
 
 # ---------------------------------------------------------------- production

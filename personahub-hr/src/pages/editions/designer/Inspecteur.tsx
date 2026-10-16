@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import {
-  LIBELLES_BANDE, LIBELLES_ELEMENT, LIBELLES_PARAMETRE, RUBRIQUES_EN_TETE, copie, enLitteral, generateurIds, identifiants, largeurUtile, nouvelId,
+  LIBELLES_BANDE, LIBELLES_ELEMENT, LIBELLES_PARAMETRE, RUBRIQUES_EN_TETE, copie, enLitteral, generateurIds, grilleDepuisCorps, identifiants, largeurUtile, nouvelId, tableauDepuisCorps,
   texteLitteral, type Affichage, type Bande, type Colonne, type Definition, type Element, type ElGrille, type ElTableau,
   type Jeu, type LigneRubrique, type Parametre, type Section, type Style, type TypeParametre,
 } from "@/pages/editions/types";
@@ -42,7 +42,7 @@ export function renommerSousParties(def: Definition, n: Element) {
 }
 
 // ── petits composants de formulaire ─────────────────────────────────────────
-function Ligne({ libelle, children, aide }: { libelle: string; children: React.ReactNode; aide?: string }) {
+export function Ligne({ libelle, children, aide }: { libelle: string; children: React.ReactNode; aide?: string }) {
   return (
     <label className="mb-2 block">
       <span className="mb-0.5 block text-[11px] font-medium text-muted-foreground" title={aide}>{libelle}</span>
@@ -51,20 +51,20 @@ function Ligne({ libelle, children, aide }: { libelle: string; children: React.R
   );
 }
 
-const classeChamp = "w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-60";
+export const classeChamp = "w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-60";
 
-function Texte({ value, onChange, disabled, placeholder }: { value?: string | null; onChange: (v: string) => void; disabled?: boolean; placeholder?: string }) {
+export function Texte({ value, onChange, disabled, placeholder }: { value?: string | null; onChange: (v: string) => void; disabled?: boolean; placeholder?: string }) {
   return <input className={classeChamp} value={value ?? ""} disabled={disabled} placeholder={placeholder}
     onKeyDown={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value)} />;
 }
 
-function Nombre({ value, onChange, disabled, pas = 0.5, min }: { value?: number | null; onChange: (v: number | null) => void; disabled?: boolean; pas?: number; min?: number }) {
+export function Nombre({ value, onChange, disabled, pas = 0.5, min }: { value?: number | null; onChange: (v: number | null) => void; disabled?: boolean; pas?: number; min?: number }) {
   return <input type="number" step={pas} min={min} className={classeChamp} value={value ?? ""} disabled={disabled}
     onKeyDown={(e) => e.stopPropagation()}
     onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} />;
 }
 
-function Choix<T extends string>({ value, options, onChange, disabled, vide }: {
+export function Choix<T extends string>({ value, options, onChange, disabled, vide }: {
   value?: T | null; options: { v: T; l: string }[]; onChange: (v: T | null) => void; disabled?: boolean; vide?: string;
 }) {
   return (
@@ -76,7 +76,7 @@ function Choix<T extends string>({ value, options, onChange, disabled, vide }: {
   );
 }
 
-function Case({ libelle, value, onChange, disabled }: { libelle: string; value?: boolean | null; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Case({ libelle, value, onChange, disabled }: { libelle: string; value?: boolean | null; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className="mr-3 inline-flex items-center gap-1 text-xs">
       <input type="checkbox" checked={!!value} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
@@ -85,17 +85,17 @@ function Case({ libelle, value, onChange, disabled }: { libelle: string; value?:
   );
 }
 
-function Titre({ children }: { children: React.ReactNode }) {
+export function Titre({ children }: { children: React.ReactNode }) {
   return <div className="mb-2 mt-4 border-b pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{children}</div>;
 }
 
 /** Pose ou supprime une propriété optionnelle. */
-function poser<T extends object>(obj: T, cle: keyof T, v: unknown) {
+export function poser<T extends object>(obj: T, cle: keyof T, v: unknown) {
   if (v === null || v === undefined || v === "") delete (obj as any)[cle];
   else (obj as any)[cle] = v;
 }
 
-function nettoyer<T extends object>(obj: T | undefined): T | undefined {
+export function nettoyer<T extends object>(obj: T | undefined): T | undefined {
   if (!obj) return obj;
   return Object.keys(obj).length ? obj : undefined;
 }
@@ -368,12 +368,41 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
     maj((e: ElTableau) => { const s = (e.sections ?? []).find((x) => x.id === id); if (s) fn(s, e); }, `${cle}:${id}`);
   const somme = t.colonnes.filter((c) => !c.masquee).reduce((s, c) => s + c.largeur, 0);
 
+  const corpsLignes = (d.corps ?? []).filter((c) => c.nature === "LIGNES");
+  const lier = (code: string) => {
+    if (code === (t.corps ?? "")) return;
+    if (code && !confirm("Les colonnes du tableau seront recréées à partir de celles du corps. Continuer ?")) return;
+    maj((e: ElTableau, b) => {
+      if (!code) { e.corps = null; delete e.corps; e.jeu = jeuxSecondaires[0]?.code ?? ""; return; }
+      const corps = d.corps!.find((c) => c.code === code)!;
+      const n = tableauDepuisCorps(d, corps, e.x, e.y, e.l, e.id);
+      e.corps = code; e.jeu = ""; e.colonnes = n.colonnes; delete e.sections; delete e.section_autres;
+      b.hauteur = Math.max(b.hauteur, e.y + e.h);
+    }, "source");
+  };
   return (
     <>
-      <Ligne libelle="Jeu de lignes">
-        <Choix value={t.jeu} disabled={ro} onChange={(v) => maj((e) => { e.jeu = v; }, "jeu")}
-          options={(jeuxSecondaires.length ? jeuxSecondaires : d.jeux).map((j) => ({ v: j.code, l: `${j.code} — ${j.source}` }))} />
+      <Ligne libelle="Lignes affichées : corps de données" aide="Définis à l'étape « 1. Données »">
+        <Choix value={t.corps ?? ""} disabled={ro} vide="— jeu de lignes (mode expert) —" onChange={(v) => lier(v ?? "")}
+          options={corpsLignes.map((c) => ({ v: c.code, l: c.libelle }))} />
       </Ligne>
+      {t.corps ? (
+        <div className="mb-2 rounded bg-primary/5 p-1.5 text-[11px]">
+          Les rubriques, leurs valeurs et leurs groupes viennent du corps : modifiez-les à l'étape « 1. Données ». Ici : largeur, titre, masque, style.
+          <div className="mt-1"><Case libelle="Un titre par groupe (Gains, Retenues…)" value={t.grouper ?? true} disabled={ro}
+            onChange={(v) => maj((e) => poser(e, "grouper", v ? null : false), "grp")} />
+          {!ro && <button type="button" className="text-primary underline" onClick={() => {
+            if (confirm("Recréer les colonnes depuis le corps (largeurs et titres actuels perdus) ?")) {
+              maj((e: ElTableau) => { e.colonnes = tableauDepuisCorps(d, d.corps!.find((c) => c.code === t.corps)!, e.x, e.y, e.l, e.id).colonnes; }, "regen");
+            }
+          }}>Recréer les colonnes</button>}</div>
+        </div>
+      ) : (
+        <Ligne libelle="Jeu de lignes">
+          <Choix value={t.jeu} disabled={ro} onChange={(v) => maj((e) => { e.jeu = v; }, "jeu")}
+            options={(jeuxSecondaires.length ? jeuxSecondaires : d.jeux).map((j) => ({ v: j.code, l: `${j.code} — ${j.source}` }))} />
+        </Ligne>
+      )}
       <div className="grid grid-cols-3 gap-1">
         <Ligne libelle="Haut. ligne (mm)"><Nombre value={t.hauteur_ligne ?? 5} disabled={ro} min={1} onChange={(v) => maj((e) => { e.hauteur_ligne = v ?? 5; }, "hl")} /></Ligne>
         <Ligne libelle="Lignes min." aide="Complète par des lignes vides, comme un bulletin pré-imprimé">
@@ -417,7 +446,7 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
                 <Ligne libelle="Largeur"><Nombre value={c.largeur} disabled={ro} min={1} onChange={(v) => majCol(c.id, (x) => { x.largeur = Math.max(1, v ?? 1); }, "larg")} /></Ligne>
               </div>
               <Ligne libelle="Valeur de chaque ligne (formule)" aide="Champs de la ligne : code_rubrique, libelle, base, nombre, taux, montant, montant_patronal, sens…">
-                <FormuleInput value={c.valeur} jeu={t.jeu} disabled={ro} onChange={(v) => majCol(c.id, (x) => { x.valeur = v; }, "val")} />
+                <FormuleInput value={c.valeur} jeu={t.corps ? `corps:${t.corps}` : t.jeu} disabled={ro} onChange={(v) => majCol(c.id, (x) => { x.valeur = v; }, "val")} />
               </Ligne>
               <div className="grid grid-cols-2 gap-1">
                 <Ligne libelle="Masque">
@@ -458,7 +487,8 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
         </button>
       )}
 
-      {/* ── lignes affichées : groupes ── */}
+      {/* ── lignes affichées : groupes (mode expert, tableau sur un jeu) ── */}
+      {!t.corps && <>
       <div className="mb-1 mt-3 text-[11px] font-semibold uppercase text-muted-foreground">Lignes affichées</div>
       <p className="mb-2 text-[10px] text-muted-foreground">
         Sans groupe, toutes les lignes du jeu s'impriment. Un groupe liste <b>ses rubriques, dans l'ordre voulu</b> (ou retient les
@@ -510,6 +540,7 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
           )}
         </div>
       )}
+      </>}
     </>
   );
 }
@@ -609,8 +640,17 @@ function GrilleEditeur({ g, d, ro, maj, colonne }: { g: ElGrille; d: Definition;
   const deplacer = <T,>(z: T[], i: number, sens: number) => { const j = i + sens; if (j >= 0 && j < z.length) [z[i], z[j]] = [z[j], z[i]]; };
   return (
     <>
+      <Ligne libelle="Lier à un corps « cases »" aide="Recrée lignes et colonnes depuis le corps ; chaque case lit corps.<corps>.<ligne>.<colonne>">
+        <Choix value="" disabled={ro} vide="— choisir pour (re)générer —"
+          options={(d.corps ?? []).filter((c) => c.nature === "CASES").map((c) => ({ v: c.code, l: c.libelle }))}
+          onChange={(code) => code && confirm("Lignes, colonnes et formules de la grille seront recréées depuis le corps. Continuer ?") && maj((e: ElGrille, b) => {
+            const n = grilleDepuisCorps(d, d.corps!.find((c) => c.code === code)!, e.x, e.y, e.l, e.id);
+            e.colonnes = n.colonnes; e.lignes = n.lignes; e.largeur_titres = n.largeur_titres; e.h = Math.max(e.h, n.h);
+            b.hauteur = Math.max(b.hauteur, e.y + e.h);
+          }, "lier")} />
+      </Ligne>
       <p className="mb-2 text-[10px] text-muted-foreground">
-        Chaque case est une formule : <span className="font-mono">cumul.total_brut</span>, <span className="font-mono">[SALBASE].CMT</span> (cumul annuel), <span className="font-mono">[CONGE_PRIS].NB</span>…
+        Chaque case est une formule : <span className="font-mono">corps.cumuls.mois.brut</span>, <span className="font-mono">cumul.total_brut</span>, <span className="font-mono">[SALBASE].CMT</span> (cumul annuel), <span className="font-mono">[CONGE_PRIS].NB</span>…
       </p>
       <div className="grid grid-cols-3 gap-1">
         <Ligne libelle="Titres de ligne (mm)" aide="0 : pas de colonne de titres"><Nombre value={g.largeur_titres ?? 0} min={0} disabled={ro} onChange={(v) => maj((e) => poser(e, "largeur_titres", v || null), "lt")} /></Ligne>
@@ -785,7 +825,7 @@ function InspecteurModele({ editeur, ro }: { editeur: Editeur; ro: boolean }) {
 
 const TYPES_PARAMETRE = Object.entries(LIBELLES_PARAMETRE).map(([v, l]) => ({ v: v as TypeParametre, l }));
 
-function ParametresEditeur({ d, ro, m }: { d: Definition; ro: boolean; m: (fn: (d: Definition) => void, cle: string) => void }) {
+export function ParametresEditeur({ d, ro, m }: { d: Definition; ro: boolean; m: (fn: (d: Definition) => void, cle: string) => void }) {
   const majP = (i: number, fn: (p: Parametre) => void, cle: string) => m((x) => fn(x.parametres[i]), `p${i}:${cle}`);
   return (
     <>
@@ -817,7 +857,7 @@ function ParametresEditeur({ d, ro, m }: { d: Definition; ro: boolean; m: (fn: (
   );
 }
 
-function JeuxEditeur({ d, ro, m, sources }: { d: Definition; ro: boolean; m: (fn: (d: Definition) => void, cle: string) => void; sources: { code: string; libelle: string; relations: { code: string; cible: string }[] }[] }) {
+export function JeuxEditeur({ d, ro, m, sources }: { d: Definition; ro: boolean; m: (fn: (d: Definition) => void, cle: string) => void; sources: { code: string; libelle: string; relations: { code: string; cible: string }[] }[] }) {
   const majJ = (i: number, fn: (j: Jeu) => void, cle: string) => m((x) => fn(x.jeux[i]), `j${i}:${cle}`);
   return (
     <>

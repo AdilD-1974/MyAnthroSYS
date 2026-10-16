@@ -10,7 +10,7 @@
 import { useRef } from "react";
 import { Lock, Image as IconeImage, QrCode, Filter } from "lucide-react";
 import {
-  LIBELLES_BANDE, elementParDefaut, largeurUtile, texteLitteral,
+  LIBELLES_BANDE, elementParDefaut, grilleDepuisCorps, largeurUtile, tableauDepuisCorps, texteLitteral,
   type Bande, type Element, type ElGrille, type ElTableau, type Style, type TypeElement,
 } from "@/pages/editions/types";
 import type { Editeur } from "./useEditeur";
@@ -19,6 +19,7 @@ export const PX_PAR_MM = 3.7795;
 const PAS_MM = 0.5;
 export const TYPE_DND_CHAMP = "application/x-edt-champ";
 export const TYPE_DND_ELEMENT = "application/x-edt-element";
+export const TYPE_DND_CORPS = "application/x-edt-corps";
 
 const arrondir = (v: number, libre: boolean) => (libre ? Math.round(v * 10) / 10 : Math.round(v / PAS_MM) * PAS_MM);
 
@@ -74,14 +75,18 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
     if (lectureSeule) return;
     const champ = e.dataTransfer.getData(TYPE_DND_CHAMP);
     const type = e.dataTransfer.getData(TYPE_DND_ELEMENT) as TypeElement;
-    if (!champ && !type) return;
+    const corpsCode = e.dataTransfer.getData(TYPE_DND_CORPS);
+    if (!champ && !type && !corpsCode) return;
     e.preventDefault();
     const r = corps.current!.getBoundingClientRect();
     const x = Math.max(0, arrondir((e.clientX - r.left) / mm, false));
     const y = Math.max(0, arrondir((e.clientY - r.top) / mm, false));
     let id = "";
     editeur.modifier((def) => {
-      const el = champ ? elementParDefaut(def, "CHAMP", x, y, champ) : elementParDefaut(def, type, x, y);
+      const corps = corpsCode ? (def.corps ?? []).find((c) => c.code === corpsCode) : undefined;
+      const el = corps
+        ? (corps.nature === "LIGNES" ? tableauDepuisCorps(def, corps, 0, y) : grilleDepuisCorps(def, corps, x, y))
+        : champ ? elementParDefaut(def, "CHAMP", x, y, champ) : elementParDefaut(def, type, x, y);
       el.x = Math.min(x, Math.max(0, largeur - el.l));
       id = el.id;
       const b = def.bandes.find((z) => z.id === bande.id)!;

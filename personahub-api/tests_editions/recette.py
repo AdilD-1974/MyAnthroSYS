@@ -81,7 +81,11 @@ INSERT INTO rubrique_paie (code, libelle, libelle_edition, archive, traiter, ne_
   ('PRIM_ANC', 'Prime d''ancienneté', 'Prime d''ancienneté (SOLGEIS)', false, true, false, '{S1}'),
   ('CNSS_SAL', 'CNSS salariale', 'Cotisation CNSS', false, true, false, NULL),
   ('AVANCE', 'Avance sur salaire', NULL, false, true, true, NULL),
-  ('VIEILLE', 'Ancienne prime', NULL, true, true, false, NULL);
+  ('VIEILLE', 'Ancienne prime', NULL, true, true, false, NULL),
+  ('BRUT_INTER', 'Brut intermédiaire', NULL, false, true, false, NULL),
+  ('PRIM_EXCEP', 'Prime exceptionnelle', NULL, false, true, false, NULL),
+  ('ATRISK', 'Accident du travail', NULL, false, true, false, NULL),
+  ('ABSENTE', 'Rubrique sans ligne', NULL, false, true, false, NULL);
 INSERT INTO ref_constante_paie (id, code, valeur, actif, date_debut, date_fin, societe_id) VALUES
   (gen_random_uuid(), 'CNSS_TAUX_SALARIAL', '4.48', true, '2020-01-01', NULL, NULL),
   (gen_random_uuid(), 'CNSS_TAUX_SALARIAL', '4.50', true, '2026-10-01', NULL, NULL),

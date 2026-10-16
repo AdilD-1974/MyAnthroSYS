@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from app.editions import expressions as ex
 from app.editions import format as fmt
-from app.editions.definition import Definition, Grille, Jeu, Tableau, mettre_a_niveau
+from app.editions.definition import ATTRIBUTS_AFFECTABLES, Definition, Grille, Jeu, Tableau, mettre_a_niveau
 
 SOURCE_SOCIETE = "SOCIETE"
 # totaux d'en-tête du bulletin, utilisables comme rubriques (cf. sources/paie.RUBRIQUES_EN_TETE)
@@ -91,6 +91,12 @@ def formules(d: Definition) -> Iterator[tuple[str, str, Optional[str], bool]]:
             yield f"jeux[{i}].calculs[{k}].expression", c.expression, j.code, False
         if j.a_date:
             yield f"jeux[{i}].a_date", j.a_date, None, False
+    for i, c in enumerate(d.corps):
+        for k, a in enumerate(c.affectations):
+            if a.formule:
+                yield f"corps[{i}].affectations[{k}].formule", a.formule, principal, False
+    for i, var in enumerate(d.variables):
+        yield f"variables[{i}].valeur", var.valeur, principal, False
     if d.page.filigrane:
         yield "page.filigrane", d.page.filigrane, None, False
     for b, bande in enumerate(d.bandes):
@@ -106,14 +112,15 @@ def formules(d: Definition) -> Iterator[tuple[str, str, Optional[str], bool]]:
             elif hasattr(el, "valeur"):
                 yield f"{eb}.valeur", el.valeur, principal, False
             if isinstance(el, Tableau):
+                ctx_t = f"corps:{el.corps}" if el.corps else el.jeu
                 for c, col in enumerate(el.colonnes):
-                    yield f"{eb}.colonnes[{c}].valeur", col.valeur, el.jeu, False
+                    yield f"{eb}.colonnes[{c}].valeur", col.valeur, ctx_t, False
                 for s, sec in enumerate(el.sections):
                     if sec.filtre and not sec.rubriques:
-                        yield f"{eb}.sections[{s}].filtre", sec.filtre, el.jeu, False
+                        yield f"{eb}.sections[{s}].filtre", sec.filtre, ctx_t, False
                     for k, lr in enumerate(sec.rubriques):
                         for col_id, expr in lr.valeurs.items():
-                            yield f"{eb}.sections[{s}].rubriques[{k}].valeurs.{col_id}", expr, el.jeu, False
+                            yield f"{eb}.sections[{s}].rubriques[{k}].valeurs.{col_id}", expr, ctx_t, False
             if isinstance(el, Grille):
                 for k, lg in enumerate(el.lignes):
                     for col_id, expr in lg.valeurs.items():
@@ -132,6 +139,20 @@ def _champs_du_jeu(d: Definition, cat: CatalogueValidation, code_jeu: Optional[s
 
 
 def _champ_ok(d: Definition, cat: CatalogueValidation, code_jeu: Optional[str], champ: str) -> bool:
+    # données de l'état : variables et cases des corps (RG-EDT-DONNEES-01)
+    if champ.startswith("var."):
+        return champ[4:] in {v.code for v in d.variables}
+    if champ.startswith("corps."):
+        p = champ.split(".")
+        c = d.corps_par_code(p[1]) if len(p) > 1 else None
+        return (c is not None and c.nature == "CASES" and len(p) == 4
+                and p[2] in {l.code for l in c.lignes} and p[3] in {col.code for col in c.colonnes})
+    if code_jeu and code_jeu.startswith("corps:"):
+        c = d.corps_par_code(code_jeu[6:])
+        if c and champ in {"code_rubrique", "libelle", "groupe"} | {col.code for col in c.colonnes}:
+            return True
+        principal = d.jeu_principal()                      # la ligne du bulletin reste lisible
+        code_jeu = principal.code if principal else None
     source, calculs = _champs_du_jeu(d, cat, code_jeu)
     if champ in calculs:
         return True
@@ -226,11 +247,53 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
             if g not in calculs and not cat.champ_existe(j.source, g):
                 rapport.ajouter(f"{base}.groupes[{k}]", f"Champ de groupement inconnu : {g}")
 
-    # 4) Tableaux : leur jeu doit être SECONDAIRE ; plan des lignes et grilles cohérents
+    # 3 bis) Données : corps, affectations, variables, mises en forme (RG-EDT-DONNEES)
+    doublons(((f"corps[{i}].code", c.code) for i, c in enumerate(d.corps)), "Corps")
+    doublons(((f"variables[{i}].code", x.code) for i, x in enumerate(d.variables)), "Variable")
+    doublons([("forme_code", d.forme_code)] + [(f"formes[{i}].code", f.code) for i, f in enumerate(d.formes)],
+             "Mise en forme")
+    defaut = d.usages.forme_par_defaut
+    if defaut and defaut != d.forme_code and defaut not in {f.code for f in d.formes}:
+        rapport.ajouter("usages.forme_par_defaut", f"Mise en forme par défaut inconnue : {defaut}")
+    for i, c in enumerate(d.corps):
+        base = f"corps[{i}]"
+        doublons(((f"{base}.colonnes[{k}].code", col.code) for k, col in enumerate(c.colonnes)), "Colonne")
+        doublons(((f"{base}.lignes[{k}].code", l.code) for k, l in enumerate(c.lignes)), "Ligne")
+        cols = {col.code for col in c.colonnes}
+        if c.nature == "CASES" and not c.lignes:
+            rapport.ajouter(f"{base}.lignes", "Un corps « cases » a au moins une ligne")
+        cases = {f"{l.code}.{col}" for l in c.lignes for col in cols}
+        for k, a in enumerate(c.affectations):
+            ch = f"{base}.affectations[{k}]"
+            if bool(a.rubrique) == bool(a.formule):
+                rapport.ajouter(ch, "Une affectation porte une rubrique OU une formule")
+                continue
+            if not a.cibles:
+                rapport.ajouter(f"{ch}.cibles", "Aucune colonne ne reçoit de valeur")
+            permis = {"VAL"} if a.formule else set(ATTRIBUTS_AFFECTABLES)
+            for attribut, cible in a.cibles.items():
+                if attribut not in permis:
+                    rapport.ajouter(f"{ch}.cibles", f"Attribut {attribut} impossible ici (attendu : {', '.join(sorted(permis))})")
+                elif a.periode == "CUMUL" and attribut in ("TX", "PAT"):
+                    rapport.ajouter(f"{ch}.cibles", f"Pas de cumul pour {attribut} (seulement Nb, Mt, Base)")
+                if (c.nature == "LIGNES" and cible not in cols) or (c.nature == "CASES" and cible not in cases):
+                    attendu = "une colonne" if c.nature == "LIGNES" else "ligne.colonne"
+                    rapport.ajouter(f"{ch}.cibles", f"Cible inconnue : {cible} ({attendu} du corps)")
+            if a.rubrique:
+                code = a.rubrique.strip().upper()
+                if cat.rubriques is not None and code not in cat.rubriques and code not in RUBRIQUES_EN_TETE:
+                    rapport.ajouter(f"{ch}.rubrique", f"Rubrique inconnue ou archivée : {code}")
+                rapport.dependances.add(("RUBRIQUE", code))
+
+    # 4) Tableaux : jeu SECONDAIRE ou corps « lignes » ; plan des lignes et grilles cohérents
     for b, bande in enumerate(d.bandes):
         for e, el in enumerate(bande.elements):
             eb = f"bandes[{b}].elements[{e}]"
-            if isinstance(el, Tableau):
+            if isinstance(el, Tableau) and el.corps:
+                cp = d.corps_par_code(el.corps)
+                if cp is None or cp.nature != "LIGNES":
+                    rapport.ajouter(f"{eb}.corps", f"Un tableau affiche un corps « lignes » existant (« {el.corps} »)")
+            elif isinstance(el, Tableau):
                 jt = d.jeu(el.jeu)
                 if jt is None or jt.role != "SECONDAIRE":
                     rapport.ajouter(f"{eb}.jeu", f"Un tableau affiche un jeu SECONDAIRE existant (« {el.jeu} »)")
@@ -309,6 +372,14 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
                     else:
                         rapport.dependances.add(("MASQUE", a.masque.upper()))
 
+    for i, c in enumerate(d.corps):
+        for k, col in enumerate(c.colonnes):
+            if col.masque:
+                if col.masque.upper() not in connus:
+                    rapport.ajouter(f"corps[{i}].colonnes[{k}].masque", f"Masque inconnu : {col.masque}")
+                else:
+                    rapport.dependances.add(("MASQUE", col.masque.upper()))
+
     # 7) Géométrie
     largeur = d.page.largeur_utile()
     hauteur = d.page.hauteur_utile()
@@ -339,5 +410,13 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
     p = d.jeu_principal()
     if d.sortie.eclatement and p and not _champ_ok(d, cat, p.code, d.sortie.eclatement):
         rapport.ajouter("sortie.eclatement", f"Champ d'éclatement inconnu : {d.sortie.eclatement}")
+
+    # 9) Autres mises en forme : mêmes contrôles sur leurs bandes, page et sortie
+    for i, f in enumerate(d.formes):
+        autre = valider(d.avec_forme(f.code).model_copy(update={"formes": []}), cat)
+        for err in autre.erreurs:
+            if err.chemin.startswith(("bandes", "page", "sortie")):
+                rapport.ajouter(f"formes[{i}].{err.chemin}", err.message, err.debut, err.fin)
+        rapport.dependances |= autre.dependances
 
     return rapport

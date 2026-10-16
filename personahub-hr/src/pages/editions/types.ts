@@ -117,7 +117,9 @@ export interface Section {
 
 export interface ElTableau extends ElementBase {
   type: "TABLEAU";
-  jeu: string;
+  jeu: string;                      // jeu SECONDAIRE (mode expert)…
+  corps?: string | null;            // …ou corps de données « lignes »
+  grouper?: boolean;
   colonnes: Colonne[];
   sections?: Section[];
   repeter_entete?: boolean;
@@ -177,14 +179,142 @@ export interface Sortie {
   qr_verification?: boolean;
 }
 
+// ── Données de l'état, définies AVANT la forme (lot 2 bis, Report Manager) ──
+export type TypeColonneCorps = "MONTANT" | "NOMBRE" | "TAUX" | "TEXTE" | "DATE";
+export interface ColonneCorps { code: string; libelle: string; sigle?: string | null; type?: TypeColonneCorps; masque?: string | null; total?: boolean }
+export interface LigneCorps { code: string; libelle: string }
+export type AttributAffecte = "NB" | "MT" | "TX" | "BASE" | "PAT" | "VAL";
+export interface Affectation {
+  rubrique?: string | null;
+  formule?: Expr | null;
+  periode?: "MOIS" | "CUMUL";
+  cibles: Partial<Record<AttributAffecte, string>>;   // colonne (LIGNES) ou « ligne.colonne » (CASES)
+  groupe?: string | null;
+  libelle?: string | null;
+  negatif?: boolean;
+  nulle?: boolean;
+}
+export interface Corps {
+  code: string;
+  libelle: string;
+  nature: "LIGNES" | "CASES";
+  colonnes: ColonneCorps[];
+  lignes?: LigneCorps[];
+  affectations?: Affectation[];
+  tri?: "AFFECTATION" | "PAIE" | "CODE";
+}
+export interface Variable { code: string; libelle: string; type?: "TEXTE" | "NOMBRE" | "MONTANT" | "DATE" | "BOOLEEN"; valeur: Expr }
+export interface Usages {
+  confidentialite?: number;
+  formes_au_choix?: boolean;
+  forme_par_defaut?: string | null;
+  nb_exemplaires?: number;
+  duplicata?: boolean;
+  interdire_copies?: boolean;
+  export_texte?: boolean;
+  nom_export?: Expr | null;
+  frequence?: string | null;
+}
+export interface FormeAlternative { code: string; libelle: string; page?: Page; bandes: Bande[]; sortie?: Sortie }
+
 export interface Definition {
   schema_version: 1;
+  // données (le « quoi »)
   parametres: Parametre[];
   jeux: Jeu[];
+  corps?: Corps[];
+  variables?: Variable[];
+  usages?: Usages;
+  // mise en forme placée dans l'éditeur (le « comment ») + les autres
+  forme_code?: string;
+  forme_libelle?: string;
   page?: Page;
   bandes: Bande[];
   sortie?: Sortie;
+  formes?: FormeAlternative[];
 }
+
+export const ATTRIBUTS_AFFECTABLES: { code: Exclude<AttributAffecte, "VAL">; libelle: string; cumul: boolean }[] = [
+  { code: "NB", libelle: "Nb", cumul: true }, { code: "MT", libelle: "Mt", cumul: true }, { code: "TX", libelle: "Tx", cumul: false },
+  { code: "BASE", libelle: "Base", cumul: true }, { code: "PAT", libelle: "Patronal", cumul: false },
+];
+
+/** Masque par défaut d'une colonne de corps placée dans un tableau. */
+export function masqueColonne(c: ColonneCorps): string | null {
+  if (c.masque) return c.masque;
+  return c.type === "MONTANT" ? "MONTANT_SANS_ZERO" : (c.type === "NOMBRE" || c.type === "TAUX") ? "QUANTITE" : c.type === "DATE" ? "DATE_FR" : null;
+}
+
+/** Tableau lié à un corps « lignes » : une colonne libellé puis une par colonne du corps. */
+export function tableauDepuisCorps(d: Definition, corps: Corps, x = 0, y = 0, largeur?: number, id?: string): ElTableau {
+  const gen = generateurIds(d);
+  const l = largeur ?? largeurUtile(d.page);
+  const nb = corps.colonnes.length;
+  const lib = Math.max(40, Math.round(l * 0.32));
+  const reste = Math.round(((l - lib) / Math.max(nb, 1)) * 10) / 10;
+  return {
+    id: id ?? gen(`tableau_${corps.code}`), type: "TABLEAU", x, y, l, h: 20, jeu: "", corps: corps.code,
+    colonnes: [
+      { id: gen("col_libelle"), titre: "Désignation", largeur: Math.round((l - reste * nb) * 10) / 10, valeur: "libelle" },
+      ...corps.colonnes.map((c) => ({
+        id: gen(`col_${c.code}`), titre: c.libelle, largeur: reste, valeur: c.code,
+        ...(masqueColonne(c) ? { affichage: { masque: masqueColonne(c)! } } : {}),
+        ...(c.total ? { total: "SOMME" as const } : {}),
+      })),
+    ],
+  };
+}
+
+/** Grille liée à un corps « cases » : ses lignes et colonnes, chaque case lisant corps.<corps>.<ligne>.<colonne>. */
+export function grilleDepuisCorps(d: Definition, corps: Corps, x = 0, y = 0, largeur?: number, id?: string): ElGrille {
+  const gen = generateurIds(d);
+  const gid = id ?? gen(`grille_${corps.code}`);
+  const l = largeur ?? Math.min(largeurUtile(d.page), 20 + 25 * corps.colonnes.length);
+  const titres = 20;
+  const lc = Math.round(((l - titres) / Math.max(corps.colonnes.length, 1)) * 10) / 10;
+  const colonnes = corps.colonnes.map((c) => ({
+    id: gen(`${gid}_${c.code}`), titre: c.libelle, largeur: lc,
+    ...(masqueColonne(c) ? { affichage: { masque: c.masque ?? (c.type === "MONTANT" ? "MONTANT" : masqueColonne(c)!) } } : {}),
+  }));
+  const lignes = (corps.lignes ?? []).map((lg) => ({
+    id: gen(`${gid}_${lg.code}`), titre: lg.libelle,
+    valeurs: Object.fromEntries(corps.colonnes.map((c, i) => [colonnes[i].id, `corps.${corps.code}.${lg.code}.${c.code}`])),
+  }));
+  return { id: gid, type: "GRILLE", x, y, l, h: 5 * (lignes.length + 1), largeur_titres: titres, colonnes,
+    lignes: lignes.length ? lignes : [{ id: gen(`${gid}_l`), titre: "" }] };
+}
+
+/** Place la mise en forme `code` dans l'éditeur (la courante rejoint les autres). La forme
+ *  imprimée par défaut ne change pas : elle est désignée par usages.forme_par_defaut. */
+export function activerForme(d: Definition, code: string) {
+  const i = (d.formes ?? []).findIndex((f) => f.code === code);
+  if (i < 0) return;
+  const f = d.formes![i];
+  const courante: FormeAlternative = { code: d.forme_code ?? "standard", libelle: d.forme_libelle ?? "Mise en forme standard",
+    page: d.page, bandes: d.bandes, sortie: d.sortie };
+  if (!d.usages?.forme_par_defaut) d.usages = { ...(d.usages ?? {}), forme_par_defaut: courante.code };
+  d.formes![i] = courante;
+  d.forme_code = f.code; d.forme_libelle = f.libelle; d.page = f.page; d.bandes = f.bandes; d.sortie = f.sortie;
+}
+
+/** Variables usuelles d'un bulletin (équivalent des variables sLib_Etb, dtFin… du Report Manager). */
+export const VARIABLES_BULLETIN: Variable[] = [
+  { code: "societe", libelle: "Raison sociale", valeur: "societe.raison_sociale" },
+  { code: "periode_du", libelle: "Période du", type: "DATE", valeur: "periode.date_debut" },
+  { code: "periode_au", libelle: "Période au", type: "DATE", valeur: "periode.date_fin" },
+  { code: "matricule", libelle: "Matricule", valeur: "identite.matricule" },
+  { code: "nom_complet", libelle: "Nom et prénom", valeur: 'identite.nom + " " + identite.prenom' },
+  { code: "date_naissance", libelle: "Date de naissance", type: "DATE", valeur: "identite.date_naissance" },
+  { code: "date_embauche", libelle: "Date d'embauche", type: "DATE", valeur: "contrat.date_embauche" },
+  { code: "situation_familiale", libelle: "Situation familiale", valeur: "situation_familiale.libelle" },
+  { code: "nb_deductions", libelle: "Nombre de déductions", type: "NOMBRE", valeur: "situation_familiale.nb_deductions_fiscales" },
+  { code: "num_cnss", libelle: "N° CNSS", valeur: "identite.num_cnss" },
+  { code: "fonction", libelle: "Fonction", valeur: "affectation.emploi_libelle" },
+  { code: "mode_paiement", libelle: "Mode de paiement", valeur: "paiement.mode_libelle" },
+  { code: "banque", libelle: "Banque", valeur: "paiement.banque_libelle" },
+  { code: "compte", libelle: "N° de compte", valeur: "paiement.numero_compte" },
+  { code: "net_a_payer", libelle: "Net à payer", type: "MONTANT", valeur: "net_a_payer" },
+];
 
 // ── Constantes d'affichage ──────────────────────────────────────────────────
 export const FORMATS_PAGE_MM: Record<string, [number, number]> = {

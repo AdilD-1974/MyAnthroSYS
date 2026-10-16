@@ -29,7 +29,8 @@ export default function EditionsPage() {
   const [q, setQ] = useState("");
   const [creation, setCreation] = useState<{ ouvert: boolean; code: string; libelle: string; categorie: Categorie; visibilite: Visibilite; origine: string; occupe?: boolean }>(
     { ouvert: false, code: "", libelle: "", categorie: "LISTE", visibilite: "SOCIETE", origine: "" });
-  const [lancement, setLancement] = useState<{ modele: Modele; parametres: Parametre[]; valeurs: Valeurs; occupe?: boolean; documents?: DocumentProduit[] } | null>(null);
+  const [lancement, setLancement] = useState<{ modele: Modele; parametres: Parametre[]; valeurs: Valeurs; occupe?: boolean; documents?: DocumentProduit[];
+    formes: { code: string; libelle: string }[]; forme?: string } | null>(null);
 
   const charger = () => {
     editionsApi.modeles()
@@ -63,7 +64,12 @@ export default function EditionsPage() {
     if (!m.version_publiee_id) return;
     try {
       const v = await editionsApi.version(m.version_publiee_id);
-      setLancement({ modele: m, parametres: v.definition.parametres, valeurs: {} });
+      const d = v.definition;
+      // « Autoriser choix Qrp » : les mises en forme proposées au lancement
+      const formes = d.usages?.formes_au_choix
+        ? [{ code: d.forme_code ?? "standard", libelle: d.forme_libelle ?? "Mise en forme standard" }, ...(d.formes ?? []).map((f) => ({ code: f.code, libelle: f.libelle }))]
+        : [];
+      setLancement({ modele: m, parametres: d.parametres, valeurs: {}, formes, forme: d.usages?.forme_par_defaut ?? d.forme_code ?? undefined });
     } catch (e: any) {
       toast({ title: "Lancement impossible", description: e.message, variant: "destructive" });
     }
@@ -75,7 +81,7 @@ export default function EditionsPage() {
     if (manquants.length) { toast({ title: "Paramètres manquants", description: manquants.join(", "), variant: "destructive" }); return; }
     setLancement({ ...lancement, occupe: true, documents: undefined });
     try {
-      const r = await editionsApi.lancer(lancement.modele.id, lancement.valeurs);
+      const r = await editionsApi.lancer(lancement.modele.id, lancement.valeurs, lancement.formes.length ? lancement.forme : undefined);
       setLancement((l) => l && { ...l, occupe: false, documents: r.documents });
       toast({ title: "Édition produite", description: `${r.documents.length} document(s).` });
     } catch (e: any) {
@@ -194,6 +200,14 @@ export default function EditionsPage() {
           <DialogHeader><DialogTitle>Lancer — {lancement?.modele.libelle}</DialogTitle></DialogHeader>
           {lancement && (
             <>
+              {lancement.formes.length > 1 && (
+                <label className="mb-3 block">
+                  <span className="mb-1 block text-xs font-medium">Mise en forme</span>
+                  <select className={classe} value={lancement.forme} onChange={(e) => setLancement((l) => l && { ...l, forme: e.target.value, documents: undefined })}>
+                    {lancement.formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}</option>)}
+                  </select>
+                </label>
+              )}
               <ParametresForm parametres={lancement.parametres} valeurs={lancement.valeurs}
                 onChange={(v) => setLancement((l) => l && { ...l, valeurs: v, documents: undefined })} />
               {lancement.documents && (

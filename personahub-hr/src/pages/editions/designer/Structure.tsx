@@ -8,11 +8,11 @@ import {
   Type, Braces, FileText, Image as IconeImage, Minus, Square, QrCode, Table2, Grid3x3, ShieldAlert,
 } from "lucide-react";
 import {
-  LIBELLES_BANDE, LIBELLES_ELEMENT, ORDRE_BANDES, bandeParDefaut, elementParDefaut,
+  LIBELLES_BANDE, LIBELLES_ELEMENT, ORDRE_BANDES, bandeParDefaut, elementParDefaut, grilleDepuisCorps, tableauDepuisCorps,
   type TypeBande, type TypeElement,
 } from "@/pages/editions/types";
 import { sourceDuJeu, useReferentiels } from "./contexte";
-import { TYPE_DND_CHAMP, TYPE_DND_ELEMENT } from "./Canevas";
+import { TYPE_DND_CHAMP, TYPE_DND_CORPS, TYPE_DND_ELEMENT } from "./Canevas";
 import type { Editeur } from "./useEditeur";
 
 const ICONES: Record<TypeElement, React.ComponentType<{ className?: string }>> = {
@@ -58,7 +58,24 @@ export default function Structure({ editeur, lectureSeule }: { editeur: Editeur;
               {!lectureSeule && <Palette onAjouter={ajouterElement} />}
               <ListeBandes editeur={editeur} lectureSeule={lectureSeule} />
             </>
-          : <CatalogueChamps lectureSeule={lectureSeule} onAjouter={(c) => ajouterElement("CHAMP", c)} />}
+          : <>
+              <DonneesEtat lectureSeule={lectureSeule} onChamp={(c) => ajouterElement("CHAMP", c)} onCorps={(code) => {
+                const idBande = bandeCible();
+                if (!idBande || lectureSeule) return;
+                let id = "";
+                editeur.modifier((def) => {
+                  const corps = (def.corps ?? []).find((c) => c.code === code)!;
+                  const b = def.bandes.find((x) => x.id === idBande)!;
+                  const y = Math.max(0, ...b.elements.map((e) => e.y + e.h));
+                  const el = corps.nature === "LIGNES" ? tableauDepuisCorps(def, corps, 0, y) : grilleDepuisCorps(def, corps, 0, y);
+                  id = el.id;
+                  b.elements.push(el);
+                  b.hauteur = Math.max(b.hauteur, el.y + el.h);
+                });
+                editeur.setSelection({ bande: idBande, element: id });
+              }} />
+              <CatalogueChamps lectureSeule={lectureSeule} onAjouter={(c) => ajouterElement("CHAMP", c)} />
+            </>}
       </div>
     </div>
   );
@@ -224,3 +241,37 @@ function CatalogueChamps({ lectureSeule, onAjouter }: { lectureSeule: boolean; o
   );
 }
 
+/** Corps et variables définis à l'étape Données : à glisser sur la page. */
+function DonneesEtat({ lectureSeule, onChamp, onCorps }: { lectureSeule: boolean; onChamp: (c: string) => void; onCorps: (c: string) => void }) {
+  const { definition } = useReferentiels();
+  const corps = definition?.corps ?? [];
+  const vars = definition?.variables ?? [];
+  if (!corps.length && !vars.length) {
+    return <p className="border-b p-2 text-[11px] text-muted-foreground">Définissez des corps et des variables à l'étape « 1. Données » : ils apparaîtront ici, prêts à placer.</p>;
+  }
+  return (
+    <div className="border-b bg-primary/5 p-2">
+      <div className="mb-1 text-[11px] font-semibold uppercase text-primary">Données de l'état</div>
+      {corps.map((c) => (
+        <button key={c.code} type="button" draggable={!lectureSeule}
+          onDragStart={(e) => e.dataTransfer.setData(TYPE_DND_CORPS, c.code)}
+          onClick={() => !lectureSeule && onCorps(c.code)}
+          title={c.nature === "LIGNES" ? "Placer un tableau lié à ce corps" : "Placer une grille liée à ce corps"}
+          className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] hover:bg-muted">
+          {c.nature === "LIGNES" ? <Table2 className="h-3 w-3 shrink-0" /> : <Grid3x3 className="h-3 w-3 shrink-0" />}
+          <span className="truncate">{c.libelle}</span>
+          <span className="ml-auto text-[9px] uppercase text-muted-foreground">corps</span>
+        </button>
+      ))}
+      {vars.map((v) => (
+        <button key={v.code} type="button" draggable={!lectureSeule}
+          onDragStart={(e) => e.dataTransfer.setData(TYPE_DND_CHAMP, `var.${v.code}`)}
+          onClick={() => !lectureSeule && onChamp(`var.${v.code}`)} title={`var.${v.code}`}
+          className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] hover:bg-muted">
+          <Braces className="h-3 w-3 shrink-0" /><span className="truncate">{v.libelle}</span>
+          <span className="ml-auto text-[9px] uppercase text-muted-foreground">variable</span>
+        </button>
+      ))}
+    </div>
+  );
+}

@@ -37,7 +37,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
   const [analyse, setAnalyse] = useState<Analyse | null>(null);
   const [enCours, setEnCours] = useState(false);
 
-  const source = sourceDuJeu(definition, jeu);
+  const source = jeu?.startsWith("corps:") ? undefined : sourceDuJeu(definition, jeu);
   const parametres = useMemo(() => (definition?.parametres ?? []).map((p) => p.code), [definition]);
 
   // ── vérification serveur, différée ───────────────────────────────────────
@@ -86,8 +86,16 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
         .map((r) => ({ texte: `[${r.code}]`, insertion: `[${r.code}].`, detail: r.libelle, genre: "Rubrique" }));
     }
     if (t.startsWith("#") || t.length < 2) return [];
+    const corpsCtx = jeu?.startsWith("corps:") ? (definition?.corps ?? []).find((c) => c.code === jeu.slice(6)) : undefined;
+    const principal = sourceDuJeu(definition, undefined);
     const champs = [
-      ...(sources.find((s) => s.code === source)?.champs ?? []).map((c) => ({ ...c, code: c.code })),
+      ...(corpsCtx ? [{ code: "libelle", libelle: "Libellé de la ligne" }, { code: "code_rubrique", libelle: "Code rubrique" },
+        { code: "groupe", libelle: "Groupe" }, ...corpsCtx.colonnes.map((c) => ({ code: c.code, libelle: `Colonne ${c.libelle}` }))]
+        .map((c) => ({ ...c, groupe: "Corps", type_donnee: "TEXTE" as const, masque_defaut: null, sensible: false })) : []),
+      ...(definition?.variables ?? []).map((v) => ({ code: `var.${v.code}`, libelle: v.libelle, groupe: "Variables", type_donnee: "TEXTE" as const, masque_defaut: null, sensible: false })),
+      ...(definition?.corps ?? []).filter((c) => c.nature === "CASES").flatMap((c) => (c.lignes ?? []).flatMap((l) => c.colonnes.map((col) => ({
+        code: `corps.${c.code}.${l.code}.${col.code}`, libelle: `${c.libelle} · ${l.libelle} · ${col.libelle}`, groupe: "Corps", type_donnee: "TEXTE" as const, masque_defaut: null, sensible: false })))),
+      ...(sources.find((s) => s.code === (corpsCtx ? principal : source))?.champs ?? []).map((c) => ({ ...c, code: c.code })),
       ...(sources.find((s) => s.code === "SOCIETE")?.champs ?? []).map((c) => ({ ...c, code: `societe.${c.code}` })),
     ];
     const deChamps = champs
@@ -99,7 +107,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
       .slice(0, 12)
       .map((f) => ({ texte: f.nom, insertion: `${f.nom}(`, detail: f.signature, genre: "Fonction" }));
     return [...deChamps, ...deFonctions];
-  }, [jeton, sources, source, fonctions, rubriques, definition]);
+  }, [jeton, sources, source, fonctions, rubriques, definition, jeu]);
 
   useEffect(() => setIndice(0), [jeton?.texte]);
 

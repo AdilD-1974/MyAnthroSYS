@@ -210,3 +210,24 @@ def test_valeurs_des_parametres(s):
     sep = next(p for p in per if p["id"] == P_SEP)
     assert sep["nb_bulletins"] == 2 and sep["plan_code"] == "MENS"
     assert [p["code"] for p in sv.plans_paie(s, PAIE)] == ["MENS"]
+
+
+def test_apercu_des_donnees_et_choix_de_forme(s):
+    from tests_editions.test_donnees import definition
+    c = sv.creer_modele(s, PAIE, code="DONNEES_T", libelle="x", visibilite="SOCIETE", definition=definition())
+    r = sv.donnees(s, PAIE, c["version_id"], {"periode": P_SEP})
+    assert r["nb_lignes"] == 2
+    sara = next(l for l in r["lignes"] if l["titre"].startswith("M001"))
+    assert sara["variables"]["salut"] == "ALAMI Sara !"
+    assert sara["corps"]["cumuls"]["cumul"]["brut"] == 20500.0
+    assert [l["code_rubrique"] for l in sara["corps"]["detail"]][:3] == ["SALBASE", "PRIM_ANC", "BRUT_INTER"]
+    assert all("_rang" not in l for l in sara["corps"]["detail"])
+    sv.publier(s, PAIE, c["version_id"])
+    docs = sv.lancer(s, PAIE, c["modele_id"], {"periode": P_SEP}, forme="compacte")["documents"]
+    assert docs[0]["nom_fichier"].startswith("Compacte_")
+    d = definition()
+    d["usages"]["formes_au_choix"] = False
+    c2 = sv.creer_modele(s, PAIE, code="DONNEES_T2", libelle="x", visibilite="SOCIETE", definition=d)
+    sv.publier(s, PAIE, c2["version_id"])
+    with pytest.raises(sv.Interdit):
+        sv.lancer(s, PAIE, c2["modele_id"], {"periode": P_SEP}, forme="compacte")

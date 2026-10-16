@@ -28,6 +28,11 @@ RG-EDT-LIGNES-01 (Adil DAIA) : une section à plan explicite imprime ses rubriqu
     filtres du jeu), sinon une ligne reconstituée depuis [CODE] (lignes NEUTRE,
     totaux d'en-tête) si une valeur est non nulle, ou si la rubrique est marquée
     « toujours ». Ses valeurs par colonne remplacent la formule de la colonne.
+RG-EDT-DONNEES-01 à 05 (Adil DAIA) : les corps de données sont compilés une fois par
+    ligne principale (bulletin) : un corps LIGNES donne une ligne par affectation dont
+    une valeur affectée est non nulle (ou « nulle » cochée), dans l'ordre choisi ; un
+    corps CASES additionne ses affectations dans ses cases. « en – » change le signe
+    avant la somme. Les formules lisent corps.<corps>.<ligne>.<colonne> et var.<code>.
 RG-EDT-GRILLE-01 (Adil DAIA) : une grille est une zone fixe de lignes × colonnes,
     chaque case une formule évaluée dans le contexte du document (cumuls…).
 RG-EDT-RENDU-05 (Adil DAIA) : agrégats — GROUPE = groupe en cours (le plus
@@ -45,7 +50,7 @@ from typing import Any, Callable, Optional
 
 from app.editions import expressions as ex
 from app.editions import format as fmt
-from app.editions.definition import Bande, Definition, Grille, LigneRubrique, Tableau
+from app.editions.definition import Bande, Corps, Definition, Grille, LigneRubrique, Tableau
 from app.editions.moteur import texte as tx
 
 log = logging.getLogger(__name__)
@@ -181,6 +186,7 @@ class Contexte:
     registre_masques: Optional[dict] = None
     racine_fichiers: str = "storage"
     libelles_rubriques: dict = field(default_factory=dict)  # code → libellé d'édition (plans de lignes)
+    parametrage_rubriques: dict = field(default_factory=dict)  # code → rubrique_paie (ne_editer_si_*)
 
 
 class Composeur:
@@ -199,13 +205,16 @@ class Composeur:
                        ("FOND", "EN_TETE_ETAT", "EN_TETE_PAGE", "EN_TETE_GROUPE", "CORPS",
                         "PIED_GROUPE", "PIED_PAGE", "PIED_ETAT")}
         self.niveaux = len(self.principal.groupes) if self.principal else 0
+        self._cache_donnees: dict[int, dict] = {}
         self.totaux_etat = self._totaux_etat()
 
     # ---------------------------------------------------------------- évaluation
     def _resolver(self, ligne: Optional[dict], agregats: dict, page: Optional[int], nb_pages: Optional[int],
-                  ligne_enfant: Optional[dict] = None) -> ex.ResolverEdition:
+                  ligne_enfant: Optional[dict] = None, avec_donnees: bool = True) -> ex.ResolverEdition:
         base = dict(ligne or {})
         base["societe"] = self.ctx.societe
+        if ligne and avec_donnees and (self.d.corps or self.d.variables):
+            base.update(self._donnees(ligne))
         if ligne_enfant is not None:
             base = {**base, **ligne_enfant}
         periode = self.ctx.parametres.get("periode")
@@ -347,6 +356,103 @@ class Composeur:
             y += hl
         return boites
 
+    # ---------------------------------------------------------------- données : corps et variables
+    def _donnees(self, ligne: dict) -> dict:
+        """RG-EDT-DONNEES : corps et variables d'une ligne principale, calculés une fois."""
+        cle = id(ligne)
+        if cle in self._cache_donnees:
+            return self._cache_donnees[cle]
+        resultat: dict = {"corps": {}, "var": {}}
+        self._cache_donnees[cle] = resultat                     # garde-fou contre une référence circulaire
+        rub = self.ctx.rubriques.get(str(ligne.get("id")), {})
+        r = self._resolver(ligne, {}, None, None, avec_donnees=False)
+        for c in self.d.corps:
+            resultat["corps"][c.code] = self._compiler_corps(c, rub, r)
+        r.ligne["corps"] = resultat["corps"]
+        for v in self.d.variables:                              # dans l'ordre : une variable lit les précédentes
+            r.ligne["var"] = resultat["var"]
+            resultat["var"][v.code] = self._evaluer(v.valeur, r, f"var.{v.code}")
+        return resultat
+
+    _ATTRIBUTS = {"MOIS": {"NB": "NB", "MT": "MT", "TX": "TX", "BASE": "BASE", "PAT": "PAT"},
+                  "CUMUL": {"NB": "CNB", "MT": "CMT", "BASE": "CBASE"}}
+
+    def _valeur_affectee(self, c: Corps, a, attribut: str, rub: dict, r) -> Any:
+        if a.formule:
+            v = self._evaluer(a.formule, r, f"corps.{c.code}")
+            if v == ERREUR:
+                return None
+        else:
+            cle = self._ATTRIBUTS[a.periode].get(attribut)
+            v = (rub.get(a.rubrique.strip().upper()) or {}).get(cle) if cle and a.rubrique else None
+        if v is None or v == "":
+            return None
+        if a.negatif:
+            try:
+                return -Decimal(str(v))
+            except Exception:
+                return v
+        return v
+
+    @staticmethod
+    def _non_nul(v: Any) -> bool:
+        if v is None or v == "":
+            return False
+        try:
+            return Decimal(str(v)) != 0
+        except Exception:
+            return True
+
+    @staticmethod
+    def _ajouter(actuel: Any, v: Any) -> Any:
+        if actuel is None:
+            return v
+        try:
+            return Decimal(str(actuel)) + Decimal(str(v))      # RG-EDT-DONNEES-04 : somme
+        except Exception:
+            return v
+
+    def _compiler_corps(self, c: Corps, rub: dict, r) -> Any:
+        if c.nature == "CASES":
+            cases: dict[str, dict[str, Any]] = {l.code: {col.code: None for col in c.colonnes} for l in c.lignes}
+            for a in c.affectations:
+                for attribut, cible in a.cibles.items():
+                    ligne_code, _, col_code = cible.partition(".")
+                    if ligne_code not in cases or col_code not in cases[ligne_code]:
+                        continue
+                    v = self._valeur_affectee(c, a, attribut, rub, r)
+                    if v is not None:
+                        cases[ligne_code][col_code] = self._ajouter(cases[ligne_code][col_code], v)
+            return cases
+        lignes = []
+        for i, a in enumerate(c.affectations):
+            code = (a.rubrique or "").strip().upper()
+            param = self.ctx.parametrage_rubriques.get(code, {})
+            ligne = {"code_rubrique": code, "groupe": a.groupe, "_rang": i,
+                     "libelle": a.libelle or self.ctx.libelles_rubriques.get(code) or code}
+            utile = False
+            for attribut, col in a.cibles.items():
+                v = self._valeur_affectee(c, a, attribut, rub, r)
+                if v is None:
+                    continue
+                ligne[col] = self._ajouter(ligne.get(col), v)
+                utile = utile or self._non_nul(v)
+            # RG-EDT-DONNEES-05 : paramétrage de la rubrique (valeurs du mois)
+            if a.periode == "MOIS" and code and not a.nulle:
+                mois = rub.get(code) or {}
+                if (param.get("ne_editer_si_mt_zero") and not self._non_nul(mois.get("MT"))) \
+                        or (param.get("ne_editer_si_nb_zero") and not self._non_nul(mois.get("NB"))) \
+                        or (param.get("ne_editer_si_ty_zero") and not self._non_nul(mois.get("TX"))):
+                    continue
+            if utile or a.nulle:
+                lignes.append(ligne)
+        if c.tri == "CODE":
+            lignes.sort(key=lambda l: (l["code_rubrique"], l["_rang"]))
+        elif c.tri == "PAIE":
+            lignes.sort(key=lambda l: ((rub.get(l["code_rubrique"]) or {}).get("ORDRE") is None,
+                                       (rub.get(l["code_rubrique"]) or {}).get("ORDRE") or 0, l["_rang"]))
+        return lignes
+
     # ---------------------------------------------------------------- bande → tranches
     def _tranches(self, bande: Bande, ligne: Optional[dict], agregats: dict, page: int,
                   nb_pages: Optional[int]) -> list[Tranche]:
@@ -399,9 +505,13 @@ class Composeur:
         return res
 
     def _tranches_tableau(self, tab: Tableau, ligne: Optional[dict], r_parent, page, nb_pages) -> list[Tranche]:
-        jeu = self.d.jeu(tab.jeu)
-        cle = (ligne or {}).get("id") if jeu else None
-        lignes = self.ctx.enfants.get(tab.jeu, {}).get(cle, []) if cle is not None else []
+        if tab.corps:                                           # RG-EDT-DONNEES-01
+            lignes = (self._donnees(ligne)["corps"].get(tab.corps) or []) if ligne else []
+            cle = (ligne or {}).get("id")
+        else:
+            jeu = self.d.jeu(tab.jeu)
+            cle = (ligne or {}).get("id") if jeu else None
+            lignes = self.ctx.enfants.get(tab.jeu, {}).get(cle, []) if cle is not None else []
         rub = self.ctx.rubriques.get(str(cle), {}) if cle is not None else {}
         colonnes = [c for c in tab.colonnes if not c.masquee]
         hl = tab.hauteur_ligne
@@ -463,7 +573,21 @@ class Composeur:
                 nb_lignes += 1
                 imprimees.add(id(origine if origine is not None else l))
 
-        sections = list(tab.sections) or [None]
+        if tab.corps and not tab.sections and tab.grouper:
+            # un titre par groupe d'affectations, dans l'ordre de première apparition
+            ordre: list = []
+            for l in lignes:
+                if l.get("groupe") not in ordre:
+                    ordre.append(l.get("groupe"))
+            for g in ordre:
+                du_groupe = [(l, None, l) for l in lignes if l.get("groupe") == g]
+                if g:
+                    tranches.append(titre_section(g))
+                imprimer(du_groupe, Accumulateur())
+            lignes_traitees = True
+        else:
+            lignes_traitees = False
+        sections = [] if lignes_traitees else (list(tab.sections) or [None])
         for sec in sections:
             sous_totaux = Accumulateur()
             if sec is None:
@@ -610,6 +734,7 @@ class Composeur:
         etat_courant["ligne"] = lignes[0]
         ouvrir_page()
         precedent: Optional[tuple] = None
+        precedent_ligne: Optional[dict] = None
         for ligne in lignes:
             if etat_courant.pop("saut", False):
                 ouvrir_page()

@@ -466,6 +466,8 @@ def index_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, 
             r["BASE"] = Decimal(str(l["base"]))
         if l["taux"] is not None:
             r["TX"] = Decimal(str(l["taux"]))
+        if l.get("ordre_affichage") is not None:
+            r["ORDRE"] = min(r.get("ORDRE", l["ordre_affichage"]), l["ordre_affichage"])
     for b in bulletins:
         for code, col in RUBRIQUES_EN_TETE.items():
             if b.get(col) is not None:
