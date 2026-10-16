@@ -18,6 +18,7 @@ Ajouts des éditions :
     regimes.CNSS.date_affiliation   (une liste se parcourt par son « code »)
     @periode · @periode.date_fin    paramètre de lancement et son attribut
     [CODE].PAT                 part patronale d'une rubrique
+    [CODE].CMT / CNB / CBASE   cumul annuel à date (montant, nombre, base) — table cumul
     VIDE                       valeur vide (≠ 0)
     « "" » dans une chaîne     guillemet doublé = un guillemet
 
@@ -49,7 +50,7 @@ from app.editions import format as fmt
 
 VIDE = None
 BUDGET_PAR_DEFAUT = 10_000
-ATTRIBUTS_RUBRIQUE = ("MT", "NB", "TX", "BASE", "PAT")
+ATTRIBUTS_RUBRIQUE = ("MT", "NB", "TX", "BASE", "PAT", "CMT", "CNB", "CBASE")
 PORTEES = ("GROUPE", "PAGE", "REPORT", "ETAT")
 
 

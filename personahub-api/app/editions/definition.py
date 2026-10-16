@@ -162,10 +162,20 @@ class Colonne(Strict):
     masquee: bool = False
 
 
+class LigneRubrique(Strict):
+    """Une rubrique du plan des lignes (RG-EDT-LIGNES-01)."""
+    code: str = Field(min_length=1, max_length=40)
+    libelle: Optional[str] = None             # libellé imprimé ; défaut : libellé d'édition de la rubrique
+    style: Style = Style()                    # ex. gras pour « **** BRUT IMPOSABLE **** »
+    valeurs: dict[str, Expr] = {}             # id de colonne → formule qui remplace celle de la colonne
+    toujours: bool = False                    # imprimée même absente du bulletin ou à zéro
+
+
 class Section(Strict):
     id: str = Field(min_length=1, max_length=60)
     titre: Optional[str] = None
-    filtre: Expr
+    filtre: Optional[Expr] = None             # lignes retenues ; ignoré si `rubriques` est rempli
+    rubriques: list[LigneRubrique] = []       # plan explicite : ces rubriques, dans cet ordre
     sous_total: bool = False
 
 
@@ -177,9 +187,39 @@ class Tableau(ElementBase):
     repeter_entete: bool = True
     zebre: bool = False
     hauteur_ligne: float = Field(default=5.0, gt=0)
+    section_autres: Optional[str] = None      # avec des sections : titre des lignes restées hors section (None : masquées)
+    quadrillage: Literal["AUCUN", "COLONNES", "COMPLET"] = "AUCUN"
+    lignes_min: int = Field(default=0, ge=0, le=200)   # complète par des lignes vides (bulletin « formulaire »)
 
 
-Element = Annotated[Union[Texte, Champ, TexteRiche, Image, Ligne, Cadre, CodeBarre, Tableau],
+class ColonneGrille(Strict):
+    id: str = Field(min_length=1, max_length=60)
+    titre: str = ""
+    largeur: float = Field(gt=0)
+    affichage: Affichage = Affichage()
+    style: Style = Style()
+
+
+class LigneGrille(Strict):
+    id: str = Field(min_length=1, max_length=60)
+    titre: str = ""
+    valeurs: dict[str, Expr] = {}             # id de colonne → formule
+    style: Style = Style()
+
+
+class Grille(ElementBase):
+    """Zone libre de lignes × colonnes, chaque case étant une formule (cumuls,
+    congés, mode de paiement…). RG-EDT-GRILLE-01."""
+    type: Literal["GRILLE"]
+    colonnes: list[ColonneGrille] = Field(min_length=1)
+    lignes: list[LigneGrille] = Field(min_length=1)
+    largeur_titres: float = Field(default=0, ge=0)   # colonne des titres de ligne (0 : aucune)
+    entete: bool = True
+    hauteur_ligne: float = Field(default=5.0, gt=0)
+    quadrillage: Literal["AUCUN", "COLONNES", "COMPLET"] = "COMPLET"
+
+
+Element = Annotated[Union[Texte, Champ, TexteRiche, Image, Ligne, Cadre, CodeBarre, Tableau, Grille],
                     Field(discriminator="type")]
 ELEMENTS_DE_PRESENTATION = ("TEXTE", "IMAGE", "LIGNE", "CADRE")
 

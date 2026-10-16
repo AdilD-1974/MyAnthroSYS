@@ -21,10 +21,13 @@ from pydantic import ValidationError
 
 from app.editions import expressions as ex
 from app.editions import format as fmt
-from app.editions.definition import Definition, Jeu, Tableau, mettre_a_niveau
+from app.editions.definition import Definition, Grille, Jeu, Tableau, mettre_a_niveau
 
 SOURCE_SOCIETE = "SOCIETE"
-TYPES_ELEMENTS = {"TEXTE", "CHAMP", "TEXTE_RICHE", "IMAGE", "LIGNE", "CADRE", "CODE_BARRE", "TABLEAU"}
+# totaux d'en-tête du bulletin, utilisables comme rubriques (cf. sources/paie.RUBRIQUES_EN_TETE)
+RUBRIQUES_EN_TETE = {"NET_A_PAYER", "TOTAL_GAINS", "TOTAL_RETENUES", "TOTAL_BRUT", "BRUT_IMPOSABLE",
+                     "NET_IMPOSABLE", "COUT_EMPLOYEUR", "COT_SALARIALES", "COT_PATRONALES"}
+TYPES_ELEMENTS = {"TEXTE", "CHAMP", "TEXTE_RICHE", "IMAGE", "LIGNE", "CADRE", "CODE_BARRE", "TABLEAU", "GRILLE"}
 TOLERANCE_MM = 0.01
 
 
@@ -106,7 +109,15 @@ def formules(d: Definition) -> Iterator[tuple[str, str, Optional[str], bool]]:
                 for c, col in enumerate(el.colonnes):
                     yield f"{eb}.colonnes[{c}].valeur", col.valeur, el.jeu, False
                 for s, sec in enumerate(el.sections):
-                    yield f"{eb}.sections[{s}].filtre", sec.filtre, el.jeu, False
+                    if sec.filtre and not sec.rubriques:
+                        yield f"{eb}.sections[{s}].filtre", sec.filtre, el.jeu, False
+                    for k, lr in enumerate(sec.rubriques):
+                        for col_id, expr in lr.valeurs.items():
+                            yield f"{eb}.sections[{s}].rubriques[{k}].valeurs.{col_id}", expr, el.jeu, False
+            if isinstance(el, Grille):
+                for k, lg in enumerate(el.lignes):
+                    for col_id, expr in lg.valeurs.items():
+                        yield f"{eb}.lignes[{k}].valeurs.{col_id}", expr, principal, False
     yield "sortie.nom_fichier", d.sortie.nom_fichier, principal, False
 
 
@@ -176,6 +187,11 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
                                  for c, col in enumerate(el.colonnes)]
                 ids_elements += [(f"bandes[{b}].elements[{e}].sections[{s}].id", sec.id)
                                  for s, sec in enumerate(el.sections)]
+            if isinstance(el, Grille):
+                ids_elements += [(f"bandes[{b}].elements[{e}].colonnes[{c}].id", col.id)
+                                 for c, col in enumerate(el.colonnes)]
+                ids_elements += [(f"bandes[{b}].elements[{e}].lignes[{k}].id", lg.id)
+                                 for k, lg in enumerate(el.lignes)]
     doublons(ids_elements, "Identifiant d'élément")
 
     # 3) Jeux de données
@@ -210,14 +226,36 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
             if g not in calculs and not cat.champ_existe(j.source, g):
                 rapport.ajouter(f"{base}.groupes[{k}]", f"Champ de groupement inconnu : {g}")
 
-    # 4) Tableaux : leur jeu doit être SECONDAIRE
+    # 4) Tableaux : leur jeu doit être SECONDAIRE ; plan des lignes et grilles cohérents
     for b, bande in enumerate(d.bandes):
         for e, el in enumerate(bande.elements):
+            eb = f"bandes[{b}].elements[{e}]"
             if isinstance(el, Tableau):
                 jt = d.jeu(el.jeu)
                 if jt is None or jt.role != "SECONDAIRE":
-                    rapport.ajouter(f"bandes[{b}].elements[{e}].jeu",
-                                    f"Un tableau affiche un jeu SECONDAIRE existant (« {el.jeu} »)")
+                    rapport.ajouter(f"{eb}.jeu", f"Un tableau affiche un jeu SECONDAIRE existant (« {el.jeu} »)")
+                ids_col = {c.id for c in el.colonnes}
+                for s_, sec in enumerate(el.sections):
+                    vus: set[str] = set()
+                    for k, lr in enumerate(sec.rubriques):
+                        chemin = f"{eb}.sections[{s_}].rubriques[{k}]"
+                        code = lr.code.strip().upper()
+                        if code in vus:
+                            rapport.ajouter(f"{chemin}.code", f"Rubrique {code} déjà dans ce groupe")
+                        vus.add(code)
+                        if cat.rubriques is not None and code not in cat.rubriques \
+                                and code not in RUBRIQUES_EN_TETE:
+                            rapport.ajouter(f"{chemin}.code", f"Rubrique inconnue ou archivée : {code}")
+                        rapport.dependances.add(("RUBRIQUE", code))
+                        for col_id in lr.valeurs:
+                            if col_id not in ids_col:
+                                rapport.ajouter(f"{chemin}.valeurs", f"Colonne inconnue : {col_id}")
+            if isinstance(el, Grille):
+                ids_col = {c.id for c in el.colonnes}
+                for k, lg in enumerate(el.lignes):
+                    for col_id in lg.valeurs:
+                        if col_id not in ids_col:
+                            rapport.ajouter(f"{eb}.lignes[{k}].valeurs", f"Colonne inconnue : {col_id}")
 
     # 5) Formules
     params = {p.code for p in d.parametres}
@@ -248,7 +286,7 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
                     elif c not in calculs and source:
                         rapport.dependances.add(("CHAMP", f"{source}.{c}"))
             for code in a.rubriques:
-                if cat.rubriques is not None and code not in cat.rubriques:
+                if cat.rubriques is not None and code not in cat.rubriques and code not in RUBRIQUES_EN_TETE:
                     rapport.ajouter(chemin, f"Rubrique inconnue ou archivée : {code}")
                 rapport.dependances.add(("RUBRIQUE", code))
             for code in a.constantes:
@@ -261,7 +299,7 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
     for b, bande in enumerate(d.bandes):
         for e, el in enumerate(bande.elements):
             aff = [(f"bandes[{b}].elements[{e}].affichage.masque", getattr(el, "affichage", None))]
-            if isinstance(el, Tableau):
+            if isinstance(el, (Tableau, Grille)):
                 aff += [(f"bandes[{b}].elements[{e}].colonnes[{c}].affichage.masque", col.affichage)
                         for c, col in enumerate(el.colonnes)]
             for chemin, a in aff:
@@ -288,6 +326,10 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
                 rapport.ajouter(chemin, f"Déborde à droite : {el.x + el.l:.1f} mm pour {largeur:.1f} mm utiles")
             if not bande.extensible and el.y + el.h > bande.hauteur + TOLERANCE_MM:
                 rapport.ajouter(chemin, f"Déborde de sa bande : {el.y + el.h:.1f} mm pour {bande.hauteur:.1f} mm")
+            if isinstance(el, Grille):
+                somme = el.largeur_titres + sum(c.largeur for c in el.colonnes)
+                if somme > el.l + TOLERANCE_MM:
+                    rapport.ajouter(f"{chemin}.colonnes", f"Colonnes ({somme:.1f} mm) plus larges que la grille ({el.l:.1f} mm)")
             if isinstance(el, Tableau):
                 somme = sum(c.largeur for c in el.colonnes if not c.masquee)
                 if somme > el.l + TOLERANCE_MM:

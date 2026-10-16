@@ -202,3 +202,11 @@ def test_aides_au_designer(s):
     syntaxe = sv.analyser_expression(s, PAIE, "1 + * 2")
     assert not syntaxe["valide"] and syntaxe["erreurs"][0]["debut"] is not None
     assert any(m["code"] == "MONTANT" for m in sv.masques(s, PAIE))
+
+
+def test_valeurs_des_parametres(s):
+    per = sv.periodes(s, PAIE)
+    assert per and all(p["id"] != P_S2 for p in per)                  # autre société exclue
+    sep = next(p for p in per if p["id"] == P_SEP)
+    assert sep["nb_bulletins"] == 2 and sep["plan_code"] == "MENS"
+    assert [p["code"] for p in sv.plans_paie(s, PAIE)] == ["MENS"]

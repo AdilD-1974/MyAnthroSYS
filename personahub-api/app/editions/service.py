@@ -756,3 +756,31 @@ def analyser_expression(db: Session, u: Utilisateur, expression: str, source: Op
     return {"valide": not erreurs, "erreurs": erreurs, "champs": sorted(a.champs),
             "parametres": sorted(a.parametres), "rubriques": sorted(a.rubriques),
             "constantes": sorted(a.constantes), "fonctions": sorted(a.fonctions)}
+
+
+# ---------------------------------------------------------------------------
+# Valeurs proposées pour les paramètres (écran de lancement)
+# ---------------------------------------------------------------------------
+def periodes(db: Session, u: Utilisateur) -> list[dict]:
+    """Périodes de paie de la société active, les plus récentes d'abord, avec
+    le nombre de bulletins (en cours ∪ historisés, sans doublon)."""
+    rows = db.execute(text("""
+        SELECT cal.id, cal.intitule, cal.annee, cal.mois, cal.statut, cal.date_debut, cal.date_fin,
+               p.id AS plan_paie_id, p.code AS plan_code, p.libelle AS plan_libelle,
+               (SELECT count(*) FROM bulletin b WHERE b.periode_id = cal.id)
+             + (SELECT count(*) FROM bulletin_historique h WHERE h.periode_id = cal.id
+                  AND NOT EXISTS (SELECT 1 FROM bulletin b2 WHERE b2.id = h.id)) AS nb_bulletins
+        FROM calendrier_paie cal LEFT JOIN plan_paie p ON p.id = cal.plan_paie_id
+        WHERE cal.societe_id = :s
+        ORDER BY cal.annee DESC, cal.mois DESC, p.code"""), {"s": u.societe_id}).mappings().all()
+    return [_propre(r) for r in rows]
+
+
+def plans_paie(db: Session, u: Utilisateur) -> list[dict]:
+    rows = db.execute(text("""
+        SELECT DISTINCT p.id, p.code, p.libelle FROM plan_paie p
+        JOIN calendrier_paie cal ON cal.plan_paie_id = p.id
+        WHERE cal.societe_id = :s AND COALESCE(p.actif, true) = true
+        ORDER BY p.code"""), {"s": u.societe_id}).mappings().all()
+    return [_propre(r) for r in rows]
+

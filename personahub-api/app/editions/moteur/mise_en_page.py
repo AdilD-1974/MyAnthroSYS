@@ -23,6 +23,13 @@ Algorithme (une passe, plus une seconde pour NB_PAGES et les totaux d'état) :
 RG-EDT-RENDU-03 (Adil DAIA) : un tableau coupé répète son en-tête de colonnes.
 RG-EDT-RENDU-04 (Adil DAIA) : une erreur de formule au rendu n'arrête pas le
     document : la case affiche « #ERR » et l'anomalie est remontée.
+RG-EDT-LIGNES-01 (Adil DAIA) : une section à plan explicite imprime ses rubriques
+    dans l'ordre du plan : la ligne du bulletin si elle existe (quels que soient les
+    filtres du jeu), sinon une ligne reconstituée depuis [CODE] (lignes NEUTRE,
+    totaux d'en-tête) si une valeur est non nulle, ou si la rubrique est marquée
+    « toujours ». Ses valeurs par colonne remplacent la formule de la colonne.
+RG-EDT-GRILLE-01 (Adil DAIA) : une grille est une zone fixe de lignes × colonnes,
+    chaque case une formule évaluée dans le contexte du document (cumuls…).
 RG-EDT-RENDU-05 (Adil DAIA) : agrégats — GROUPE = groupe en cours (le plus
     fin dans le corps) ; PAGE = lignes commencées sur la page ; REPORT = cumul
     depuis le début (en en-tête de page : le report des pages précédentes) ;
@@ -38,7 +45,7 @@ from typing import Any, Callable, Optional
 
 from app.editions import expressions as ex
 from app.editions import format as fmt
-from app.editions.definition import Bande, Definition, Tableau
+from app.editions.definition import Bande, Definition, Grille, LigneRubrique, Tableau
 from app.editions.moteur import texte as tx
 
 log = logging.getLogger(__name__)
@@ -173,6 +180,7 @@ class Contexte:
     contexte_fixe: dict = field(default_factory=dict)  # CHARTE.logo, ASSET.x, UTILISATEUR.nom
     registre_masques: Optional[dict] = None
     racine_fichiers: str = "storage"
+    libelles_rubriques: dict = field(default_factory=dict)  # code → libellé d'édition (plans de lignes)
 
 
 class Composeur:
@@ -280,11 +288,63 @@ class Composeur:
                 if v not in (None, "", ERREUR):
                     boites.append(Boite(el.x, el.y, el.l, el.h, "IMAGE", style=el.style, valeur=str(v),
                                         source_id=el.id))
+            elif el.type == "GRILLE":
+                boites += self._grille(el, r, vide_force)
             elif el.type == "CODE_BARRE":
                 v = None if vide_force else self._evaluer(el.valeur, r, el.id)
                 if v not in (None, "", ERREUR):
                     boites.append(Boite(el.x, el.y, el.l, el.h, "CODE_BARRE", style=el.style,
                                         valeur=fmt.texte_par_defaut(v), source_id=el.id))
+        return boites
+
+    def _grille(self, g: Grille, r: ex.ResolverEdition, vide: bool) -> list[Boite]:
+        """RG-EDT-GRILLE-01 : en-tête de colonnes, titres de lignes, une formule par case."""
+        boites: list[Boite] = []
+        hl = g.hauteur_ligne
+        bord_tete = "TOUT" if g.quadrillage != "AUCUN" else None
+        bord = {"COMPLET": "TOUT", "COLONNES": "G,D", "AUCUN": None}[g.quadrillage]
+
+        def case(x, y, l, txt, style, gras=False, fond=None, alignement=None, bordures=None):
+            maj = {k: v for k, v in (("gras", gras or style.gras), ("fond", fond or style.fond),
+                                     ("alignement", style.alignement or alignement), ("bordures", style.bordures or bordures))
+                   if v is not None}
+            st = style.model_copy(update=maj)
+            police, taille = self._style_police(st, txt)
+            lignes = tx.decouper(txt, police, taille, max(l - 1.6, 1), multiligne=False)
+            boites.append(Boite(x, y, l, hl, "TEXTE", lignes, police, taille, st, source_id=g.id))
+
+        y = g.y
+        if g.entete:
+            x = g.x
+            if g.largeur_titres:
+                case(x, y, g.largeur_titres, "", g.style, bordures=None)
+                x += g.largeur_titres
+            for c in g.colonnes:
+                case(x, y, c.largeur, c.titre, c.style, gras=True, fond="#E8E8E8", alignement="CENTRE", bordures=bord_tete)
+                x += c.largeur
+            y += hl
+        for i, lg in enumerate(g.lignes):
+            x = g.x
+            dernier = i == len(g.lignes) - 1
+            bord_l = "G,D,B" if (bord == "G,D" and dernier) else bord
+            if g.largeur_titres:
+                case(x, y, g.largeur_titres, lg.titre, lg.style, gras=True, fond="#F4F4F4", bordures=bord_tete or bord_l)
+                x += g.largeur_titres
+            for c in g.colonnes:
+                expr = lg.valeurs.get(c.id)
+                if vide or not expr:
+                    txt, v = "", None
+                else:
+                    v = self._evaluer(expr, r, f"{g.id}.{lg.id}.{c.id}")
+                    txt = ERREUR if v == ERREUR else fmt.formater(
+                        v, c.affichage.masque, c.affichage.texte_avant, c.affichage.texte_apres,
+                        c.affichage.valeur_si_vide if c.affichage.valeur_si_vide is not None else "",
+                        self.ctx.registre_masques)
+                numerique = isinstance(v, (Decimal, int, float)) and not isinstance(v, bool)
+                st = c.style.model_copy(update={k: val for k, val in lg.style.model_dump(exclude_defaults=True).items()})
+                case(x, y, c.largeur, txt, st, alignement="DROITE" if numerique else "CENTRE", bordures=bord_l)
+                x += c.largeur
+            y += hl
         return boites
 
     # ---------------------------------------------------------------- bande → tranches
@@ -318,21 +378,49 @@ class Composeur:
             tranches.append(Tranche(max(decale, 0) + bas, [_decaler(b, max(decale, 0)) for b in dessous]))
         return tranches
 
+    def _lignes_plan(self, sec, lignes: list[dict], rub: dict) -> list[tuple[dict, LigneRubrique, Optional[dict]]]:
+        """RG-EDT-LIGNES-01 : (ligne à imprimer, entrée du plan, ligne d'origine ou None)."""
+        res = []
+        for lr in sec.rubriques:
+            code = lr.code.strip().upper()
+            trouvees = [l for l in lignes if str(l.get("code_rubrique") or "").strip().upper() == code]
+            if trouvees:
+                for l in trouvees:
+                    res.append(({**l, "libelle": lr.libelle or l.get("libelle")}, lr, l))
+                continue
+            v = rub.get(code) or {}
+            present = any(v.get(k) is not None and Decimal(str(v[k])) != 0 for k in ("MT", "NB", "BASE", "PAT", "TX"))
+            if present or lr.toujours:
+                res.append(({"code_rubrique": code,
+                             "libelle": lr.libelle or self.ctx.libelles_rubriques.get(code) or code,
+                             "montant": v.get("MT"), "nombre": v.get("NB"), "taux": v.get("TX"),
+                             "base": v.get("BASE"), "montant_patronal": v.get("PAT"), "sens": None},
+                            lr, None))
+        return res
+
     def _tranches_tableau(self, tab: Tableau, ligne: Optional[dict], r_parent, page, nb_pages) -> list[Tranche]:
         jeu = self.d.jeu(tab.jeu)
         cle = (ligne or {}).get("id") if jeu else None
         lignes = self.ctx.enfants.get(tab.jeu, {}).get(cle, []) if cle is not None else []
+        rub = self.ctx.rubriques.get(str(cle), {}) if cle is not None else {}
         colonnes = [c for c in tab.colonnes if not c.masquee]
         hl = tab.hauteur_ligne
         x0 = tab.x
+        bord = {"COMPLET": "TOUT", "COLONNES": "G,D", "AUCUN": None}[tab.quadrillage]
 
-        def rangee(cellules: list[tuple[Any, str]], gras=False, fond=None, genre="LIGNE_TABLEAU") -> Tranche:
+        def rangee(cellules: list[tuple[Any, str]], gras=False, fond=None, genre="LIGNE_TABLEAU",
+                   style_ligne=None, bordures=None) -> Tranche:
             boites, x, hauteur = [], x0, hl
             prepares = []
             for col, txt in cellules:
                 maj = {"gras": gras or col.style.gras, "fond": fond or col.style.fond}
                 if col.style.alignement is None and _colonne_numerique(col):
                     maj["alignement"] = "DROITE"            # RG-EDT-RENDU-06
+                if bordures or bord:
+                    maj["bordures"] = col.style.bordures or bordures or bord
+                if style_ligne is not None:
+                    maj.update({k: v for k, v in style_ligne.model_dump(exclude_defaults=True).items()
+                                if k not in ("alignement",) or v})
                 style = col.style.model_copy(update=maj)
                 police, taille = self._style_police(style, txt)
                 lignes_txt = tx.decouper(txt, police, taille, max(col.largeur - 1.6, 1), multiligne=True)
@@ -344,26 +432,25 @@ class Composeur:
                 x += col.largeur
             return Tranche(hauteur, boites, genre, tab.id)
 
-        tranches = [rangee([(c, c.titre) for c in colonnes], gras=True, fond="#E8E8E8", genre="ENTETE_TABLEAU")]
+        def titre_section(titre: str) -> Tranche:
+            t = colonnes[0].model_copy(update={"largeur": sum(c.largeur for c in colonnes)})
+            return rangee([(t, titre)], gras=True, fond="#F4F4F4", bordures="TOUT" if bord else None)
+
+        tranches = [rangee([(c, c.titre) for c in colonnes], gras=True, fond="#E8E8E8", genre="ENTETE_TABLEAU",
+                           bordures="TOUT" if bord else None)]
         totaux = Accumulateur()
-        sections = tab.sections or [None]
-        for sec in sections:
-            lignes_sec = lignes
-            if sec is not None:
-                lignes_sec = [l for l in lignes if _vrai(self._evaluer(
-                    sec.filtre, self._resolver(ligne, {}, page, nb_pages, l), sec.id))]
-                if not lignes_sec:
-                    continue
-                if sec.titre:
-                    titre = colonnes[0].model_copy(update={"largeur": sum(c.largeur for c in colonnes)})
-                    tranches.append(rangee([(titre, sec.titre)], gras=True, fond="#F4F4F4"))
-            sous_totaux = Accumulateur()
-            for i, l in enumerate(lignes_sec):
+        nb_lignes = 0
+        imprimees: set[int] = set()
+
+        def imprimer(entrees, sous_totaux: Accumulateur):
+            nonlocal nb_lignes
+            for l, lr, origine in entrees:
                 r = self._resolver(ligne, {}, page, nb_pages, l)
                 cellules = []
                 for c in colonnes:
-                    v = self._evaluer(c.valeur, r, c.id)
-                    if c.total != "AUCUN" and v != ERREUR:
+                    expr = lr.valeurs.get(c.id, c.valeur) if lr is not None else c.valeur
+                    v = self._evaluer(expr, r, c.id) if expr else None
+                    if c.total != "AUCUN" and v not in (ERREUR, None):
                         totaux.ajouter(c.id, v)
                         sous_totaux.ajouter(c.id, v)
                     t = ERREUR if v == ERREUR else fmt.formater(
@@ -371,13 +458,51 @@ class Composeur:
                         c.affichage.valeur_si_vide if c.affichage.valeur_si_vide is not None else "",
                         self.ctx.registre_masques)
                     cellules.append((c, t))
-                fond = "#FAFAFA" if tab.zebre and i % 2 else None
-                tranches.append(rangee(cellules, fond=fond))
+                fond = "#FAFAFA" if tab.zebre and nb_lignes % 2 else None
+                tranches.append(rangee(cellules, fond=fond, style_ligne=lr.style if lr is not None else None))
+                nb_lignes += 1
+                imprimees.add(id(origine if origine is not None else l))
+
+        sections = list(tab.sections) or [None]
+        for sec in sections:
+            sous_totaux = Accumulateur()
+            if sec is None:
+                entrees = [(l, None, l) for l in lignes]
+            elif sec.rubriques:
+                entrees = self._lignes_plan(sec, lignes, rub)
+            elif sec.filtre:
+                entrees = [(l, None, l) for l in lignes if _vrai(self._evaluer(
+                    sec.filtre, self._resolver(ligne, {}, page, nb_pages, l), sec.id))]
+            else:
+                entrees = [(l, None, l) for l in lignes]
+            if not entrees:
+                continue
+            if sec is not None and sec.titre:
+                tranches.append(titre_section(sec.titre))
+            imprimer(entrees, sous_totaux)
             if sec is not None and sec.sous_total:
                 tranches.append(rangee(self._ligne_totaux(colonnes, sous_totaux, f"Total {sec.titre or ''}".strip()),
                                        gras=True))
+        # lignes restées hors des sections (RG-EDT-LIGNES-01)
+        if tab.sections and tab.section_autres is not None:
+            restes = [(l, None, l) for l in lignes if id(l) not in imprimees]
+            if restes:
+                if tab.section_autres:
+                    tranches.append(titre_section(tab.section_autres))
+                imprimer(restes, Accumulateur())
+        # bulletin « formulaire » : lignes vides jusqu'au minimum
+        for i in range(max(0, tab.lignes_min - nb_lignes)):
+            fond = "#FAFAFA" if tab.zebre and (nb_lignes + i) % 2 else None
+            tranches.append(rangee([(c, "") for c in colonnes], fond=fond))
+        # quadrillage par colonnes : la dernière ligne ferme le tableau
+        if bord == "G,D" and len(tranches) > 1:
+            dernier = tranches[-1]
+            dernier.boites = [copy.copy(b) for b in dernier.boites]
+            for b in dernier.boites:
+                b.style = b.style.model_copy(update={"bordures": "G,D,B"})
         if any(c.total != "AUCUN" for c in colonnes):
-            tranches.append(rangee(self._ligne_totaux(colonnes, totaux, "Total"), gras=True, fond="#E8E8E8"))
+            tranches.append(rangee(self._ligne_totaux(colonnes, totaux, "Total"), gras=True, fond="#E8E8E8",
+                                   bordures="TOUT" if bord else None))
         return tranches
 
     def _ligne_totaux(self, colonnes, acc: Accumulateur, libelle: str):

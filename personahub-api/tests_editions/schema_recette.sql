@@ -267,3 +267,17 @@ CREATE TABLE public.users (
 ALTER TABLE societes ADD PRIMARY KEY (id); ALTER TABLE users ADD PRIMARY KEY (id); ALTER TABLE bulletin ADD PRIMARY KEY (id); ALTER TABLE bulletin_snapshot_collaborateur ADD UNIQUE (bulletin_id);
 
 CREATE TABLE menu_items(id uuid primary key, code text, libelle text, icone text, route text, ordre int, module_code text, actif bool); CREATE TABLE menu_role(menu_id uuid, role text);
+
+CREATE TABLE public.cumul (
+  "id" uuid DEFAULT gen_random_uuid(),
+  "collaborateur_id" uuid,
+  "code_rubrique" text,
+  "type_cumul" text,
+  "annee" integer,
+  "mois" integer,
+  "periode_id" uuid,
+  "code_plan" text,
+  "montant" numeric,
+  "nombre" numeric,
+  "base" numeric
+);

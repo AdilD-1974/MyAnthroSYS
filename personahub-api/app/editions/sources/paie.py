@@ -47,6 +47,7 @@ RUBRIQUES_EN_TETE = {
     "NET_A_PAYER": "net_a_payer", "TOTAL_GAINS": "total_gains", "TOTAL_RETENUES": "total_retenues",
     "TOTAL_BRUT": "total_brut", "BRUT_IMPOSABLE": "total_brut_imposable",
     "NET_IMPOSABLE": "net_imposable", "COUT_EMPLOYEUR": "cout_employeur",
+    "COT_SALARIALES": "total_cot_salariale", "COT_PATRONALES": "total_cot_patronale",
 }
 
 
@@ -150,6 +151,17 @@ CHAMPS_BULLETIN = [
     _t("paiement.code_iban", "IBAN", "Paiement", sensible=True),
     _t("paiement.code_bic", "BIC", "Paiement", sensible=True),
     _t("paiement.intitule_compte", "Intitulé du compte", "Paiement", sensible=True),
+    # cumuls annuels à date (RG-EDT-CUMUL-01)
+    _m("cumul.total_brut", "Cumul : salaire brut", "Cumuls de l'année"),
+    _m("cumul.total_brut_imposable", "Cumul : brut imposable", "Cumuls de l'année"),
+    _m("cumul.total_gains", "Cumul : gains", "Cumuls de l'année"),
+    _m("cumul.total_retenues", "Cumul : retenues", "Cumuls de l'année"),
+    _m("cumul.total_cot_salariale", "Cumul : cotisations salariales", "Cumuls de l'année"),
+    _m("cumul.total_cot_patronale", "Cumul : cotisations patronales", "Cumuls de l'année"),
+    _m("cumul.net_imposable", "Cumul : net imposable", "Cumuls de l'année"),
+    _m("cumul.net_a_payer", "Cumul : net à payer", "Cumuls de l'année"),
+    _m("cumul.cout_employeur", "Cumul : coût employeur", "Cumuls de l'année"),
+    _n("cumul.nb_bulletins", "Cumul : nombre de bulletins", "Cumuls de l'année"),
     # régimes : regimes.CNSS.matricule_organisme, regimes.CIMR.date_affiliation…
     _t("regimes.*.regime_libelle", "Régime : libellé", "Régimes"),
     _t("regimes.*.matricule_organisme", "Régime : matricule à l'organisme", "Régimes"),
@@ -246,6 +258,7 @@ class FournisseurBulletin(Fournisseur):
                 if cle not in l:
                     l[cle] = valeur
             resultat.append(l)
+        _ajouter_cumuls(db, resultat, sec)
         return resultat
 
     def _snapshots(self, db: Session, ids: list[str]) -> dict[str, dict]:
@@ -257,6 +270,84 @@ class FournisseurBulletin(Fournisseur):
                 d = r["donnees"]
                 res[str(r["bulletin_id"])] = json.loads(d) if isinstance(d, str) else (d or {})
         return res
+
+
+# =============================================================================
+# Cumuls annuels à date des totaux du bulletin — RG-EDT-CUMUL-01 (Adil DAIA)
+#   Somme des bulletins définitifs du collaborateur dans la société, même année,
+#   jusqu'au mois du bulletin INCLUS (comme les cumuls du bulletin AGIRH).
+# =============================================================================
+TOTAUX_CUMULES = ("total_brut", "total_brut_imposable", "total_gains", "total_retenues",
+                  "total_cot_salariale", "total_cot_patronale", "net_imposable", "net_a_payer",
+                  "cout_employeur")
+
+
+def _ajouter_cumuls(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) -> None:
+    if not bulletins:
+        return
+    collabs = sorted({str(b["collaborateur_id"]) for b in bulletins if b.get("collaborateur_id")})
+    annees = sorted({int(b["periode"]["annee"]) for b in bulletins if (b.get("periode") or {}).get("annee")})
+    if not collabs or not annees:
+        return
+    cols = ", ".join(f"b.{c}" for c in TOTAUX_CUMULES)
+    corps = f"""
+        SELECT b.collaborateur_id, cal.annee, cal.mois, {cols} FROM {{table}} b
+        JOIN calendrier_paie cal ON cal.id = b.periode_id
+        WHERE cal.societe_id = :societe AND b.collaborateur_id IN :collabs AND cal.annee IN :annees"""
+    q = text(corps.format(table="bulletin") + " UNION ALL " + corps.format(table="bulletin_historique")
+             + " AND NOT EXISTS (SELECT 1 FROM bulletin live WHERE live.id = b.id)") \
+        .bindparams(bindparam("collabs", expanding=True), bindparam("annees", expanding=True))
+    par_collab: dict[tuple[str, int], list[dict]] = defaultdict(list)
+    for paquet in _paquets(collabs):
+        for r in db.execute(q, {"societe": sec.societe_id, "collabs": paquet, "annees": annees}).mappings():
+            par_collab[(str(r["collaborateur_id"]), int(r["annee"]))].append(dict(r))
+    for b in bulletins:
+        per = b.get("periode") or {}
+        if per.get("annee") is None or per.get("mois") is None:
+            continue
+        retenus = [r for r in par_collab.get((str(b["collaborateur_id"]), int(per["annee"])), [])
+                   if int(r["mois"]) <= int(per["mois"])]
+        cumul = {c: sum((Decimal(str(r[c])) for r in retenus if r[c] is not None), Decimal(0)) for c in TOTAUX_CUMULES}
+        cumul["nb_bulletins"] = len(retenus)
+        b["cumul"] = cumul
+
+
+def _cumuls_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, dict[str, Decimal]]]:
+    """{bulletin_id: {code: {CMT, CNB, CBASE}}} depuis la table cumul (une ligne
+    MENSUEL par rubrique et par mois, écrite au calcul) : même année, mois ≤ mois
+    du bulletin, même plan de paie que le bulletin (comme paie_engine)."""
+    res: dict[str, dict[str, dict[str, Decimal]]] = defaultdict(dict)
+    collabs = sorted({str(b["collaborateur_id"]) for b in bulletins if b.get("collaborateur_id")})
+    annees = sorted({int(b["periode"]["annee"]) for b in bulletins if (b.get("periode") or {}).get("annee")})
+    if not collabs or not annees:
+        return res
+    q = text("""
+        SELECT collaborateur_id, annee, mois, code_plan, code_rubrique,
+               SUM(montant) AS mt, SUM(nombre) AS nb, SUM(base) AS base
+        FROM cumul
+        WHERE collaborateur_id IN :collabs AND annee IN :annees AND type_cumul = 'MENSUEL'
+        GROUP BY collaborateur_id, annee, mois, code_plan, code_rubrique
+    """).bindparams(bindparam("collabs", expanding=True), bindparam("annees", expanding=True))
+    lignes: dict[tuple[str, int], list[dict]] = defaultdict(list)
+    for paquet in _paquets(collabs):
+        for r in db.execute(q, {"collabs": paquet, "annees": annees}).mappings():
+            lignes[(str(r["collaborateur_id"]), int(r["annee"]))].append(dict(r))
+    for b in bulletins:
+        per = b.get("periode") or {}
+        if per.get("annee") is None or per.get("mois") is None:
+            continue
+        plan = (b.get("plan") or {}).get("code")
+        for r in lignes.get((str(b["collaborateur_id"]), int(per["annee"])), []):
+            if r["mois"] is not None and int(r["mois"]) > int(per["mois"]):
+                continue
+            if plan and r["code_plan"] and r["code_plan"] != plan:
+                continue
+            c = res[b["id"]].setdefault(r["code_rubrique"].strip(),
+                                        {"CMT": Decimal(0), "CNB": Decimal(0), "CBASE": Decimal(0)})
+            c["CMT"] += Decimal(str(r["mt"] or 0))
+            c["CNB"] += Decimal(str(r["nb"] or 0))
+            c["CBASE"] += Decimal(str(r["base"] or 0))
+    return res
 
 
 # =============================================================================
@@ -363,7 +454,8 @@ def index_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, 
     """{bulletin_id: {code: {MT, NB, TX, BASE, PAT}}}, toutes lignes confondues
     (NEUTRE compris : un calcul intermédiaire reste lisible). Une rubrique
     présente sur plusieurs lignes cumule MT, NB et PAT ; BASE et TX gardent la
-    dernière valeur. Les totaux d'en-tête sont exposés comme des rubriques."""
+    dernière valeur. Les totaux d'en-tête sont exposés comme des rubriques.
+    CMT / CNB / CBASE : cumuls annuels à date (RG-EDT-CUMUL-01)."""
     idx: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
     for l in _lignes_brutes(db, [b["id"] for b in bulletins]):
         r = idx[l["bulletin_id"]].setdefault(l["code_rubrique"], {"MT": Decimal(0), "NB": Decimal(0), "PAT": Decimal(0)})
@@ -377,7 +469,14 @@ def index_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, 
     for b in bulletins:
         for code, col in RUBRIQUES_EN_TETE.items():
             if b.get(col) is not None:
-                idx[b["id"]].setdefault(code, {"MT": Decimal(str(b[col]))})
+                e = idx[b["id"]].setdefault(code, {"MT": Decimal(str(b[col]))})
+                cumul = (b.get("cumul") or {}).get(col)
+                if cumul is not None:
+                    e.setdefault("CMT", cumul)
+    # RG-EDT-CUMUL-01 : cumuls par rubrique, y compris d'une rubrique absente du mois
+    for bid, codes in _cumuls_rubriques(db, bulletins).items():
+        for code, valeurs in codes.items():
+            idx[bid].setdefault(code, {}).update(valeurs)
     return dict(idx)
 
 

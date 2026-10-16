@@ -25,11 +25,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.editions import expressions as ex
-from app.editions.definition import Definition, Jeu
+from app.editions.definition import Definition, Jeu, Tableau
 from app.editions.moteur.mise_en_page import Anomalie, Contexte, composer
 from app.editions.moteur.rendu_pdf import RenduPDF
 from app.editions.sources import REGISTRE, ContexteSecurite, ErreurSource
-from app.editions.sources.paie import constantes_a_date, index_rubriques
+from app.editions.sources.paie import _rubriques_paie, constantes_a_date, index_rubriques
 
 log = logging.getLogger(__name__)
 PARAMETRES_RESERVES = ("bulletin",)
@@ -182,6 +182,12 @@ def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSe
     a_date = periode["date_fin"] if isinstance(periode, dict) else date.today()
     constantes = constantes_a_date(db, sec.societe_id, a_date)
 
+    # libellés d'édition des rubriques citées dans les plans de lignes (RG-EDT-LIGNES-01)
+    codes_plans = {lr.code.strip().upper() for b in d.bandes for el in b.elements if isinstance(el, Tableau)
+                   for s in el.sections for lr in s.rubriques}
+    libelles = {code: (r.get("libelle_edition") or r.get("libelle"))
+                for code, r in _rubriques_paie(db, codes_plans, sec.societe_id).items()} if codes_plans else {}
+
     logo = societe.get("logo_path")
     fixe = {"CHARTE.logo": _chemin_relatif(logo) if logo else None, **(contexte_fixe or {})}
 
@@ -198,7 +204,8 @@ def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSe
     for cle, lot in lots:
         ctx = Contexte(definition=d, lignes=lot, enfants=enfants, parametres=parametres, societe=societe,
                        constantes=constantes, rubriques=rubriques, contexte_fixe=fixe,
-                       registre_masques=registre_masques, racine_fichiers=racine_fichiers)
+                       registre_masques=registre_masques, racine_fichiers=racine_fichiers,
+                       libelles_rubriques=libelles)
         pages, anomalies = composer(ctx)
         r = ex.ResolverEdition(ligne={**(lot[0] if lot else {}), "societe": societe}, parametres=parametres)
         try:

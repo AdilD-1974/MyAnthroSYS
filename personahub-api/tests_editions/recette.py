@@ -36,6 +36,13 @@ INSERT INTO societes (id, raison_sociale, ice, ville, adresse) VALUES
 INSERT INTO societe_affiliations (id, societe_id, code_type_affiliation, numero_affiliation) VALUES
   (gen_random_uuid(), '{S1}', 'CNSS', '1234567'), (gen_random_uuid(), '{S1}', 'CIMR', 'C-889');
 INSERT INTO plan_paie (id, code, libelle) VALUES ('{PLAN}', 'MENS', 'Mensuel');
+INSERT INTO cumul (collaborateur_id, code_rubrique, type_cumul, annee, mois, code_plan, montant, nombre, base) VALUES
+  ('{SARA}', 'SALBASE', 'MENSUEL', 2026, 8, 'MENS', 10000, 26, 10000),
+  ('{SARA}', 'SALBASE', 'MENSUEL', 2026, 9, 'MENS', 10000, 26, 10000),
+  ('{SARA}', 'SALBASE', 'MENSUEL', 2026, 10, 'MENS', 10000, 26, 10000),
+  ('{SARA}', 'SALBASE', 'MENSUEL', 2026, 9, 'AUTRE', 777, 1, 777),
+  ('{SARA}', 'PRIM_CONGE', 'MENSUEL', 2026, 7, 'MENS', 1200, 0, 0),
+  ('{SARA}', 'SALBASE', 'MENSUEL', 2025, 12, 'MENS', 9000, 26, 9000);
 INSERT INTO calendrier_paie (id, plan_paie_id, annee, mois, date_debut, date_fin, intitule, societe_id) VALUES
   ('aaaaaaaa-0000-0000-0000-000000000008', '{PLAN}', 2026, 8, '2026-08-01', '2026-08-31', 'Août 2026', '{S1}'),
   ('{P_SEP}', '{PLAN}', 2026, 9, '2026-09-01', '2026-09-30', 'Septembre 2026', '{S1}'),
