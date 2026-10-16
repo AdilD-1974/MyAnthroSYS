@@ -44,7 +44,8 @@
       "parent": "b",
       "relation": "lignes",
       "filtres": [
-        "sens = \"GAIN\" OU sens = \"RETENUE\""
+        "sens = \"GAIN\" OU sens = \"RETENUE\"",
+        "COALESCE(montant, 0) <> 0 OU COALESCE(montant_patronal, 0) <> 0"
       ],
       "tri": [
         {
@@ -332,7 +333,7 @@
     {
       "id": "corps",
       "type": "CORPS",
-      "hauteur": 40,
+      "hauteur": 46,
       "extensible": true,
       "saut_apres": true,
       "elements": [
@@ -349,19 +350,22 @@
             {
               "id": "col_code",
               "titre": "Code",
-              "largeur": 20,
-              "valeur": "code_rubrique"
+              "largeur": 28,
+              "valeur": "code_rubrique",
+              "style": {
+                "taille": 7.5
+              }
             },
             {
               "id": "col_libelle",
               "titre": "Désignation",
-              "largeur": 62,
+              "largeur": 46,
               "valeur": "libelle"
             },
             {
               "id": "col_base",
               "titre": "Base",
-              "largeur": 24,
+              "largeur": 21,
               "valeur": "base",
               "affichage": {
                 "masque": "MONTANT_SANS_ZERO"
@@ -370,25 +374,25 @@
             {
               "id": "col_nombre",
               "titre": "Nombre",
-              "largeur": 16,
+              "largeur": 14,
               "valeur": "nombre",
               "affichage": {
-                "masque": "MONTANT_SANS_ZERO"
+                "masque": "QUANTITE"
               }
             },
             {
               "id": "col_taux",
               "titre": "Taux",
-              "largeur": 16,
+              "largeur": 14,
               "valeur": "taux",
               "affichage": {
-                "masque": "MONTANT_SANS_ZERO"
+                "masque": "QUANTITE"
               }
             },
             {
               "id": "col_gain",
               "titre": "Gains",
-              "largeur": 24,
+              "largeur": 21,
               "valeur": "SI(sens = \"GAIN\", montant)",
               "affichage": {
                 "masque": "MONTANT_SANS_ZERO"
@@ -398,12 +402,25 @@
             {
               "id": "col_retenue",
               "titre": "Retenues",
-              "largeur": 24,
+              "largeur": 21,
               "valeur": "SI(sens = \"RETENUE\", montant)",
               "affichage": {
                 "masque": "MONTANT_SANS_ZERO"
               },
               "total": "SOMME"
+            },
+            {
+              "id": "col_patronal",
+              "titre": "Part patronale",
+              "largeur": 21,
+              "valeur": "montant_patronal",
+              "affichage": {
+                "masque": "MONTANT_SANS_ZERO"
+              },
+              "total": "SOMME",
+              "style": {
+                "couleur": "#666666"
+              }
             }
           ],
           "sections": [
@@ -425,7 +442,7 @@
           "x": 0,
           "y": 22,
           "l": 186,
-          "h": 16
+          "h": 22
         },
         {
           "id": "lib_brut",
@@ -470,10 +487,54 @@
           }
         },
         {
+          "id": "lib_cot_sal",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 30,
+          "l": 40,
+          "h": 5,
+          "valeur": "\"Cotisations salariales\""
+        },
+        {
+          "id": "cot_sal",
+          "type": "CHAMP",
+          "x": 42,
+          "y": 30,
+          "l": 30,
+          "h": 5,
+          "valeur": "total_cot_salariale",
+          "affichage": {
+            "masque": "MONTANT"
+          }
+        },
+        {
+          "id": "lib_cot_pat",
+          "type": "TEXTE",
+          "x": 76,
+          "y": 30,
+          "l": 40,
+          "h": 5,
+          "valeur": "\"Cotisations patronales\"",
+          "verrou": "TOTAL"
+        },
+        {
+          "id": "cot_pat",
+          "type": "CHAMP",
+          "x": 116,
+          "y": 30,
+          "l": 30,
+          "h": 5,
+          "valeur": "total_cot_patronale",
+          "affichage": {
+            "masque": "MONTANT"
+          },
+          "verrou": "TOTAL"
+        },
+        {
           "id": "lib_net",
           "type": "TEXTE",
           "x": 2,
-          "y": 31,
+          "y": 37,
           "l": 40,
           "h": 6,
           "valeur": "\"NET À PAYER\"",
@@ -487,7 +548,7 @@
           "id": "net",
           "type": "CHAMP",
           "x": 42,
-          "y": 31,
+          "y": 37,
           "l": 40,
           "h": 6,
           "valeur": "net_a_payer",
@@ -505,7 +566,7 @@
           "id": "net_lettres",
           "type": "CHAMP",
           "x": 86,
-          "y": 31,
+          "y": 37,
           "l": 98,
           "h": 6,
           "valeur": "MONTANT_EN_LETTRES(net_a_payer)",

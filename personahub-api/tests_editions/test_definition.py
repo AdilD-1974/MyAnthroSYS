@@ -14,7 +14,7 @@ BULLETIN = json.loads((Path(__file__).resolve().parents[1] / "app" / "editions" 
 
 CATALOGUE = CatalogueValidation(
     champs={
-        "BULLETIN": {"id", "collaborateur_id", "periode_id", "matricule", "total_brut", "net_imposable",
+        "BULLETIN": {"id", "collaborateur_id", "periode_id", "matricule", "total_brut", "net_imposable", "total_cot_salariale", "total_cot_patronale",
                      "net_a_payer", "total_gains", "total_retenues",
                      "identite.*", "contrat.*", "affectation.*", "situation_familiale.*", "regimes.*.*"},
         "BULLETIN_LIGNE": {"code_rubrique", "libelle", "base", "nombre", "taux", "montant",
@@ -185,5 +185,5 @@ def test_variante_refus(surcharge, motif):
 
 
 def test_variante_reste_valide():
-    r = va.appliquer(BASE, [{"cible": "col_libelle", "action": "MODIFIER", "proprietes": {"largeur": 50}}])
+    r = va.appliquer(BASE, [{"cible": "col_libelle", "action": "MODIFIER", "proprietes": {"largeur": 40}}])
     assert valider(r.definition, CATALOGUE).valide

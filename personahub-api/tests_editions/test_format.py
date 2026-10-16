@@ -61,3 +61,10 @@ def test_masque_parametrique_et_registre_societe():
 def test_liste_masques():
     exemples = {m["code"]: m["exemple"] for m in f.liste_masques()}
     assert exemples["MONTANT"] == "1 234,50" and exemples["DATE_LONGUE"] == "6 octobre 1974"
+
+
+def test_masque_quantite():
+    assert f.appliquer_masque(Decimal("26.00"), "QUANTITE") == "26"
+    assert f.appliquer_masque(Decimal("21.5"), "QUANTITE") == "21,5"
+    assert f.appliquer_masque(Decimal("4.48"), "QUANTITE") == "4,48"
+    assert f.appliquer_masque(0, "QUANTITE") == ""

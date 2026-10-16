@@ -8,7 +8,8 @@ en grille (RG-GRILLE-HABILLAGE/FORMAT/VIDE/MASQUE-01), renommées RG-EDT-FORMAT-
 
 Un masque est un dictionnaire de paramètres, pas une fonction codée en dur :
     {"type": "NOMBRE", "decimales": 2, "sep_milliers": " ", "sep_decimal": ",",
-     "vide_si_zero": False, "prefixe": "", "suffixe": ""}
+     "vide_si_zero": False, "zeros_inutiles": True, "prefixe": "", "suffixe": ""}
+    (zeros_inutiles=False : 26,00 → « 26 », 21,50 → « 21,5 »)
     {"type": "DATE", "format": "JJ/MM/AAAA" | "LONGUE" | "MOIS_ANNEE"}
     {"type": "TEXTE", "casse": "MAJUSCULES" | "MINUSCULES" | "TITRE"}
 MASQUES_STANDARD reprend les 7 masques de la grille avec un rendu identique ;
@@ -46,6 +47,8 @@ MASQUES_STANDARD: dict[str, dict] = {
     "ENTIER": {"libelle": "Entier arrondi", "type": "NOMBRE", "decimales": 0},
     "POURCENTAGE": {"libelle": "Pourcentage", "type": "NOMBRE", "decimales": 2, "suffixe": " %"},
     "TAUX": {"libelle": "Taux à 4 décimales", "type": "NOMBRE", "decimales": 4},
+    "QUANTITE": {"libelle": "Quantité (26 · 21,5), vide si zéro", "type": "NOMBRE", "decimales": 2,
+                 "zeros_inutiles": False, "vide_si_zero": True},
     "MAJUSCULES": {"libelle": "Texte en capitales", "type": "TEXTE", "casse": "MAJUSCULES"},
 }
 
@@ -169,6 +172,8 @@ def appliquer_masque(valeur: Any, masque: Any, registre: Optional[Mapping[str, d
         if d.get("vide_si_zero") and n == 0:
             return ""
         texte = nombre(n, int(d.get("decimales", 2)), d.get("sep_milliers", " "), d.get("sep_decimal", ","))
+        if d.get("zeros_inutiles") is False and d.get("sep_decimal", ",") in texte:
+            texte = texte.rstrip("0").rstrip(d.get("sep_decimal", ","))
         return f"{d.get('prefixe', '')}{texte}{d.get('suffixe', '')}"
     if genre == "DATE":
         dt = en_date(valeur)

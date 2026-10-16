@@ -17,3 +17,6 @@ personahub-api/.envOld
 .idea/
 Thumbs.db
 .DS_Store
+# Éditions : documents produits (données personnelles) — jamais dans git
+personahub-api/donnees_privees/
+personahub-api/storage/editions_essai/

@@ -59,6 +59,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Scheduler tâches non démarré : {e}")
 
+    # ✅ ÉDITIONS — catalogue des sources et modèles système (RG-EDT-SOURCE-04)
+    try:
+        from app.core.database import SessionLocal
+        from app.editions.service import initialiser as initialiser_editions
+        db_editions = SessionLocal()
+        try:
+            bilan_editions = initialiser_editions(db_editions)
+            db_editions.commit()
+            logger.info(f"✅ Éditions initialisées : {bilan_editions}")
+        finally:
+            db_editions.close()
+    except Exception as e:
+        logger.warning(f"Éditions non initialisées (migration 075 appliquée ?) : {e}")
+
     yield
 
     # Arrêt propre du scheduler contrats
@@ -173,6 +187,9 @@ app.include_router(declarations_ir_router.router, prefix=PREFIX)
 from app.routers import etats as etats_router   # ✅ GÉNÉRATEUR D'ÉTATS PERSONNALISÉS (MODULE_ETATS_PAIE.md)
 app.include_router(etats_router.router, prefix=PREFIX)
 app.include_router(etats_router.ecrans_router, prefix=PREFIX)
+
+from app.routers import editions as editions_router   # ✅ ÉDITIONS UNIFIÉES — lot 1 (app/editions)
+app.include_router(editions_router.router, prefix=PREFIX)
 
 # Servir les fichiers statiques APRÈS les routers
 app.mount(
