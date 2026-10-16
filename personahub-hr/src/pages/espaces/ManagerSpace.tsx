@@ -16,7 +16,8 @@
  */
 
 import React, { useState, useMemo, useEffect } from "react";
-import { db, api } from "@/lib/api";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { db, api, tokenStore } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import UoTreePicker from "@/components/UoTreePicker";
 import {
   Users, Calendar, CheckCircle, XCircle, Clock, AlertTriangle,
   TrendingUp, TrendingDown, Bell, Search, Filter, Download,
@@ -34,7 +36,7 @@ import {
   ArrowDown, RefreshCw, MessageSquare, ThumbsUp, ThumbsDown,
   CalendarDays, FileText, Plus, Zap, Info, X, Check,
   Heart, Coffee, Sunrise, Sunset, Moon, Palette, CalendarCheck,
-  Sun, Monitor,
+  Sun, Monitor, LayoutGrid, List,
 } from "lucide-react";
 import { useManagerPopulation } from "@/hooks/useManagerPopulation";
 import { format, parseISO, differenceInDays, differenceInYears,
@@ -44,6 +46,7 @@ import { format, parseISO, differenceInDays, differenceInYears,
 import { fr } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import CongesModule from "@/pages/espaces/manager/conges/CongesPage";
+import SuiviDemandeWorkflow from "@/pages/espaces/SuiviDemandeWorkflow";
 
 // ═══════════════════════════════════════════════════════════
 // DESIGN SYSTEM
@@ -206,11 +209,29 @@ const ManagerSpace: React.FC = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  // ── Navigation principale ─────────────────────────────
+  // ── Navigation principale (pilotable depuis le menu latéral via ?tab=) ──
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "equipe" | "absences" | "planning" | "departs" |
     "evaluations" | "alertes" | "calendrier" | "trombinoscope" | "apparence"
-  >("dashboard");
+  >((searchParams.get("tab") as any) || "dashboard");
+
+  // URL -> onglet : le menu latéral (chemin /espace-manager?tab=...) change l'onglet
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t && t !== activeTab) setActiveTab(t as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  // onglet -> URL : garde l'URL en phase (deep-link + surbrillance du menu)
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (activeTab && activeTab !== t) {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", activeTab);
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // ── États globaux ─────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -312,14 +333,36 @@ const ManagerSpace: React.FC = () => {
     },
   });
 
-  // ── Départs de l'équipe ───────────────────────────────
+  // ── Départs ───────────────────────────────────────────
+  // Source unique : endpoint backend /departs/equipe, scopé selon le rôle ACTIF.
+  //  - admin/RH  -> tous les départs
+  //  - manager   -> périmètre RG-MGR-POP-01 INCLUANT les personnes déjà sorties
+  //                 (affectations clôturées prises en compte côté serveur).
+  // On ne dépend plus de `equipe` (qui exclut les collaborateurs non actifs).
   const { data: departs = [] } = useQuery<Depart[]>({
-    queryKey: ["manager-departs", equipeIds],
-    enabled: equipeIds.length > 0,
+    queryKey: ["manager-departs", role],
+    enabled: !!role,
     queryFn: async () => {
-      if (!equipeIds.length) return [];
       return await api.get(
-        `/db/collaborateur_departs?collaborateur_id=in.(${equipeIds.join(",")})&order=date_depart`
+        `/departs/equipe?role_actif=${encodeURIComponent(role || "")}`
+      ) || [];
+    },
+  });
+
+  // Résolution des collaborateurs concernés par un départ (peuvent être déjà
+  // sortis, donc absents de `equipe`) — fetch dédié sans filtre de statut.
+  const departCollabIds = useMemo(
+    () => Array.from(new Set(departs.map((d) => d.collaborateur_id).filter(Boolean))),
+    [departs]
+  );
+  const { data: departCollabs = [] } = useQuery<Collab[]>({
+    queryKey: ["depart-collabs", departCollabIds.join(",")],
+    enabled: departCollabIds.length > 0,
+    queryFn: async () => {
+      if (!departCollabIds.length) return [];
+      return await api.get(
+        `/db/collaborateurs?id=in.(${departCollabIds.join(",")})` +
+        `&select=id,nom,prenom,matricule,statut_collaborateur,photo_path&limit=1000`
       ) || [];
     },
   });
@@ -329,9 +372,16 @@ const ManagerSpace: React.FC = () => {
     queryKey: ["manager-uos", user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      return await api.get(
-        "/db/unites_organisationnelles?actif=eq.true&order=niveau,libelle&limit=500"
-      ) || [];
+      // Le proxy /db refuse le tri multi-colonnes (order=niveau,libelle → 400).
+      // On trie donc sur une seule colonne côté serveur, puis on affine en JS.
+      const rows: UO[] = (await api.get(
+        "/db/unites_organisationnelles?actif=eq.true&order=niveau&limit=500"
+      )) || [];
+      return [...rows].sort(
+        (a, b) =>
+          ((a as any).niveau ?? 0) - ((b as any).niveau ?? 0) ||
+          (a.libelle || "").localeCompare(b.libelle || "")
+      );
     },
   });
 
@@ -382,6 +432,191 @@ const ManagerSpace: React.FC = () => {
     return result;
   }, [equipe, affectationsEquipe, uosManager]);
 
+  // ═══════════════════════════════════════════════════════════
+  // ÉCRAN "DÉPARTS" : résolution, filtres (UO, période, motifs…), vue
+  // ═══════════════════════════════════════════════════════════
+  const collabById = useMemo(() => {
+    const m = new Map<string, Collab>();
+    equipe.forEach((c) => m.set(c.id, c));
+    // Compléter avec les collaborateurs partis (absents de `equipe`)
+    departCollabs.forEach((c) => { if (!m.has(c.id)) m.set(c.id, c as any); });
+    return m;
+  }, [equipe, departCollabs]);
+
+  // collab → UO (depuis affectations actives)
+  const collabToUoId = useMemo(() => {
+    const m = new Map<string, string>();
+    affectationsEquipe.forEach((a) => { if (a.unite_id) m.set(a.collaborateur_id, a.unite_id); });
+    return m;
+  }, [affectationsEquipe]);
+
+  // États de filtre / vue
+  const [departVue, setDepartVue] = useState<"cartes" | "liste">("cartes");
+  const [departSearch, setDepartSearch] = useState("");
+  const [departMotifs, setDepartMotifs] = useState<string[]>([]);          // multi-choix
+  const [departStatut, setDepartStatut] = useState<"actifs" | "avenir" | "partis" | "annules" | "tous">("actifs");
+  const [departTri, setDepartTri] = useState<"date_asc" | "date_desc" | "nom">("date_asc");
+  const [departUoIds, setDepartUoIds] = useState<string[]>([]);            // multi (UoTreePicker)
+  const [departPeriode, setDepartPeriode] =
+    useState<"tous" | "ce_mois" | "30j" | "90j" | "annee" | "perso">("tous");
+  const [departDateMin, setDepartDateMin] = useState("");
+  const [departDateMax, setDepartDateMax] = useState("");
+  const [departDetail, setDepartDetail] = useState<any | null>(null);      // modale détail
+
+  const motifsDisponibles = useMemo(
+    () => Array.from(new Set(departs.map((d) => d.motif_depart).filter(Boolean))).sort(),
+    [departs]
+  );
+
+  // Étend la sélection d'UO à tous leurs descendants (arbre uosManager)
+  const uoSetSelectionne = useMemo(() => {
+    if (departUoIds.length === 0) return null; // null = pas de filtre UO
+    const enfantsParParent = new Map<string, string[]>();
+    uosManager.forEach((u) => {
+      const p = u.parent_id || "";
+      if (!enfantsParParent.has(p)) enfantsParParent.set(p, []);
+      enfantsParParent.get(p)!.push(u.id);
+    });
+    const out = new Set<string>();
+    const pile = [...departUoIds];
+    while (pile.length) {
+      const id = pile.pop()!;
+      if (out.has(id)) continue;
+      out.add(id);
+      (enfantsParParent.get(id) || []).forEach((c) => pile.push(c));
+    }
+    return out;
+  }, [departUoIds, uosManager]);
+
+  // Fenêtre de dates selon le mode période
+  const periodeRange = useMemo<{ min: Date | null; max: Date | null }>(() => {
+    const now = new Date();
+    switch (departPeriode) {
+      case "ce_mois": return { min: startOfMonth(now), max: endOfMonth(now) };
+      case "30j":     return { min: now, max: addDays(now, 30) };
+      case "90j":     return { min: now, max: addDays(now, 90) };
+      case "annee":   return { min: new Date(now.getFullYear(), 0, 1), max: new Date(now.getFullYear(), 11, 31) };
+      case "perso":   return {
+        min: departDateMin ? parseISO(departDateMin) : null,
+        max: departDateMax ? parseISO(departDateMax) : null,
+      };
+      default:        return { min: null, max: null };
+    }
+  }, [departPeriode, departDateMin, departDateMax]);
+
+  const departsAffiches = useMemo(() => {
+    const today = new Date();
+    let list = departs.map((d) => {
+      const c = collabById.get(d.collaborateur_id);
+      const days = d.date_depart ? differenceInDays(parseISO(d.date_depart), today) : 0;
+      const statut = String(d.statut || "").toUpperCase(); // PLANIFIE | TRAITE | ANNULE
+      return {
+        ...d, _collab: c, _days: days, _statut: statut,
+        _uo: collabToUoId.get(d.collaborateur_id) || null,
+      };
+    });
+
+    const q = departSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((d) => {
+        const c = d._collab;
+        return (
+          `${c?.prenom ?? ""} ${c?.nom ?? ""}`.toLowerCase().includes(q) ||
+          (c?.matricule ?? "").toLowerCase().includes(q)
+        );
+      });
+    }
+    if (departMotifs.length) list = list.filter((d) => departMotifs.includes(d.motif_depart));
+
+    // Statut métier (les annulés sont masqués sauf si explicitement demandés)
+    if (departStatut === "actifs") list = list.filter((d) => d._statut !== "ANNULE");
+    else if (departStatut === "avenir") list = list.filter((d) => d._statut === "PLANIFIE" && d._days >= 0);
+    else if (departStatut === "partis") list = list.filter((d) => d._statut === "TRAITE");
+    else if (departStatut === "annules") list = list.filter((d) => d._statut === "ANNULE");
+    // "tous" : aucun filtre statut
+
+    if (uoSetSelectionne) list = list.filter((d) => d._uo && uoSetSelectionne.has(d._uo));
+
+    if (periodeRange.min || periodeRange.max) {
+      list = list.filter((d) => {
+        if (!d.date_depart) return false;
+        const dt = parseISO(d.date_depart);
+        if (periodeRange.min && dt < periodeRange.min) return false;
+        if (periodeRange.max && dt > periodeRange.max) return false;
+        return true;
+      });
+    }
+
+    list.sort((a, b) => {
+      if (departTri === "nom")
+        return `${a._collab?.nom ?? ""}`.localeCompare(`${b._collab?.nom ?? ""}`);
+      const da = a.date_depart || "";
+      const dbb = b.date_depart || "";
+      return departTri === "date_desc" ? dbb.localeCompare(da) : da.localeCompare(dbb);
+    });
+    return list;
+  }, [departs, collabById, collabToUoId, departSearch, departMotifs, departStatut, departTri, uoSetSelectionne, periodeRange]);
+
+  // Badge cohérent avec le vrai statut métier
+  const departBadge = (d: any): { label: string; bg: string; color: string } => {
+    if (d._statut === "ANNULE") return { label: "Annulé", bg: "hsl(var(--muted)/0.6)", color: "hsl(var(--muted-foreground))" };
+    if (d._statut === "TRAITE") return { label: "Parti", bg: DS.greenL, color: DS.green };
+    // PLANIFIE (ou autre) → échéance
+    const j = d._days;
+    if (j < 0) return { label: "À traiter", bg: DS.redL, color: DS.red };
+    if (j === 0) return { label: "Aujourd'hui", bg: DS.redL, color: DS.red };
+    if (j <= 7) return { label: `Dans ${j}j`, bg: DS.redL, color: DS.red };
+    if (j <= 30) return { label: `Dans ${j}j`, bg: DS.amberL, color: DS.amber };
+    return { label: `Dans ${j}j`, bg: DS.accentL, color: DS.accent };
+  };
+
+  const toggleMotif = (m: string) =>
+    setDepartMotifs((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+
+  const departFiltresActifs =
+    !!departSearch || departMotifs.length > 0 || departStatut !== "actifs" ||
+    departUoIds.length > 0 || departPeriode !== "tous";
+
+  const resetDepartFiltres = () => {
+    setDepartSearch(""); setDepartMotifs([]); setDepartStatut("actifs");
+    setDepartUoIds([]); setDepartPeriode("tous"); setDepartDateMin(""); setDepartDateMax("");
+  };
+
+  // Lecture/téléchargement d'un document de départ (fetch authentifié -> blob)
+  const ouvrirDocDepart = async (
+    departId: string, docKey: string, mode: "view" | "download", filename?: string
+  ) => {
+    try {
+      const base = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:8000/api/v1";
+      const token = tokenStore.get();
+      const res = await fetch(
+        `${base}/storage/depart-documents/${departId}/${docKey}?mode=${mode}&role_actif=${encodeURIComponent(role || "")}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: `Erreur ${res.status}` }));
+        alert(e.detail || `Erreur ${res.status}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (mode === "download") {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename || `${docKey}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        window.open(url, "_blank");
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err: any) {
+      alert(err?.message || "Erreur lors de l'accès au document.");
+    }
+  };
+  const peutTelecharger = role === "gestionnaire_rh" || role === "administrateur";
+
   // ── Absences en cours aujourd'hui ────────────────────
   const today = format(new Date(), "yyyy-MM-dd");
   const absencesAujourdhui = useMemo(() =>
@@ -416,6 +651,7 @@ const ManagerSpace: React.FC = () => {
         code_type_conge: d.code_type_conge,
         demande_id: d.id,
         date_debut: d.date_debut,
+        date_fin_absence: d.date_fin_absence,
         date_retour: d.date_retour,
         nbr_jours_calendaires: d.nbr_jours_calendaires || 0,
         nbr_jours_decomptes: d.nbr_jours_decomptes || 0,
@@ -523,127 +759,6 @@ const ManagerSpace: React.FC = () => {
     <TooltipProvider>
     <div className="flex h-full min-h-screen" style={{ background: "hsl(var(--background))" }}>
 
-      {/* ── Sidebar navigation ── */}
-      <aside className="w-56 flex-shrink-0 border-r flex flex-col"
-        style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
-
-        {/* Logo zone */}
-        <div className="px-4 py-5 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-              style={{ background: DS.accent }}>
-              <Briefcase size={16} color="white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold leading-tight" style={{ color: "hsl(var(--foreground))" }}>
-                Espace Manager
-              </p>
-              <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground))" }}>
-                {format(new Date(), "EEEE d MMMM", { locale: fr })}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Nav items */}
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {NAV.map(item => {
-            const children = (item as any).children;
-            const isParentActive = activeTab === item.key || (children && children.some((c: any) => activeTab === c.key));
-
-            // Item avec sous-menus (Congés)
-            if (children) {
-              return (
-                <div key={item.key}>
-                  <button
-                    onClick={() => setCongesExpanded(v => !v)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
-                    style={{
-                      background: isParentActive ? DS.accentL : "transparent",
-                      color: isParentActive ? DS.accent : "hsl(var(--muted-foreground))",
-                    }}>
-                    {item.icon}
-                    <span className="flex-1 text-left">{item.label}</span>
-                    {(item as any).badge > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold min-w-[18px] text-center mr-1"
-                        style={{ background: (item as any).badgeColor || DS.accent, color: "white" }}>
-                        {(item as any).badge}
-                      </span>
-                    )}
-                    <ChevronDown size={12} style={{
-                      transition: "transform 0.2s",
-                      transform: congesExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                      color: "hsl(var(--muted-foreground))",
-                      flexShrink: 0,
-                    }} />
-                  </button>
-                  {congesExpanded && (
-                    <div className="ml-3 mt-0.5 space-y-0.5 border-l pl-2.5"
-                      style={{ borderColor: "hsl(var(--border))" }}>
-                      {children.map((child: any) => (
-                        <button key={child.key}
-                          onClick={() => setActiveTab(child.key as any)}
-                          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-medium transition-all"
-                          style={{
-                            background: activeTab === child.key ? DS.accentL : "transparent",
-                            color: activeTab === child.key ? DS.accent : "hsl(var(--muted-foreground))",
-                          }}>
-                          <span style={{ color: activeTab === child.key ? DS.accent : "hsl(var(--muted-foreground))" }}>
-                            {child.icon}
-                          </span>
-                          <span className="flex-1 text-left">{child.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            // Item simple
-            return (
-              <button key={item.key}
-                onClick={() => {
-                  if (item.key === "mon-espace") { navigate("/mon-espace"); return; }
-                  setActiveTab(item.key as any);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative"
-                style={{
-                  background: activeTab === item.key ? DS.accentL : "transparent",
-                  color: activeTab === item.key ? DS.accent : "hsl(var(--muted-foreground))",
-                }}>
-                {item.icon}
-                <span className="flex-1 text-left">{item.label}</span>
-                {(item as any).badge !== undefined && (item as any).badge > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold min-w-[18px] text-center"
-                    style={{ background: (item as any).badgeColor || DS.accent, color: "white" }}>
-                    {(item as any).badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* User footer */}
-        <div className="p-3 border-t" style={{ borderColor: "hsl(var(--border))" }}>
-          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
-            style={{ background: "hsl(var(--muted)/0.4)" }}>
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
-              style={{ background: DS.accentL, color: DS.accent }}>
-              M
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate" style={{ color: "hsl(var(--foreground))" }}>
-                Manager
-              </p>
-              <p className="text-[10px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
-                {equipe.length} collaborateur(s)
-              </p>
-            </div>
-          </div>
-        </div>
-      </aside>
 
       {/* ── Contenu principal ── */}
       <main className="flex-1 overflow-auto">
@@ -1474,7 +1589,7 @@ const ManagerSpace: React.FC = () => {
           ════════════════════════════════════════════ */}
           {activeTab === "departs" && (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
                     Départs de l'équipe
@@ -1483,40 +1598,184 @@ const ManagerSpace: React.FC = () => {
                     Suivi des départs planifiés et traités
                   </p>
                 </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ background: "hsl(var(--muted)/0.5)", color: "hsl(var(--muted-foreground))" }}>
+                    {departsAffiches.length} / {departs.length} départ(s)
+                  </span>
+                  {/* Toggle vue cartes / liste */}
+                  <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+                    {([
+                      { k: "cartes", label: "Cartes", icon: <LayoutGrid size={14} /> },
+                      { k: "liste",  label: "Liste",  icon: <List size={14} /> },
+                    ] as const).map((opt) => (
+                      <button key={opt.k} onClick={() => setDepartVue(opt.k)}
+                        title={opt.label}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 transition-colors"
+                        style={{
+                          background: departVue === opt.k ? "hsl(var(--primary))" : "hsl(var(--background))",
+                          color: departVue === opt.k ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))",
+                        }}>
+                        {opt.icon}{opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {departs.length === 0 ? (
+              {/* ── Barre de filtres ── */}
+              <div className="rounded-2xl border p-3 space-y-2"
+                style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Recherche */}
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2"
+                      style={{ color: "hsl(var(--muted-foreground))" }} />
+                    <input
+                      value={departSearch}
+                      onChange={(e) => setDepartSearch(e.target.value)}
+                      placeholder="Rechercher (nom, matricule)…"
+                      className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border outline-none"
+                      style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                    />
+                  </div>
+
+                  {/* UO hiérarchique (multi) */}
+                  <div className="min-w-[200px]">
+                    <UoTreePicker selected={departUoIds} onChange={setDepartUoIds} />
+                  </div>
+
+                  {/* Statut (segmenté) */}
+                  <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+                    {([
+                      { k: "actifs", label: "Actifs" },
+                      { k: "avenir", label: "À venir" },
+                      { k: "partis", label: "Partis" },
+                      { k: "annules", label: "Annulés" },
+                      { k: "tous", label: "Tous" },
+                    ] as const).map((opt) => (
+                      <button key={opt.k} onClick={() => setDepartStatut(opt.k)}
+                        className="text-xs px-3 py-1.5 transition-colors"
+                        style={{
+                          background: departStatut === opt.k ? "hsl(var(--primary))" : "hsl(var(--background))",
+                          color: departStatut === opt.k ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))",
+                        }}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Tri */}
+                  <select value={departTri} onChange={(e) => setDepartTri(e.target.value as any)}
+                    className="text-sm rounded-lg border px-2.5 py-1.5 outline-none"
+                    style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                    <option value="date_asc">Date ↑</option>
+                    <option value="date_desc">Date ↓</option>
+                    <option value="nom">Nom (A→Z)</option>
+                  </select>
+
+                  {departFiltresActifs && (
+                    <button onClick={resetDepartFiltres}
+                      className="text-xs px-2.5 py-1.5 rounded-lg border"
+                      style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+                      Réinitialiser
+                    </button>
+                  )}
+                </div>
+
+                {/* Période : raccourcis + dates perso */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Période :</span>
+                  {([
+                    { k: "tous",   label: "Toutes" },
+                    { k: "ce_mois",label: "Ce mois" },
+                    { k: "30j",    label: "30 prochains j." },
+                    { k: "90j",    label: "90 prochains j." },
+                    { k: "annee",  label: "Cette année" },
+                    { k: "perso",  label: "Personnalisé" },
+                  ] as const).map((opt) => (
+                    <button key={opt.k} onClick={() => setDepartPeriode(opt.k)}
+                      className="text-xs px-2.5 py-1 rounded-full border transition-colors"
+                      style={{
+                        background: departPeriode === opt.k ? DS.accentL : "transparent",
+                        borderColor: departPeriode === opt.k ? DS.accent : "hsl(var(--border))",
+                        color: departPeriode === opt.k ? DS.accent : "hsl(var(--muted-foreground))",
+                      }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                  {departPeriode === "perso" && (
+                    <span className="flex items-center gap-1.5">
+                      <input type="date" value={departDateMin} onChange={(e) => setDepartDateMin(e.target.value)}
+                        className="text-xs rounded-lg border px-2 py-1 outline-none"
+                        style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }} />
+                      <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>→</span>
+                      <input type="date" value={departDateMax} onChange={(e) => setDepartDateMax(e.target.value)}
+                        className="text-xs rounded-lg border px-2 py-1 outline-none"
+                        style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }} />
+                    </span>
+                  )}
+                </div>
+
+                {/* Motifs (multi-choix par chips) */}
+                {motifsDisponibles.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Motifs :</span>
+                    {motifsDisponibles.map((m) => {
+                      const on = departMotifs.includes(m);
+                      return (
+                        <button key={m} onClick={() => toggleMotif(m)}
+                          className="text-xs px-2.5 py-1 rounded-full border transition-colors"
+                          style={{
+                            background: on ? DS.purpleL : "transparent",
+                            borderColor: on ? DS.purple : "hsl(var(--border))",
+                            color: on ? DS.purple : "hsl(var(--muted-foreground))",
+                          }}>
+                          {m}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {departsAffiches.length === 0 ? (
                 <div className="text-center py-16 rounded-2xl border"
                   style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
                   <DoorOpen size={40} style={{ color: "hsl(var(--muted-foreground))", margin: "0 auto 12px" }} />
                   <p className="text-sm font-medium" style={{ color: "hsl(var(--foreground))" }}>
-                    Aucun départ enregistré
+                    {departs.length === 0 ? "Aucun départ enregistré" : "Aucun départ ne correspond aux filtres"}
                   </p>
                 </div>
-              ) : (
+              ) : departVue === "cartes" ? (
+                /* ── VUE CARTES ── */
                 <div className="space-y-3">
-                  {departs.map(d => {
-                    const daysUntil = differenceInDays(parseISO(d.date_depart), new Date());
-                    const isPast2 = daysUntil < 0;
-                    const isUrgent = daysUntil >= 0 && daysUntil <= 7;
-                    const isSoon = daysUntil > 7 && daysUntil <= 30;
-
+                  {departsAffiches.map(d => {
+                    const collab = d._collab;
+                    const badge = departBadge(d);
+                    const isAnnule = d._statut === "ANNULE";
+                    const borderUrgent = !isAnnule && d._statut !== "TRAITE" && d._days >= 0 && d._days <= 7;
+                    const borderSoon = !isAnnule && d._statut !== "TRAITE" && d._days > 7 && d._days <= 30;
                     return (
-                      <div key={d.id} className="rounded-2xl border p-5 flex items-center gap-4"
+                      <button key={d.id} onClick={() => setDepartDetail(d)}
+                        className="w-full text-left rounded-2xl border p-5 flex items-center gap-4 transition-shadow hover:shadow-md"
                         style={{
                           background: "hsl(var(--card))",
-                          borderColor: isUrgent ? `${DS.red}40` : isSoon ? `${DS.amber}40` : "hsl(var(--border))",
+                          opacity: isAnnule ? 0.7 : 1,
+                          borderColor: borderUrgent ? `${DS.red}40` : borderSoon ? `${DS.amber}40` : "hsl(var(--border))",
                         }}>
-                        <Avatar collab={d.collaborateurs} size={44} />
+                        <Avatar collab={collab} size={44} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-bold" style={{ color: "hsl(var(--foreground))" }}>
-                              {(d.collaborateurs as any)?.prenom} {(d.collaborateurs as any)?.nom}
+                              {collab ? `${collab.prenom} ${collab.nom}` : "Collaborateur inconnu"}
                             </p>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                              style={{ background: "hsl(var(--muted)/0.5)", color: "hsl(var(--muted-foreground))" }}>
-                              {(d.collaborateurs as any)?.matricule}
-                            </span>
+                            {collab?.matricule && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                style={{ background: "hsl(var(--muted)/0.5)", color: "hsl(var(--muted-foreground))" }}>
+                                {collab.matricule}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
                             {d.motif_depart} · Départ le <strong style={{ color: "hsl(var(--foreground))" }}>{fmt(d.date_depart)}</strong>
@@ -1524,21 +1783,61 @@ const ManagerSpace: React.FC = () => {
                           </p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          {isPast2 ? (
-                            <span className="text-xs px-3 py-1 rounded-full"
-                              style={{ background: DS.greenL, color: DS.green }}>
-                              Parti
-                            </span>
-                          ) : (
-                            <span className="text-xs px-3 py-1 rounded-full font-bold"
-                              style={{ background: isUrgent ? DS.redL : DS.amberL, color: isUrgent ? DS.red : DS.amber }}>
-                              {daysUntil === 0 ? "Aujourd'hui" : `Dans ${daysUntil}j`}
-                            </span>
-                          )}
+                          <span className="text-xs px-3 py-1 rounded-full font-bold"
+                            style={{ background: badge.bg, color: badge.color }}>
+                            {badge.label}
+                          </span>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
+                </div>
+              ) : (
+                /* ── VUE LISTE ── */
+                <div className="rounded-2xl border overflow-hidden"
+                  style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: "hsl(var(--muted)/0.4)" }}>
+                        <th className="text-left font-semibold px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>Collaborateur</th>
+                        <th className="text-left font-semibold px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>Matricule</th>
+                        <th className="text-left font-semibold px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>Motif</th>
+                        <th className="text-left font-semibold px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>Date de départ</th>
+                        <th className="text-left font-semibold px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>Fin préavis</th>
+                        <th className="text-right font-semibold px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {departsAffiches.map((d) => {
+                        const collab = d._collab;
+                        const badge = departBadge(d);
+                        return (
+                          <tr key={d.id} onClick={() => setDepartDetail(d)}
+                            className="border-t cursor-pointer transition-colors hover:bg-[hsl(var(--muted)/0.3)]"
+                            style={{ borderColor: "hsl(var(--border))", opacity: d._statut === "ANNULE" ? 0.7 : 1 }}>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <Avatar collab={collab} size={28} />
+                                <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>
+                                  {collab ? `${collab.prenom} ${collab.nom}` : "Inconnu"}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{collab?.matricule || "—"}</td>
+                            <td className="px-4 py-2.5" style={{ color: "hsl(var(--foreground))" }}>{d.motif_depart || "—"}</td>
+                            <td className="px-4 py-2.5" style={{ color: "hsl(var(--foreground))" }}>{fmt(d.date_depart)}</td>
+                            <td className="px-4 py-2.5" style={{ color: "hsl(var(--muted-foreground))" }}>{d.preavis_date_fin ? fmt(d.preavis_date_fin) : "—"}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <span className="text-xs px-2.5 py-1 rounded-full font-bold"
+                                style={{ background: badge.bg, color: badge.color }}>
+                                {badge.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </>
@@ -2083,6 +2382,366 @@ const ManagerSpace: React.FC = () => {
 
         </div>
       </main>
+
+      {/* ── Modale détail départ (dossier complet) ── */}
+      {departDetail && (() => {
+        const d: any = departDetail;
+        const collab = d._collab;
+        const badge = departBadge(d);
+        const isAnnule = d._statut === "ANNULE";
+        const accent = isAnnule ? "hsl(var(--muted-foreground))" : badge.color;
+        const accentSoft = isAnnule ? "hsl(var(--muted)/0.5)" : badge.bg;
+        const uoLib = d._uo ? (uosManager.find((u) => u.id === d._uo)?.libelle || null) : null;
+        const today = new Date();
+
+        const money = (v: any) =>
+          v === null || v === undefined || v === "" || isNaN(Number(v)) ? null
+            : `${Number(v).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+        const num = (v: any) => (v === null || v === undefined || v === "" || isNaN(Number(v)) ? 0 : Number(v));
+        const EMPTY = <span style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>—</span>;
+
+        // ── Étapes du processus (toutes affichées, datées ou non) ──
+        const etapes = [
+          { key: "notif",     label: "Notification",   date: d.date_notification,        icon: <Bell size={11} /> },
+          { key: "entretien", label: "Entretien",      date: d.date_entretien_prealable, icon: <MessageSquare size={11} /> },
+          { key: "preavis_d", label: "Début préavis",  date: d.preavis_date_debut,       icon: <Clock size={11} /> },
+          { key: "depart",    label: "Départ",         date: d.date_depart,              icon: <DoorOpen size={12} />, pivot: true },
+          { key: "preavis_f", label: "Fin préavis",    date: d.preavis_date_fin,         icon: <Clock size={11} /> },
+          { key: "traite",    label: "Traité",         date: d.traite_le,                icon: <CheckCircle size={11} /> },
+        ];
+
+        // ── Indemnités ──
+        const palette = [DS.accent, DS.green, DS.amber, DS.purple, DS.teal, DS.red, "hsl(220 60% 50%)", "hsl(330 65% 55%)"];
+        const indemnites = [
+          { label: "Perte d'emploi",   value: num(d.indemnite_perte_emploi) },
+          { label: "Départ retraite",  value: num(d.indemnite_depart_retraite) },
+          { label: "Congés payés",     value: num(d.indemnite_conges_payes) },
+          { label: "Compensatrice",    value: num(d.indemnite_compensatrice) },
+          { label: "Transactionnelle", value: num(d.indemnite_transactionnelle) },
+          { label: "Ancienneté",       value: num(d.indemnite_anciennete) },
+          { label: "13ème mois",       value: num(d.indemnite_13eme_mois) },
+        ].filter((x) => x.value > 0).map((x, i) => ({ ...x, color: palette[i % palette.length] }));
+        const totalInd = num(d.indemnite_total) || indemnites.reduce((s, x) => s + x.value, 0);
+        const maxInd = Math.max(1, ...indemnites.map((x) => x.value));
+
+        // ── Check-lists ──
+        const DOCS = [
+          { key: "lettre_notification", label: "Lettre de notification" },
+          { key: "pv_entretien", label: "PV d'entretien" },
+          { key: "accord_amiable", label: "Accord amiable" },
+          { key: "attestation_travail", label: "Attestation de travail" },
+          { key: "certificat_conges", label: "Certificat de congés" },
+          { key: "recu_stc", label: "Reçu solde de tout compte" },
+          { key: "radiation_cnss", label: "Radiation CNSS" },
+          { key: "attestation_amo", label: "Attestation AMO" },
+          { key: "recu_materiel", label: "Reçu de matériel" },
+        ];
+        const docsOk = DOCS.filter((x) => d[`doc_${x.key}`]).length;
+        const materiels = [
+          { label: "Badge", v: !!d.materiel_badge_restitue },
+          { label: "Ordinateur", v: !!d.materiel_ordinateur_restitue },
+          { label: "Véhicule", v: !!d.materiel_vehicule_restitue },
+          { label: "Téléphone", v: !!d.materiel_telephone_restitue },
+        ];
+        const matOk = materiels.filter((x) => x.v).length;
+        const acces = [
+          { label: "Accès SI désactivé", v: !!d.acces_si_desactive },
+          { label: "Email désactivé", v: !!d.acces_email_desactive },
+        ];
+        const accesOk = acces.filter((x) => x.v).length;
+
+        // ── Sous-composants ──
+        const Ring = ({ ok, total, color, label }: { ok: number; total: number; color: string; label: string }) => {
+          const r = 24, c = 2 * Math.PI * r, pct = total ? ok / total : 0;
+          return (
+            <div className="flex flex-col items-center gap-1">
+              <div className="relative" style={{ width: 58, height: 58 }}>
+                <svg width="58" height="58" viewBox="0 0 58 58" className="-rotate-90">
+                  <circle cx="29" cy="29" r={r} fill="none" stroke="hsl(var(--muted)/0.4)" strokeWidth="5" />
+                  <circle cx="29" cy="29" r={r} fill="none" stroke={ok ? color : "hsl(var(--muted)/0.4)"} strokeWidth="5" strokeLinecap="round"
+                    strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[13px] font-bold" style={{ color: "hsl(var(--foreground))" }}>{ok}/{total}</span>
+                </div>
+              </div>
+              <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</span>
+            </div>
+          );
+        };
+        const Eyebrow = ({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) => (
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide mb-3"
+            style={{ color: "hsl(var(--muted-foreground))" }}>{icon}{children}</div>
+        );
+        const Field = ({ label, value, full }: { label: string; value: any; full?: boolean }) => (
+          <div className={full ? "col-span-2" : ""}>
+            <div className="text-[10px] uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</div>
+            <div className="text-sm mt-0.5" style={{ color: "hsl(var(--foreground))" }}>
+              {value === null || value === undefined || value === "" ? EMPTY : value}
+            </div>
+          </div>
+        );
+        const Coche = ({ ok, label, path, docKey }: { ok: boolean; label: string; path?: string; docKey?: string }) => (
+          <div className="flex items-center gap-2">
+            {ok
+              ? <CheckCircle size={15} style={{ color: DS.green, flexShrink: 0 }} />
+              : <span className="inline-block rounded-full flex-shrink-0" style={{ width: 14, height: 14, border: "2px solid hsl(var(--border))" }} />}
+            <span className="text-[12px] truncate" style={{ color: ok ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>{label}</span>
+            {ok && docKey && (
+              <span className="flex items-center gap-1 ml-auto flex-shrink-0">
+                <button onClick={() => ouvrirDocDepart(d.id, docKey, "view")}
+                  className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                  style={{ background: DS.accentL, color: DS.accent }} title="Aperçu">
+                  <Eye size={11} /> Voir
+                </button>
+                {peutTelecharger && (
+                  <button onClick={() => ouvrirDocDepart(d.id, docKey, "download", path ? String(path).split(/[\\/]/).pop() : undefined)}
+                    className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                    style={{ background: DS.greenL, color: DS.green }} title="Télécharger">
+                    <Download size={11} /> Télécharger
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        );
+
+        const initiales = collab ? `${collab.prenom?.[0] ?? ""}${collab.nom?.[0] ?? ""}` : "?";
+        const dispenseLabel = d.preavis_dispense === true ? "Dispensé" : d.preavis_effectue === true ? "Effectué" : (d.preavis_dispense === false || d.preavis_effectue === false) ? "À effectuer" : null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+            onClick={() => setDepartDetail(null)}>
+            <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden"
+              style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+              onClick={(e) => e.stopPropagation()}>
+
+              {/* ── HÉRO ── */}
+              <div className="relative flex-shrink-0 p-5"
+                style={{ background: `linear-gradient(135deg, ${accentSoft}, transparent 70%)` }}>
+                <div className="absolute top-0 left-0 right-0 h-1" style={{ background: accent }} />
+                {/* Badge statut : en haut a droite, decale a gauche du X */}
+                <span className="absolute top-3 right-12 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap"
+                  style={{ background: badge.bg, color: badge.color }}>
+                  {badge.label}
+                </span>
+                <button onClick={() => setDepartDetail(null)}
+                  className="absolute top-3 right-3 p-1.5 rounded-lg"
+                  style={{ background: "hsl(var(--card))", color: "hsl(var(--muted-foreground))" }}>
+                  <X size={16} />
+                </button>
+                <div className="flex items-start gap-4">
+                  <div className="flex items-center justify-center rounded-2xl font-bold flex-shrink-0"
+                    style={{ width: 60, height: 60, background: accentSoft, color: accent, fontSize: "calc(20px * var(--font-scale))", border: `2px solid ${accent}` }}>
+                    {initiales}
+                  </div>
+                  <div className="flex-1 min-w-0 pr-24">
+                    <h2 className="text-xl font-bold leading-tight" style={{ color: "hsl(var(--foreground))" }}>
+                      {collab ? `${collab.prenom} ${collab.nom}` : "Collaborateur inconnu"}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {collab?.matricule && (
+                        <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--card))" }}>{collab.matricule}</span>
+                      )}
+                      {uoLib && <span className="flex items-center gap-1"><Building2 size={12} />{uoLib}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                      <span className="text-sm font-semibold px-2.5 py-1 rounded-lg"
+                        style={{ background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}>
+                        {d.motif_depart || "Motif non précisé"}
+                      </span>
+                      <span className="text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        Départ le <strong style={{ color: "hsl(var(--foreground))" }}>{fmt(d.date_depart)}</strong>
+                      </span>
+                      {d.reference_decision && (
+                        <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>· Réf. {d.reference_decision}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── CORPS scrollable ── */}
+              <div className="p-5 space-y-5 overflow-y-auto">
+
+                {/* Suivi du workflow (si départ en mode Processus) */}
+                {(d as any).mode_traitement === "PROCESSUS" && (
+                  <div className="rounded-xl border p-4" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                    <Eyebrow icon={<Activity size={13} />}>Suivi de la validation</Eyebrow>
+                    <SuiviDemandeWorkflow tableSource="collaborateur_departs" demandeId={d.id} statutDemande={d.statut} />
+                  </div>
+                )}
+
+                {/* Informations du départ */}
+                <div className="rounded-xl border p-4" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                  <Eyebrow icon={<DoorOpen size={13} />}>Informations du départ</Eyebrow>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <Field label="Motif" value={d.motif_depart} />
+                    <Field label="Code motif" value={d.code_motif_depart} />
+                    <Field label="Statut" value={d.statut} />
+                    <Field label="Référence décision" value={d.reference_decision} />
+                    <Field label="Décision finale" value={d.decision_finale} />
+                    <Field label="Date de départ" value={fmt(d.date_depart)} />
+                    <Field label="Date de notification" value={d.date_notification ? fmt(d.date_notification) : null} />
+                    <Field label="Entretien préalable" value={d.date_entretien_prealable ? fmt(d.date_entretien_prealable) : null} />
+                  </div>
+                </div>
+
+                {/* Timeline (toutes les étapes) */}
+                <div className="rounded-xl border p-4" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                  <Eyebrow icon={<Activity size={13} />}>Déroulé du départ</Eyebrow>
+                  <div className="flex items-start justify-between relative">
+                    <div className="absolute left-0 right-0 h-0.5" style={{ top: 11, background: "hsl(var(--border))" }} />
+                    {etapes.map((e) => {
+                      const has = !!e.date;
+                      const dt = has ? parseISO(e.date) : null;
+                      const done = has && !isAnnule && dt! <= today;
+                      const sz = e.pivot ? 24 : 22;
+                      return (
+                        <div key={e.key} className="relative flex flex-col items-center text-center px-0.5" style={{ flex: 1, zIndex: 1 }}>
+                          <div className="flex items-center justify-center rounded-full"
+                            style={{
+                              width: sz, height: sz,
+                              background: !has ? "hsl(var(--card))" : isAnnule ? "hsl(var(--muted)/0.6)" : done ? accent : "hsl(var(--card))",
+                              border: `2px solid ${!has ? "hsl(var(--border))" : isAnnule ? "hsl(var(--muted-foreground))" : done ? accent : accent}`,
+                              color: done && !isAnnule ? "#fff" : "hsl(var(--muted-foreground))",
+                              opacity: has ? 1 : 0.6,
+                            }}>
+                            {e.pivot ? <DoorOpen size={12} /> : has ? (done ? <Check size={11} /> : <Clock size={10} />) : <Clock size={10} />}
+                          </div>
+                          <div className="mt-1.5 text-[10px] font-medium leading-tight" style={{ color: e.pivot ? accent : "hsl(var(--foreground))" }}>{e.label}</div>
+                          <div className="text-[10px]" style={{ color: "hsl(var(--muted-foreground))" }}>{has ? fmt(e.date) : "à définir"}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Chiffres-clés (toujours visibles) */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Préavis", value: d.preavis_duree_jours ? `${d.preavis_duree_jours} j` : null, hint: dispenseLabel },
+                    { label: "Solde congés", value: num(d.solde_conges_jours) ? `${d.solde_conges_jours} j` : null, hint: undefined },
+                    { label: "Ancienneté", value: num(d.anciennete_retenue_ans) ? `${d.anciennete_retenue_ans} ans` : null, hint: undefined },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-xl border p-3" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                      <div className="text-[10px] uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>{s.label}</div>
+                      <div className="text-lg font-bold leading-tight mt-0.5" style={{ color: "hsl(var(--foreground))" }}>{s.value ?? EMPTY}</div>
+                      {s.hint && <div className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{s.hint}</div>}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Préavis détaillé */}
+                <div className="rounded-xl border p-4" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                  <Eyebrow icon={<Clock size={13} />}>Préavis</Eyebrow>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <Field label="Catégorie" value={d.preavis_categorie} />
+                    <Field label="Durée" value={d.preavis_duree_jours ? `${d.preavis_duree_jours} jours` : null} />
+                    <Field label="Début" value={d.preavis_date_debut ? fmt(d.preavis_date_debut) : null} />
+                    <Field label="Fin" value={d.preavis_date_fin ? fmt(d.preavis_date_fin) : null} />
+                    <Field label="Statut préavis" value={dispenseLabel} />
+                    <Field label="Indemnité de dispense" value={money(d.preavis_dispense_indemnite)} />
+                  </div>
+                </div>
+
+                {/* Solde de tout compte */}
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+                  <div className="flex items-center justify-between px-4 py-3" style={{ background: totalInd > 0 ? DS.greenL : "hsl(var(--muted)/0.3)" }}>
+                    <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+                      <Award size={15} style={{ color: totalInd > 0 ? DS.green : "hsl(var(--muted-foreground))" }} /> Solde de tout compte
+                    </span>
+                    <span className="text-lg font-extrabold" style={{ color: totalInd > 0 ? DS.green : "hsl(var(--muted-foreground))" }}>
+                      {money(totalInd) || "À calculer"}
+                    </span>
+                  </div>
+                  <div className="p-4 space-y-2.5" style={{ background: "hsl(var(--background))" }}>
+                    {indemnites.length > 0 ? (
+                      indemnites.map((it) => (
+                        <div key={it.label}>
+                          <div className="flex items-center justify-between text-[12px] mb-1">
+                            <span style={{ color: "hsl(var(--foreground))" }}>{it.label}</span>
+                            <span className="font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>{money(it.value)}</span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden" style={{ background: "hsl(var(--muted)/0.4)" }}>
+                            <div className="h-full rounded-full" style={{ width: `${Math.max(4, (it.value / maxInd) * 100)}%`, background: it.color }} />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        Indemnités non encore calculées.
+                      </p>
+                    )}
+                    <div className="pt-1 text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      Base de calcul : {money(d.base_calcul_salaire) || "—"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clôture & restitutions */}
+                <div className="rounded-xl border p-4" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                  <Eyebrow icon={<CheckCircle size={13} />}>Clôture & restitutions</Eyebrow>
+                  <div className="flex items-center justify-around mb-4">
+                    <Ring ok={docsOk} total={DOCS.length} color={DS.accent} label="Documents" />
+                    <Ring ok={matOk} total={materiels.length} color={DS.purple} label="Matériel" />
+                    <Ring ok={accesOk} total={acces.length} color={DS.teal} label="Accès SI" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-3 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Documents</div>
+                      <div className="space-y-1.5">
+                        {DOCS.map((x) => <Coche key={x.key} ok={!!d[`doc_${x.key}`]} label={x.label} path={d[`doc_${x.key}_path`]} docKey={x.key} />)}
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Matériel restitué</div>
+                        <div className="space-y-1.5">
+                          {materiels.map((x) => <Coche key={x.label} ok={x.v} label={x.label} />)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Accès SI</div>
+                        <div className="space-y-1.5">
+                          {acces.map((x) => <Coche key={x.label} ok={x.v} label={x.label} />)}
+                          <Field label="Désactivés le" value={d.acces_desactivation_date ? fmt(d.acces_desactivation_date) : null} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Démarches sociales */}
+                <div className="rounded-xl border p-4" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+                  <Eyebrow icon={<Info size={13} />}>Démarches sociales (CNSS / AMO)</Eyebrow>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <Field label="Radiation CNSS" value={d.cnss_radiation_date ? fmt(d.cnss_radiation_date) : null} />
+                    <Field label="Dernière déclaration CNSS" value={d.cnss_derniere_declaration} />
+                    <Field label="Clôture AMO" value={d.amo_cloture_date ? fmt(d.amo_cloture_date) : null} />
+                    <Field label="Attestation AMO" value={d.amo_attestation_delivree === true ? "Délivrée" : d.amo_attestation_delivree === false ? "Non délivrée" : null} />
+                  </div>
+                </div>
+
+                {/* Commentaire */}
+                <div className="rounded-xl border-l-4 p-3" style={{ borderColor: accent, background: "hsl(var(--muted)/0.3)" }}>
+                  <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Commentaire</div>
+                  <p className="text-sm" style={{ color: d.commentaire ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>
+                    {d.commentaire || "Aucun commentaire."}
+                  </p>
+                </div>
+
+                {/* Pied */}
+                <div className="flex items-center justify-between text-[11px] pt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  <span>{d.decision_finale ? `Décision : ${d.decision_finale}` : ""}</span>
+                  <span>{d.traite_le ? `Traité le ${format(parseISO(d.traite_le), "dd/MM/yyyy", { locale: fr })}` : (d.created_at ? `Enregistré le ${format(parseISO(d.created_at), "dd/MM/yyyy", { locale: fr })}` : "")}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Dialog refus ── */}
       {showRefusDialog && (

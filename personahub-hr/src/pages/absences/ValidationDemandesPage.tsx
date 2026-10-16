@@ -98,6 +98,7 @@ export default function ValidationDemandesPage() {
             collaborateur_id: demande.collaborateur_id,
             code_type_conge: demande.code_type_conge,
             date_debut: demande.date_debut,
+            date_fin_absence: demande.date_fin_absence,
             date_retour: demande.date_retour,
             debut_demi_journee: demande.debut_demi_journee,
             fin_demi_journee: demande.fin_demi_journee,
@@ -136,7 +137,15 @@ export default function ValidationDemandesPage() {
   const refusees = demandes.filter((d: any) => d.statut === "REFUSEE").length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Absences</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Validation des demandes</span>
+      </div>
+
+      <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
           <CalendarCheck className="inline mr-2 mb-1" size={22} />Validation des Demandes de Congé
@@ -149,13 +158,13 @@ export default function ValidationDemandesPage() {
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "En attente", value: enAttente, color: "hsl(38 92% 50%)", icon: <Clock size={18} /> },
-          { label: "Approuvées", value: approuvees, color: "hsl(142 71% 45%)", icon: <CheckCircle size={18} /> },
-          { label: "Refusées", value: refusees, color: "hsl(0 72% 51%)", icon: <XCircle size={18} /> },
+          { label: "En attente", value: enAttente, token: "warning", icon: <Clock size={18} /> },
+          { label: "Approuvées", value: approuvees, token: "success", icon: <CheckCircle size={18} /> },
+          { label: "Refusées", value: refusees, token: "destructive", icon: <XCircle size={18} /> },
         ].map(k => (
           <Card key={k.label}>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg" style={{ background: `${k.color}20`, color: k.color }}>{k.icon}</div>
+              <div className="p-2 rounded-lg" style={{ background: `hsl(var(--${k.token}) / 0.12)`, color: `hsl(var(--${k.token}))` }}>{k.icon}</div>
               <div>
                 <p className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>{k.value}</p>
                 <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p>
@@ -354,6 +363,7 @@ export default function ValidationDemandesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

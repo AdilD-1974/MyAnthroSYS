@@ -41,7 +41,20 @@ class RefRegimeCotisation(Base):
     code_organisme = Column(String, ForeignKey("ref_organisme_social.code", ondelete="SET NULL"))
     code_regle_cotisation = Column(
         String,
-        ForeignKey("regle_calcul_cotisation.code", ondelete="SET NULL", onupdate="CASCADE"),
+        # RG-MULTISOCIETE-03 (correctif 24/08, migration 060) : ForeignKey()
+        # retirée -- fk_regime_regle_cotisation a été supprimée en base
+        # (remplacée par id_regle_cotisation ci-dessous, seule vraie FK
+        # désormais). Colonne conservée telle quelle (dénormalisée, plus
+        # contrainte) pour compat avec le code existant qui la lit encore.
+    )
+    # RG-MULTISOCIETE-03 (migration 060) : nouvelle FK réelle, sur id --
+    # nécessaire car une contrainte FOREIGN KEY ne peut viser qu'une
+    # contrainte UNIQUE complète, jamais un index partiel (regle_calcul_
+    # cotisation.code n'est plus unique globalement depuis migration 059).
+    id_regle_cotisation = Column(
+        UUID(as_uuid=True),
+        ForeignKey("regle_calcul_cotisation.id"),
+        nullable=True,
     )
     actif = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     ordre = Column(Integer, nullable=False, default=0, server_default=text("0"))
@@ -55,7 +68,14 @@ class RegleCalculCotisation(Base):
     __tablename__ = "regle_calcul_cotisation"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
-    code = Column(String, nullable=False, unique=True)
+    # RG-MULTISOCIETE-03 (correctif 24/08, migrations 059/060) : unique=True
+    # retiré -- remplacé en base par 2 index partiels
+    # (uq_regle_calcul_cotisation_code_generique / _societe_code) pour
+    # permettre une surcharge société avec le même code qu'une règle
+    # générique. Laisser unique=True ici recréerait l'ancienne contrainte
+    # bloquante si le schéma est un jour régénéré depuis ces modèles
+    # (Base.metadata.create_all(), autogenerate Alembic...).
+    code = Column(String, nullable=False)
     libelle = Column(String, nullable=False)
     description = Column(String)
     code_regime = Column(String, ForeignKey("ref_regime_cotisation.code"))
@@ -65,6 +85,10 @@ class RegleCalculCotisation(Base):
     taux_salarial = Column(Numeric(8, 4))
     taux_patronal = Column(Numeric(8, 4))
     plafond_mensuel = Column(Numeric(14, 2))
+
+    # RG-MULTISOCIETE-03 (migration 059) : None = règle générique (visible
+    # de toutes les sociétés), une valeur = surcharge propre à cette société.
+    societe_id = Column(UUID(as_uuid=True), ForeignKey("societes.id"), nullable=True)
 
     # Validité
     date_debut_validite = Column(Date)
@@ -94,7 +118,16 @@ class RegleCalculCotisation(Base):
     minimum_patronal = Column(Numeric(14, 2))
     maximum_salarial = Column(Numeric(14, 2))
     maximum_patronal = Column(Numeric(14, 2))
-    code_bareme_taux = Column(String, ForeignKey("bareme.code", ondelete="SET NULL", onupdate="CASCADE"))
+    code_bareme_taux = Column(
+        String,
+        # RG-MULTISOCIETE-03 (correctif 24/08, migration 061) : ForeignKey()
+        # retirée -- fk_cotis_bareme_taux a été supprimée en base (remplacée
+        # par id_bareme_taux ci-dessous). Colonne conservée dénormalisée.
+    )
+    # RG-MULTISOCIETE-03 (migration 061) : nouvelle FK réelle, sur id --
+    # même raison que id_regle_cotisation ci-dessus (bareme.code n'est plus
+    # unique globalement depuis la migration 061).
+    id_bareme_taux = Column(UUID(as_uuid=True), ForeignKey("bareme.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

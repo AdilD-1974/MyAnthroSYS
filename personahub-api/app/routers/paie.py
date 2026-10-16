@@ -15,6 +15,11 @@ from app.core.security import require_roles
 from app.models.paie import Rubrique, Cotisation, SalaireFixe
 from app.routers import baremes as baremes_router
 from app.routers import cotisations as cotisations_router  # ← AJOUT (RG-COTIS-COMPO-01)
+from app.routers import paie_calcul as paie_calcul_router      # ← AJOUT (moteur de calcul)
+from app.routers import controles_paie as controles_paie_router  # ← AJOUT (contrôles de validation)
+from app.routers import rapports_paie as rapports_paie_router  # ← AJOUT (module Rapports, Phase 1 : Journal)
+from app.routers import compta_paie as compta_paie_router      # ← AJOUT (comptabilisation de la paie)
+from app.models import paie_resultat  # noqa: F401  (enregistrement ORM des tables résultat)
 from pydantic import BaseModel
 from datetime import date, datetime
 from typing import Optional
@@ -24,6 +29,10 @@ router = APIRouter(prefix="/paie", tags=["Paie & Rémunération"])
 # ── Sous-routers ──────────────────────────────────────────────────────────────
 router.include_router(baremes_router.router)         # → /api/v1/paie/baremes/...
 router.include_router(cotisations_router.router)     # → /api/v1/paie/cotisation/...  ← AJOUT
+router.include_router(paie_calcul_router.router)     # → /api/v1/paie/calcul, /paie/bulletins  ← AJOUT
+router.include_router(controles_paie_router.router) # → /api/v1/paie/controles  ← AJOUT
+router.include_router(rapports_paie_router.router)  # → /api/v1/paie/rapports/...  ← AJOUT
+router.include_router(compta_paie_router.router)    # → /api/v1/paie/compta/...    ← AJOUT
 
 PAIE_ROLES = ("administrateur", "gestionnaire_rh", "gestionnaire_paie")
 

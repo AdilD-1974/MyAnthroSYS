@@ -1,13 +1,19 @@
 /**
  * NotificationBell – Cloche de notifications dans l'AppLayout.
  * Affiche le nombre de notifications non lues + popover avec détails.
+ *
+ * Toutes les notifications proviennent du hook useNotifications, qui fusionne :
+ *   • les alertes CALCULÉES (contrats, départs, reprises, anniversaires…) ;
+ *   • les notifications PERSISTÉES (type "workflow", table `notifications`),
+ *     créées par le moteur de workflow — ex. « Demande de congés à valider ».
  */
 import React, { useState, useRef, useEffect } from "react";
-import { Bell, X, CheckCheck, Briefcase, FileText, Gift, ChevronRight, AlertTriangle, Clock, CreditCard } from "lucide-react";
+import { Bell, X, CheckCheck, Briefcase, FileText, Gift, ChevronRight, AlertTriangle, Clock, CreditCard, ListChecks, Trash2 } from "lucide-react";
 import { useNotifications, Notification, NotifType } from "@/hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
 
 const typeConfig: Record<NotifType, { icon: React.ReactNode; color: string; bg: string }> = {
+  workflow:           { icon: <ListChecks size={14} />,    color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.12)" },
   contrat:            { icon: <Briefcase size={14} />,     color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.1)" },
   document:           { icon: <FileText size={14} />,      color: "hsl(38 92% 50%)",    bg: "hsl(38 92% 50% / 0.1)" },
   anniversaire:       { icon: <Gift size={14} />,          color: "hsl(280 60% 55%)",   bg: "hsl(280 60% 55% / 0.1)" },
@@ -24,13 +30,16 @@ const urgenceColor = (daysLeft?: number): string => {
   return "hsl(var(--muted-foreground))";
 };
 
-const NotificationItem: React.FC<{ notif: Notification; onRead: (id: string) => void; onNavigate: () => void }> = ({ notif, onRead, onNavigate }) => {
+const NotificationItem: React.FC<{ notif: Notification; onRead: (id: string) => void; onDismiss: (id: string) => void; onNavigate: () => void }> = ({ notif, onRead, onDismiss, onNavigate }) => {
   const navigate = useNavigate();
   const cfg = typeConfig[notif.type];
 
   const handleClick = () => {
     onRead(notif.id);
-    if (notif.type === "reprise") {
+    if (notif.type === "workflow") {
+      if (notif.lien) navigate(notif.lien);
+      onNavigate();
+    } else if (notif.type === "reprise") {
       navigate(`/absences/saisie`);
       onNavigate();
     } else if (notif.type === "depart_provisoire") {
@@ -69,15 +78,31 @@ const NotificationItem: React.FC<{ notif: Notification; onRead: (id: string) => 
           </p>
         )}
       </div>
-      <ChevronRight size={13} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0, marginTop: 2 }} />
+      <div className="flex items-center gap-2 flex-shrink-0" style={{ marginTop: 2 }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDismiss(notif.id); }}
+          className="p-1.5 rounded-md hover:bg-muted/70 transition-colors opacity-60 hover:opacity-100"
+          title="Retirer cette notification"
+          style={{ color: "hsl(var(--muted-foreground))" }}
+        >
+          <X size={13} />
+        </button>
+        <ChevronRight size={13} className="flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }} />
+      </div>
     </div>
   );
 };
 
-const NotificationBell: React.FC = () => {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
+const NotificationBell: React.FC<{ variant?: "clair" | "sombre" }> = ({ variant = "clair" }) => {
+  const { notifications, unreadCount, markAsRead, markAllAsRead, dismiss, dismissAll, loading } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // RG-HABILLAGE-HEADER-01 (24/08) : variant="sombre" pour le poser
+  // directement sur un fond bleu foncé (AppLayout) sans passer par la
+  // pastille claire — icône blanche + halo au survol, même principe que
+  // BadgeIdentite (déjà bi-thème) plutôt que de dupliquer ce composant.
+  const couleurIcone = variant === "sombre" ? "rgba(255,255,255,0.92)" : "hsl(var(--foreground))";
+  const hoverBg = variant === "sombre" ? "rgba(255,255,255,0.14)" : undefined;
 
   // Fermer au clic extérieur
   useEffect(() => {
@@ -88,7 +113,8 @@ const NotificationBell: React.FC = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const grouped = {
+  const grouped: Record<NotifType, Notification[]> = {
+    workflow:          notifications.filter(n => n.type === "workflow"),
     contrat:           notifications.filter(n => n.type === "contrat"),
     document:          notifications.filter(n => n.type === "document"),
     anniversaire:      notifications.filter(n => n.type === "anniversaire"),
@@ -98,6 +124,7 @@ const NotificationBell: React.FC = () => {
   };
 
   const typeLabels: Record<NotifType, string> = {
+    workflow: "À valider",
     contrat: "Contrats",
     document: "Documents",
     anniversaire: "Anniversaires",
@@ -106,14 +133,19 @@ const NotificationBell: React.FC = () => {
     paiement: "Coordonnées bancaires",
   };
 
+  // Ordre d'affichage des sections (workflow en premier)
+  const ordreSections: NotifType[] = ["workflow", "contrat", "document", "anniversaire", "reprise", "depart_provisoire"];
+
   return (
     <div ref={ref} className="relative">
       {/* Bouton cloche */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="relative p-2 rounded-lg transition-colors hover:bg-muted/60"
+        className={variant === "clair" ? "relative p-2 rounded-lg transition-colors hover:bg-muted/60" : "relative p-2 rounded-lg transition-colors"}
         title="Notifications"
-        style={{ color: "hsl(var(--foreground))" }}
+        style={{ color: couleurIcone }}
+        onMouseEnter={variant === "sombre" ? (e) => (e.currentTarget.style.background = hoverBg!) : undefined}
+        onMouseLeave={variant === "sombre" ? (e) => (e.currentTarget.style.background = "transparent") : undefined}
       >
         <Bell size={18} />
         {unreadCount > 0 && (
@@ -129,7 +161,7 @@ const NotificationBell: React.FC = () => {
       {/* Popover */}
       {open && (
         <div
-          className="absolute right-0 top-full mt-2 w-96 rounded-xl border shadow-2xl z-50 flex flex-col overflow-hidden"
+          className="absolute right-0 top-full mt-2 w-96 max-w-[calc(100vw-1.5rem)] rounded-xl border shadow-2xl z-50 flex flex-col overflow-hidden"
           style={{
             background: "hsl(var(--card))",
             borderColor: "hsl(var(--border))",
@@ -137,33 +169,53 @@ const NotificationBell: React.FC = () => {
           }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: "hsl(var(--border))" }}>
-            <div className="flex items-center gap-2">
-              <Bell size={15} style={{ color: "hsl(var(--accent))" }} />
-              <h3 className="font-semibold text-sm" style={{ color: "hsl(var(--foreground))" }}>
-                Notifications
-              </h3>
-              {unreadCount > 0 && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "hsl(var(--accent) / 0.12)", color: "hsl(var(--accent))" }}>
-                  {unreadCount} non lue{unreadCount > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
-                <button
-                  onClick={markAllAsRead}
-                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors hover:bg-muted/60"
-                  style={{ color: "hsl(var(--muted-foreground))" }}
-                  title="Tout marquer comme lu"
-                >
-                  <CheckCheck size={12} /> Tout lire
-                </button>
-              )}
-              <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-muted/60" style={{ color: "hsl(var(--muted-foreground))" }}>
-                <X size={14} />
+          <div className="flex flex-col border-b flex-shrink-0" style={{ borderColor: "hsl(var(--border))" }}>
+            {/* Ligne 1 : titre + badge + fermeture (jamais coupée) */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <Bell size={15} className="flex-shrink-0" style={{ color: "hsl(var(--accent))" }} />
+                <h3 className="font-semibold text-sm truncate" style={{ color: "hsl(var(--foreground))" }}>
+                  Notifications
+                </h3>
+                {unreadCount > 0 && (
+                  <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "hsl(var(--accent) / 0.12)", color: "hsl(var(--accent))" }}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="flex-shrink-0 p-1.5 rounded-md transition-colors hover:bg-muted/60"
+                style={{ color: "hsl(var(--muted-foreground))" }}
+                title="Fermer"
+              >
+                <X size={15} />
               </button>
             </div>
+
+            {/* Ligne 2 : actions globales, alignées à droite, sur leur propre ligne */}
+            {(unreadCount > 0 || notifications.length > 0) && (
+              <div className="flex items-center justify-end gap-1 px-2.5 pb-2">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllAsRead}
+                    className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-colors hover:bg-muted/60"
+                    style={{ color: "hsl(var(--accent))" }}
+                  >
+                    <CheckCheck size={12} /> Tout marquer lu
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={dismissAll}
+                    className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-colors hover:bg-muted/60"
+                    style={{ color: "hsl(var(--muted-foreground))" }}
+                  >
+                    <Trash2 size={12} /> Tout effacer
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Body */}
@@ -182,7 +234,7 @@ const NotificationBell: React.FC = () => {
                 <p className="text-sm font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Aucune alerte à venir</p>
               </div>
             )}
-            {!loading && (["contrat", "document", "anniversaire", "reprise", "depart_provisoire"] as NotifType[]).map(type => {
+            {!loading && ordreSections.map(type => {
               const items = grouped[type];
               if (items.length === 0) return null;
               return (
@@ -197,6 +249,7 @@ const NotificationBell: React.FC = () => {
                       key={n.id}
                       notif={n}
                       onRead={markAsRead}
+                      onDismiss={dismiss}
                       onNavigate={() => setOpen(false)}
                     />
                   ))}

@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Eye, EyeOff, LogIn, UserPlus, Building2, Users, CreditCard, BookOpen } from "lucide-react";
 import logoSlide from "@/assets/logo-slide.png";
 import logoIcon from "@/assets/logo-icon.png";
+import BrandingMark from "@/components/BrandingMark";
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ const LoginPage: React.FC = () => {
     try {
       if (mode === "login") {
         await signIn(email, password);
-        navigate("/dashboard");
+        navigate("/accueil");
       } else {
         const { error } = await supabase.auth.signUp({
           email, password,
@@ -46,6 +47,17 @@ const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen flex" style={{ background: "hsl(var(--background))" }}>
 
+      {/* Animations du logo de la solution (ANTHRO-SYS) */}
+      <style>{`
+        @keyframes anthro-float { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-5px) rotate(2.5deg); } }
+        @keyframes anthro-glow  { 0%,100% { box-shadow: 0 4px 12px hsl(0 0% 0% / 0.3); } 50% { box-shadow: 0 8px 24px hsl(175 80% 50% / 0.6); } }
+      `}</style>
+
+      {/* Logo CLIENT en filigrane : dérive sur tout l'écran, derrière la carte de connexion */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden="true" style={{ zIndex: 0 }}>
+        <BrandingMark variant="watermark" animation="drift" opacity={0.18} maxWidth={520} className="absolute top-0 left-0" />
+      </div>
+
       {/* ── Left panel ── */}
       <div
         className="hidden lg:flex flex-col w-[460px] flex-shrink-0 relative overflow-hidden"
@@ -57,7 +69,7 @@ const LoginPage: React.FC = () => {
 
         <div className="relative z-10 px-10 pt-10 pb-6">
           <div className="flex items-center gap-3 mb-2">
-            <img src={logoIcon} alt="ANTHRO-SYS" className="w-12 h-12 rounded-xl shadow-lg" style={{ boxShadow: "0 4px 12px hsl(0 0% 0% / 0.3)" }} />
+            <img src={logoIcon} alt="ANTHRO-SYS" className="w-12 h-12 rounded-xl" style={{ animation: "anthro-float 5s ease-in-out infinite, anthro-glow 3.8s ease-in-out infinite" }} />
             <div>
               <p className="text-xs font-medium tracking-widest uppercase mb-0.5" style={{ color: "hsl(175 80% 60%)" }}>Système d'Information RH</p>
               <span className="text-3xl font-black tracking-tight" style={{ fontFamily: "Poppins, sans-serif", color: "white" }}>
@@ -111,10 +123,10 @@ const LoginPage: React.FC = () => {
 
       {/* ── Right panel ── */}
       <div className="flex-1 flex items-center justify-center p-6 overflow-auto">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md relative z-10">
 
           <div className="flex lg:hidden items-center gap-2 mb-8 justify-center">
-            <img src={logoIcon} alt="ANTHRO-SYS" className="w-10 h-10 rounded-xl" />
+            <img src={logoIcon} alt="ANTHRO-SYS" className="w-10 h-10 rounded-xl" style={{ animation: "anthro-float 5s ease-in-out infinite" }} />
             <span className="text-xl font-black" style={{ fontFamily: "Poppins, sans-serif", color: "hsl(var(--primary))" }}>
               ANTHRO<span style={{ color: "hsl(175 80% 40%)" }}>-SYS</span>
             </span>

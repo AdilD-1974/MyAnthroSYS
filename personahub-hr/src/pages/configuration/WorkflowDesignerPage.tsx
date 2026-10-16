@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import {
   GitBranch, Plus, Save, Loader2, Trash2, ChevronRight, ChevronDown, ArrowRight, Copy, Power,
   Users, GitFork, Zap, UserCheck, Bell, PenLine, Split, CornerDownRight,
+  Workflow as WorkflowIcon, List as ListIcon,
 } from "lucide-react";
+import WorkflowCanvas from "./WorkflowCanvas";
 import {
-  useWorkflows, loadWorkflowFull, saveWorkflowFull,
+  useWorkflows, useTypesObjet, loadWorkflowFull, saveWorkflowFull,
   EditWorkflow, EditEtape, EditActeur, EditDecision, EditAction,
-  STATUTS, TYPES_ETAPE, MODES_VALIDATION, TYPES_ACTEUR, TYPES_DECISION, DECLENCHEURS, TYPES_ACTION, TYPES_OBJET,
+  STATUTS, TYPES_ETAPE, MODES_VALIDATION, TYPES_ACTEUR, TYPES_DECISION, DECLENCHEURS, TYPES_ACTION,
 } from "@/hooks/useWorkflow";
 
 // ── Identité visuelle par type d'étape ─────────────────────────────────────
@@ -56,6 +58,18 @@ const optMode = MODES_VALIDATION.map((t) => ({ v: t, l: MODE_LABEL[t] || t }));
 const optDecl = DECLENCHEURS.map((t) => ({ v: t, l: DECL_LABEL[t] || t }));
 const optAction = TYPES_ACTION.map((t) => ({ v: t, l: ACTION_LABEL[t] || t }));
 
+// Destinataires reconnus par le moteur (_resolve_destinataires) :
+//   DEMANDEUR, ACTEUR (acteurs de l'étape), ROLE:<code_role>, ACTEUR_ETAPE:<n>, e-mail littéral.
+const optDestinataire = [
+  { v: "", l: "— destinataire —" },
+  { v: "DEMANDEUR", l: "Demandeur (collaborateur)" },
+  { v: "ACTEUR", l: "Acteur de l'étape" },
+  { v: "ROLE:gestionnaire_rh", l: "Gestionnaire RH" },
+  { v: "ROLE:manager", l: "Manager" },
+  { v: "ROLE:gestionnaire_paie", l: "Gestionnaire Paie" },
+  { v: "ROLE:administrateur", l: "Administrateur" },
+];
+
 const blankEtape = (n: number): EditEtape => ({
   code: `etape_${n}`, libelle: "Nouvelle étape", description: "", ordre: n, type_etape: "VALIDATION",
   mode_validation: "TOUS", delai_heures: null, delai_relance_heures: null, condition_sql: "",
@@ -72,11 +86,13 @@ const blankWf = (): EditWorkflow => ({
 export default function WorkflowDesignerPage() {
   const qc = useQueryClient();
   const { workflows, loading, refetch } = useWorkflows();
+  const { typesObjet } = useTypesObjet();
   const [wf, setWf] = useState<EditWorkflow | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [loadingDef, setLoadingDef] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openStep, setOpenStep] = useState<number | null>(0);
+  const [vue, setVue] = useState<"schema" | "liste">("schema");
   const [showDelete, setShowDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -146,16 +162,20 @@ export default function WorkflowDesignerPage() {
   };
 
   const publier = async () => {
-    if (!wf || isNew) return;
+    if (!wf || isNew || !wf.id) return;
     setSaving(true);
     try {
-      const versions = workflows.filter((w) => w.code === wf.code).map((w) => w.version);
-      const next = Math.max(...versions, wf.version) + 1;
-      await saveWorkflowFull({ ...wf, id: undefined, version: next, statut: "ACTIF", actif: true, _initialEtapeIds: [],
-        etapes: wf.etapes.map((e) => ({ ...e, id: undefined, acteurs: e.acteurs.map(a => ({ ...a, id: undefined })), decisions: e.decisions.map(d => ({ ...d, id: undefined })), actions: e.actions.map(ac => ({ ...ac, id: undefined })) })) });
-      if (wf.id) { const { api } = await import("@/lib/api"); await api.patch(`/db/ref_workflow?id=eq.${wf.id}`, { actif: false, statut: "ARCHIVE" }); }
-      toast({ title: `Version ${next} publiée`, description: "Version précédente archivée." });
-      qc.invalidateQueries({ queryKey: ["ref-workflows"] }); await refetch();
+      // Publication = mise à jour EN PLACE de la ligne existante
+      // (même id, même code) avec la version incrémentée.
+      // Pas de nouvelle ligne créée, pas d'ancienne version conservée :
+      // ref_workflow_code_key (UNIQUE sur code) reste donc satisfaite,
+      // et la FK ref_type_pret_code_workflow_fkey n'a pas besoin de bouger.
+      const next = wf.version + 1;
+      const { id } = await saveWorkflowFull({ ...wf, version: next, statut: "ACTIF", actif: true });
+      toast({ title: `Version ${next} publiée` });
+      qc.invalidateQueries({ queryKey: ["ref-workflows"] });
+      await refetch();
+      await select(id);
     } catch { toast({ title: "Échec de la publication", variant: "destructive" }); }
     finally { setSaving(false); }
   };
@@ -249,12 +269,15 @@ export default function WorkflowDesignerPage() {
   };
 
   return (
-    <div className="p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <GitBranch size={20} />
-        <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Concepteur de workflows</h1>
+    <div className="max-w-full">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-5 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Concepteur de workflows</span>
       </div>
 
+      <div className="p-5">
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
         {/* Liste */}
         <div className="rounded-2xl border p-3 h-fit" style={{ borderColor: "hsl(var(--border))" }}>
@@ -287,7 +310,7 @@ export default function WorkflowDesignerPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <Field label="Code *"><Input value={wf.code} disabled={!isNew} onChange={(e) => patchWf({ code: e.target.value })} placeholder="conges_standard" /></Field>
                 <Field label="Libellé *"><Input value={wf.libelle} onChange={(e) => patchWf({ libelle: e.target.value })} /></Field>
-                <Field label="Objet métier"><Select value={wf.type_objet} onChange={(v) => patchWf({ type_objet: v })} options={TYPES_OBJET.map(o => ({ v: o, l: o }))} /></Field>
+                <Field label="Objet métier"><Select value={wf.type_objet} onChange={(v) => patchWf({ type_objet: v })} options={typesObjet.map(o => ({ v: o.code, l: o.libelle }))} /></Field>
                 <Field label="Statut"><Select value={wf.statut} onChange={(v) => patchWf({ statut: v })} options={STATUTS.map(o => ({ v: o, l: o }))} /></Field>
                 <Field label="Délai global (h)"><Input type="number" value={wf.delai_global_heures ?? ""} onChange={(e) => patchWf({ delai_global_heures: e.target.value ? parseInt(e.target.value) : null })} /></Field>
                 <Field label="Version"><Input value={String(wf.version)} disabled /></Field>
@@ -299,11 +322,38 @@ export default function WorkflowDesignerPage() {
             <div className="rounded-2xl border p-4" style={{ borderColor: "hsl(var(--border))" }}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm" style={{ color: "hsl(var(--foreground))" }}>Étapes ({wf.etapes.length})</h3>
-                <Button size="sm" variant="outline" onClick={addEtape} className="gap-1"><Plus size={14} /> Étape</Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+                    <button onClick={() => setVue("schema")} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium"
+                      style={{ background: vue === "schema" ? "hsl(var(--primary))" : "transparent", color: vue === "schema" ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))" }}>
+                      <WorkflowIcon size={12} /> Schéma
+                    </button>
+                    <button onClick={() => setVue("liste")} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium"
+                      style={{ background: vue === "liste" ? "hsl(var(--primary))" : "transparent", color: vue === "liste" ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))" }}>
+                      <ListIcon size={12} /> Liste
+                    </button>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={addEtape} className="gap-1"><Plus size={14} /> Étape</Button>
+                </div>
               </div>
+
+              {vue === "schema" && (
+                <div className="mb-3">
+                  <WorkflowCanvas
+                    etapes={wf.etapes}
+                    openIndex={openStep}
+                    onSelect={(i) => setOpenStep(openStep === i ? null : i)}
+                    onReorder={(newEtapes) => setEtapes(newEtapes.map((e, k) => ({ ...e, ordre: k + 1 })))}
+                    metaOf={metaOf}
+                    decMeta={decMeta}
+                  />
+                </div>
+              )}
+
               <div className="space-y-2.5">
                 {wf.etapes.map((e, i) => {
                   const m = metaOf(e.type_etape); const open = openStep === i;
+                  if (vue === "schema" && !open) return null;
                   return (
                     <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: open ? m.color + "66" : "hsl(var(--border))" }}>
                       {/* En-tête pavé */}
@@ -368,7 +418,8 @@ export default function WorkflowDesignerPage() {
               </div>
             </div>
 
-            {/* Aperçu en pavés colorés */}
+            {/* Aperçu en pavés colorés (redondant avec le canvas en vue Schéma) */}
+            {vue === "liste" && (
             <div className="rounded-2xl border p-4" style={{ borderColor: "hsl(var(--border))" }}>
               <h3 className="font-semibold text-sm mb-3" style={{ color: "hsl(var(--foreground))" }}>Aperçu du circuit</h3>
               <div className="flex flex-col gap-2.5">
@@ -407,6 +458,7 @@ export default function WorkflowDesignerPage() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Actions */}
             <div className="flex items-center gap-2 sticky bottom-0 py-3 border-t mt-1" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
@@ -465,6 +517,7 @@ export default function WorkflowDesignerPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -526,7 +579,21 @@ const ActionsEditor: React.FC<{ etape: EditEtape; onChange: (a: EditAction[]) =>
         <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border p-2" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))", borderLeft: "3px solid #8B5CF6" }}>
           <Select value={a.declencheur} onChange={(v) => set(i, { declencheur: v })} options={optDecl} />
           <Select value={a.type_action} onChange={(v) => set(i, { type_action: v })} options={optAction} accent="#8B5CF6" />
-          <Input value={(a.configuration?.value as string) || ""} onChange={(e) => set(i, { configuration: { ...a.configuration, value: e.target.value } })} placeholder="paramètre (modèle / proc / message)" className="h-9 flex-1 min-w-40" />
+          <Select
+            value={((a.configuration as any)?.destinataires?.[0] as string) || ""}
+            onChange={(v) => set(i, { configuration: { ...(a.configuration as any), destinataires: v ? [v] : [] } })}
+            options={
+              optDestinataire.some((o) => o.v === (((a.configuration as any)?.destinataires?.[0] as string) || ""))
+                ? optDestinataire
+                : [...optDestinataire, { v: ((a.configuration as any).destinataires[0] as string), l: ((a.configuration as any).destinataires[0] as string) }]
+            }
+          />
+          <Input
+            value={((a.configuration as any)?.template_code as string) || ""}
+            onChange={(e) => set(i, { configuration: { ...(a.configuration as any), template_code: e.target.value } })}
+            placeholder="code du modèle (ex: wf_conges_rh_a_valider)"
+            className="h-9 flex-1 min-w-40"
+          />
           <button onClick={() => onChange(etape.actions.filter((_, k) => k !== i))} className="p-1.5 rounded-lg hover:bg-destructive/10" style={{ color: "hsl(var(--destructive))" }}><Trash2 size={13} /></button>
         </div>
       ))}

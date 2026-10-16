@@ -12,6 +12,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown, RefreshCw, TrendingUp, X, Send } from "lucide-react";
+import { calcJoursAvecType, calcDateFinAutoAbsence, calcDateRetour, typeJourLabel } from "./congeCalculs";
 
 /**
  * DemandeCongeForm — formulaire de saisie/modification d'une demande de congé.
@@ -49,6 +50,13 @@ interface TypeConge {
   reprise_obligatoire: boolean; anciennete_min_mois: number | null; interdit_reliquat: boolean;
   est_autorisation_absence: boolean;
   droit_legal_jours: number | null; droit_convention_jours: number | null; droit_particulier_jours: number | null;
+  // Règles de gestion (cf. ref_type_conge)
+  solde_negatif_autorise: boolean | null;
+  duree_max: number | null;
+  preavis_jours: number | null;
+  controle_chevauchement: string | null;      // 'STRICT' = bloquant
+  fractionnement_autorise: boolean | null;
+  fractionnement_min_jours: number | null;
 }
 interface Solde { solde_acquis: number; solde_pris: number; solde_en_attente: number; solde_restant: number; reliquat_reporte: number; }
 
@@ -59,60 +67,6 @@ const EMPTY_FORM = {
   nbr_jours_calendaires: 0, nbr_jours_decomptes: 0,
   commentaire_collaborateur: "", est_report_reliquat: false,
 };
-
-// ── Helpers calcul jours ─────────────────────────────────────
-function isJourFerie(date: Date, feriesDates: Set<string>): boolean {
-  return feriesDates.has(date.toISOString().split("T")[0]);
-}
-function isJourOuvre(date: Date, typeJour: string): boolean {
-  const dow = date.getDay();
-  if (typeJour === "OUV2") return dow >= 1 && dow <= 5;
-  return dow !== 0;
-}
-function calcJoursAvecType(debut: string, fin: string, debutDemi: string, finDemi: string, typeJour: string | null, feriesDates: Set<string>): { cal: number; dec: number } {
-  if (!debut || !fin) return { cal: 0, dec: 0 };
-  const d1 = new Date(debut + "T00:00:00");
-  const d2 = new Date(fin + "T00:00:00");
-  if (d2 < d1) return { cal: 0, dec: 0 };
-  let cal = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
-  if (debutDemi === "APRES_MIDI") cal -= 0.5;
-  if (finDemi === "MATIN") cal -= 0.5;
-  const tj = typeJour || "CAL";
-  if (tj === "CAL") return { cal, dec: cal };
-  let dec = 0;
-  const cursor = new Date(d1);
-  while (cursor <= d2) {
-    if (isJourOuvre(cursor, tj) && !isJourFerie(cursor, feriesDates)) dec += 1;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  if (debutDemi === "APRES_MIDI" && isJourOuvre(d1, tj) && !isJourFerie(d1, feriesDates)) dec -= 0.5;
-  if (finDemi === "MATIN" && isJourOuvre(d2, tj) && !isJourFerie(d2, feriesDates)) dec -= 0.5;
-  dec = Math.max(0, dec);
-  return { cal, dec };
-}
-function calcDateFinAutoAbsence(debut: string, droitJours: number): string {
-  if (!debut || droitJours <= 0) return debut;
-  const [y, m, d] = debut.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + droitJours - 1);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-}
-function calcDateRetour(fin: string, finDemi: string, typeJour?: string | null, feriesDates?: Set<string>): string {
-  if (!fin) return "";
-  if (finDemi === "MATIN") return fin;
-  const [y, m, d] = fin.split("-").map(Number);
-  const cursor = new Date(y, m - 1, d);
-  const tj = typeJour === "OUV" ? "OUV" : "OUV2";
-  const feries = feriesDates ?? new Set<string>();
-  let maxIter = 14;
-  do {
-    cursor.setDate(cursor.getDate() + 1);
-    const dateStr = cursor.toISOString().split("T")[0];
-    if (isJourOuvre(cursor, tj) && !feries.has(dateStr)) break;
-  } while (--maxIter > 0);
-  return `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
-}
-const typeJourLabel = (tj: string | null) => tj === "OUV" ? "Ouvrés (lun-sam)" : tj === "OUV2" ? "Ouvrables (lun-ven)" : "Calendaires";
 
 interface Props {
   collaborateurId?: string;
@@ -240,6 +194,100 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
   const droitAutoAbsence = useMemo(() => !typeCongeActif?.est_autorisation_absence ? 0 : (typeCongeActif.droit_convention_jours ?? typeCongeActif.droit_legal_jours ?? 0), [typeCongeActif]);
   const soldeDisponibleControle = useMemo(() => !typeCongeActif?.interdit_reliquat ? null : Number(soldeForm?.solde_restant ?? 0) - Number(soldeForm?.solde_en_attente ?? 0), [typeCongeActif, soldeForm]);
 
+  // Solde projeté après cette demande (restant − jours décomptés)
+  const soldeApresDemande = useMemo(() => {
+    if (!soldeForm) return null;
+    return Number(soldeForm.solde_restant ?? 0) - Number(form.nbr_jours_decomptes ?? 0);
+  }, [soldeForm, form.nbr_jours_decomptes]);
+
+  // ── VALIDATION CENTRALISÉE DES RÈGLES DE GESTION ──
+  // Chaque entrée : { regle, message, bloquant }. Les bloquantes désactivent la soumission.
+  const validations = useMemo(() => {
+    const v: { regle: string; message: string; bloquant: boolean }[] = [];
+    const tc = typeCongeActif;
+    if (!tc || !form.date_debut || !form.date_fin_absence) return v;
+
+    // 1) Date de fin ≥ date de début
+    if (new Date(form.date_fin_absence) < new Date(form.date_debut)) {
+      v.push({ regle: "dates", message: "La date de fin doit être postérieure ou égale à la date de début.", bloquant: true });
+    }
+
+    // 2) Date début > date début contrat (déjà calculé)
+    if (erreurDateContrat) v.push({ regle: "contrat", message: erreurDateContrat, bloquant: true });
+
+    // 3) Ancienneté minimale (déjà calculé)
+    if (erreurAnciennete) v.push({ regle: "anciennete", message: erreurAnciennete, bloquant: true });
+
+    // 4) Solde négatif interdit
+    if (tc.solde_negatif_autorise === false && soldeApresDemande != null && soldeApresDemande < 0) {
+      v.push({ regle: "solde", message: `Solde insuffisant : le solde après demande serait de ${soldeApresDemande.toFixed(1)} j. Ce type de congé n'autorise pas le solde négatif.`, bloquant: true });
+    }
+
+    // 5) Durée maximale
+    if (tc.duree_max != null && tc.duree_max > 0 && Number(form.nbr_jours_decomptes) > tc.duree_max) {
+      v.push({ regle: "duree_max", message: `Durée maximale dépassée : ${Number(form.nbr_jours_decomptes).toFixed(1)} j demandés pour un maximum de ${tc.duree_max} j.`, bloquant: true });
+    }
+
+    // 6) Préavis (mesuré depuis aujourd'hui = date de soumission)
+    if (tc.preavis_jours != null && tc.preavis_jours > 0) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const mini = new Date(today); mini.setDate(mini.getDate() + tc.preavis_jours);
+      if (new Date(form.date_debut + "T00:00:00") < mini) {
+        v.push({ regle: "preavis", message: `Préavis insuffisant : ce congé requiert un préavis de ${tc.preavis_jours} jour(s). La date de début la plus proche est le ${mini.toLocaleDateString("fr-FR")}.`, bloquant: true });
+      }
+    }
+
+    // 7) Fractionnement : si non autorisé, ou en deçà du minimum
+    if (tc.fractionnement_autorise === false && tc.fractionnement_min_jours != null && tc.fractionnement_min_jours > 0
+        && Number(form.nbr_jours_decomptes) < tc.fractionnement_min_jours) {
+      v.push({ regle: "fractionnement", message: `Fractionnement non autorisé en deçà de ${tc.fractionnement_min_jours} j (durée demandée : ${Number(form.nbr_jours_decomptes).toFixed(1)} j).`, bloquant: true });
+    }
+
+    // 8) Justificatif obligatoire — AVERTISSEMENT (upload pas encore disponible : chantier 2)
+    if (tc.justificatif_obligatoire) {
+      v.push({ regle: "justificatif", message: "Ce type de congé requiert une pièce justificative. Pensez à la transmettre au service RH (l'upload sera bientôt disponible dans le formulaire).", bloquant: false });
+    }
+
+    return v;
+  }, [typeCongeActif, form.date_debut, form.date_fin_absence, form.nbr_jours_decomptes, erreurDateContrat, erreurAnciennete, soldeApresDemande]);
+
+  const violationsBloquantes = useMemo(() => validations.filter(x => x.bloquant), [validations]);
+
+  const { data: chevauchement = null } = useQuery<{ libelle: string; date_debut: string; date_fin_absence: string; statut: string } | null>({
+    queryKey: ["chevauchement-conge", form.collaborateur_id, form.date_debut, form.date_fin_absence, editDemande?.id],
+    enabled: !!form.collaborateur_id && !!form.date_debut && !!form.date_fin_absence
+      && (typeCongeActif?.controle_chevauchement ?? "STRICT") === "STRICT",
+    queryFn: async () => {
+      const f: Record<string, unknown> = {
+        select: "id,date_debut,date_fin_absence,code_type_conge,statut",
+        collaborateur_id: form.collaborateur_id,
+        "date_debut": `lte.${form.date_fin_absence}`, "date_fin_absence": `gte.${form.date_debut}`,
+      };
+      if (editMode && editDemande) f["id"] = `neq.${editDemande.id}`;
+      const rows = await db.list<any>("cong_demandes", f);
+      const STATUTS_BLOQUANTS = ["en_attente", "approuvee", "brouillon", "modifiee"];
+      const ov = (rows || []).find(r => STATUTS_BLOQUANTS.includes(String(r.statut ?? "").toLowerCase()));
+      if (!ov) return null;
+      const ovType = typesConge.find(t => t.code === ov.code_type_conge);
+      return { libelle: ovType?.libelle || ov.code_type_conge, date_debut: ov.date_debut, date_fin_absence: ov.date_fin_absence, statut: ov.statut };
+    },
+  });
+
+  // Toutes les violations = règles statiques + chevauchement live
+  const toutesViolations = useMemo(() => {
+    const list = [...validations];
+    if (chevauchement) {
+      list.push({
+        regle: "chevauchement",
+        message: `Chevauchement : une demande "${chevauchement.libelle}" du ${new Date(chevauchement.date_debut).toLocaleDateString("fr-FR")} au ${new Date(chevauchement.date_fin_absence).toLocaleDateString("fr-FR")} existe déjà (statut : ${chevauchement.statut}).`,
+        bloquant: true,
+      });
+    }
+    return list;
+  }, [validations, chevauchement]);
+
+  const violationsBloquantesTotal = useMemo(() => toutesViolations.filter(x => x.bloquant), [toutesViolations]);
+
   const codeGenreCollab = useMemo(() => {
     if (!form.collaborateur_id) return null;
     return collaborateurs.find(c => c.id === form.collaborateur_id)?.code_genre || null;
@@ -285,25 +333,31 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
   // ── Mutation ──
   const saveDemande = useMutation({
     mutationFn: async () => {
+      // Garde-fou : aucune règle bloquante ne doit passer (en plus du bouton désactivé)
+      if (violationsBloquantes.length > 0) {
+        throw new Error(violationsBloquantes.map(x => "• " + x.message).join("\n"));
+      }
       if (typeCongeActif?.interdit_reliquat) {
         const disponible = Number(soldeDisponibleControle ?? 0);
         if (form.nbr_jours_decomptes > disponible) throw new Error(`Solde insuffisant : ${form.nbr_jours_decomptes.toFixed(1)}j demandés pour ${disponible.toFixed(1)}j disponibles.`);
       }
-      if (dateDebutContrat && form.date_debut) {
-        const dc = new Date(form.date_debut + "T00:00:00"), dk = new Date(dateDebutContrat + "T00:00:00");
-        if (dc <= dk) throw new Error(`La date de début du congé (${dc.toLocaleDateString("fr-FR")}) doit être strictement postérieure à la date de début du contrat (${dk.toLocaleDateString("fr-FR")}).`);
-      }
-      if (erreurAnciennete) throw new Error(erreurAnciennete);
-      // Chevauchement
-      {
+      // Chevauchement (controle_chevauchement = 'STRICT' → bloquant)
+      // On bloque uniquement contre les demandes EN ATTENTE ou APPROUVÉE.
+      // Le filtre statut est appliqué côté JS pour être insensible à la casse
+      // (les statuts peuvent être stockés en minuscules : en_attente / approuvee).
+      if ((typeCongeActif?.controle_chevauchement ?? "STRICT") === "STRICT") {
         const f: Record<string, unknown> = {
           select: "id,date_debut,date_fin_absence,code_type_conge,statut",
-          collaborateur_id: form.collaborateur_id, statut: `in.(EN_ATTENTE,APPROUVEE,BROUILLON)`,
+          collaborateur_id: form.collaborateur_id,
           "date_debut": `lte.${form.date_fin_absence}`, "date_fin_absence": `gte.${form.date_debut}`,
         };
         if (editMode && editDemande) f["id"] = `neq.${editDemande.id}`;
-        const overlaps = await db.list<any>("cong_demandes", f);
-        if (overlaps && overlaps.length > 0) {
+        const rows = await db.list<any>("cong_demandes", f);
+        const STATUTS_BLOQUANTS = ["en_attente", "approuvee", "brouillon", "modifiee"];
+        const overlaps = (rows || []).filter(r =>
+          STATUTS_BLOQUANTS.includes(String(r.statut ?? "").toLowerCase())
+        );
+        if (overlaps.length > 0) {
           const ov = overlaps[0];
           const ovType = typesConge.find(t => t.code === ov.code_type_conge);
           throw new Error(`Chevauchement détecté : une demande "${ovType?.libelle || ov.code_type_conge}" du ${new Date(ov.date_debut).toLocaleDateString("fr-FR")} au ${new Date(ov.date_fin_absence).toLocaleDateString("fr-FR")} existe déjà (statut : ${ov.statut}).`);
@@ -315,10 +369,10 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
         debut_demi_journee: form.debut_demi_journee || null, fin_demi_journee: form.fin_demi_journee || null,
         nbr_jours_calendaires: form.nbr_jours_calendaires, nbr_jours_decomptes: form.nbr_jours_decomptes,
         commentaire_collaborateur: form.commentaire_collaborateur || null, est_report_reliquat: form.est_report_reliquat,
-        statut: "EN_ATTENTE", date_soumission: new Date().toISOString().split("T")[0],
+        statut: "en_attente", date_soumission: new Date().toISOString().split("T")[0],
       };
       if (editMode && editDemande) {
-        await db.update("cong_demandes", { id: editDemande.id }, { ...payload, statut: "MODIFIEE", demande_originale_id: editDemande.id });
+        await db.update("cong_demandes", { id: editDemande.id }, { ...payload, statut: "modifiee", demande_originale_id: editDemande.id });
       } else {
         const created = await db.create<{ id: string }>("cong_demandes", payload);
         // Déclenchement générique du workflow (l'affectation process↔traitement est en base).
@@ -344,7 +398,25 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
 
   const submitDisabled = saveDemande.isPending || !form.collaborateur_id || !form.code_type_conge || !form.date_debut || !form.date_fin_absence
     || !!(typeCongeActif?.interdit_reliquat && form.nbr_jours_decomptes > Number(soldeDisponibleControle ?? 0))
-    || !!erreurDateContrat || !!erreurAnciennete;
+    || violationsBloquantesTotal.length > 0;
+
+  // Tentative de soumission : si des règles bloquent, afficher un popup listant chaque violation
+  const tenterSoumission = () => {
+    if (violationsBloquantesTotal.length > 0) {
+      toast({
+        title: violationsBloquantesTotal.length > 1 ? `${violationsBloquantesTotal.length} règles bloquent la demande` : "Règle non respectée",
+        description: violationsBloquantesTotal.map(x => "• " + x.message).join("\n"),
+        variant: "destructive",
+      });
+      return;
+    }
+    // Avertissements non bloquants (ex. justificatif) : informer sans empêcher
+    const avertissements = toutesViolations.filter(x => !x.bloquant);
+    if (avertissements.length > 0) {
+      toast({ title: "À noter", description: avertissements.map(x => "• " + x.message).join("\n") });
+    }
+    saveDemande.mutate();
+  };
 
   return (
     <div className="grid gap-4 py-2">
@@ -420,9 +492,14 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-1">
           <Label>Date de début *</Label>
-          <Input type="date" value={form.date_debut} onChange={e => handleDateDebutAutoAbs(e.target.value)} style={erreurDateContrat ? { borderColor: "hsl(0 72% 51%)" } : {}} />
-          {erreurDateContrat && (<div className="flex items-start gap-1.5 mt-1"><span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: 13 }}>⚠</span><p className="text-xs leading-tight" style={{ color: "hsl(0 72% 45%)" }}>{erreurDateContrat}</p></div>)}
-          {erreurAnciennete && !erreurDateContrat && (<div className="flex items-start gap-1.5 mt-1"><span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: 13 }}>⚠</span><p className="text-xs leading-tight" style={{ color: "hsl(0 72% 45%)" }}>{erreurAnciennete}</p></div>)}
+          <Input type="date" value={form.date_debut} min={(() => {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const pre = typeCongeActif?.preavis_jours ?? 0;
+            if (pre > 0) today.setDate(today.getDate() + pre);
+            return today.toISOString().split("T")[0];
+          })()} onChange={e => handleDateDebutAutoAbs(e.target.value)} style={erreurDateContrat ? { borderColor: "hsl(var(--destructive))" } : {}} />
+          {erreurDateContrat && (<div className="flex items-start gap-1.5 mt-1"><span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: "calc(13px * var(--font-scale))" }}>⚠</span><p className="text-xs leading-tight" style={{ color: "hsl(0 72% 45%)" }}>{erreurDateContrat}</p></div>)}
+          {erreurAnciennete && !erreurDateContrat && (<div className="flex items-start gap-1.5 mt-1"><span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: "calc(13px * var(--font-scale))" }}>⚠</span><p className="text-xs leading-tight" style={{ color: "hsl(0 72% 45%)" }}>{erreurAnciennete}</p></div>)}
         </div>
         <div className="space-y-1">
           <Label>Demi-journée début</Label>
@@ -444,7 +521,7 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-1"><Label>Date de fin absence *</Label><Input type="date" value={form.date_fin_absence} onChange={e => updateFormDates({ date_fin_absence: e.target.value })} /></div>
+          <div className="space-y-1"><Label>Date de fin absence *</Label><Input type="date" value={form.date_fin_absence} min={form.date_debut || undefined} onChange={e => updateFormDates({ date_fin_absence: e.target.value })} /></div>
           <div className="space-y-1"><Label>Demi-journée fin</Label><Select value={form.fin_demi_journee || "JOURNEE"} onValueChange={v => updateFormDates({ fin_demi_journee: v === "JOURNEE" ? "" : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="JOURNEE">Journée entière</SelectItem><SelectItem value="MATIN">Demi-journée matin</SelectItem><SelectItem value="APRES_MIDI">Demi-journée après-midi</SelectItem></SelectContent></Select></div>
           <div className="space-y-1"><Label>Date de retour</Label><Input type="date" value={form.date_retour} readOnly className="bg-muted cursor-not-allowed" />{form.fin_demi_journee === "MATIN" && (<p className="text-xs" style={{ color: "hsl(var(--primary))" }}>Retour après-midi = même jour</p>)}</div>
         </div>
@@ -471,6 +548,19 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
         return (<div className="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2" style={{ background: "hsl(0 72% 51% / 0.1)", border: "1px solid hsl(0 72% 51% / 0.3)", color: "hsl(0 72% 51%)" }}><X size={14} /> Solde insuffisant : la durée demandée ({form.nbr_jours_decomptes.toFixed(1)}j) dépasse le solde disponible ({disponible.toFixed(1)}j), calculé après déduction des demandes déjà en attente.</div>);
       })()}
 
+      {toutesViolations.length > 0 && (
+        <div className="space-y-1.5">
+          {toutesViolations.map((x, i) => (
+            <div key={i} className="px-3 py-2 rounded-lg text-xs font-medium flex items-start gap-2"
+              style={x.bloquant
+                ? { background: "hsl(var(--destructive) / 0.1)", border: "1px solid hsl(var(--destructive) / 0.3)", color: "hsl(var(--destructive))" }
+                : { background: "hsl(var(--warning) / 0.1)", border: "1px solid hsl(var(--warning) / 0.3)", color: "hsl(var(--warning))" }}>
+              <X size={14} className="flex-shrink-0 mt-0.5" /> <span>{x.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-1">
         <Label>Commentaire collaborateur</Label>
         <Textarea rows={2} value={form.commentaire_collaborateur} onChange={e => setForm(f => ({ ...f, commentaire_collaborateur: e.target.value }))} />
@@ -478,7 +568,7 @@ export default function DemandeCongeForm({ collaborateurId, exercice, editDemand
 
       <div className="flex justify-end gap-2 pt-2">
         {onCancel && <Button variant="outline" onClick={onCancel}>Annuler</Button>}
-        <Button onClick={() => saveDemande.mutate()} disabled={submitDisabled}>
+        <Button onClick={tenterSoumission} disabled={submitDisabled}>
           <Send size={14} className="mr-1" /> {saveDemande.isPending ? "Envoi…" : "Soumettre la demande"}
         </Button>
       </div>

@@ -2,7 +2,8 @@
  * CalendrierPaiePage – Gestion des plans de paie et calendriers associés.
  */
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/api";
+import { useFormatMasks } from "@/hooks/useFormatMasks";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Calendar, Copy, ChevronDown, ChevronRight, X, Save, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,7 @@ type Periode = {
   annee: number;
   mois: number;
   numero_periode: number;
+  intitule: string | null;
   date_debut: string;
   date_fin: string;
   date_reference: string;
@@ -76,6 +78,7 @@ type Periode = {
   statut: string;
   date_limite_saisie: string | null;
   date_limite_validation: string | null;
+  date_ouverture: string | null;
   observations: string | null;
 };
 
@@ -99,25 +102,23 @@ const CalendrierPaiePage: React.FC = () => {
   const [generateDialog, setGenerateDialog] = useState(false);
   const [generateYear, setGenerateYear] = useState(new Date().getFullYear());
 
+  const { formatDate } = useFormatMasks();
+
   // Load plans
   const loadPlans = useCallback(async () => {
-    const { data } = await supabase
-      .from("plan_paie" as any)
-      .select("*")
-      .order("code");
-    if (data) setPlans(data as Plan[]);
+    try {
+      const data = await db.list<Plan>("plan_paie", { select: "*", order: "code" });
+      setPlans(data);
+    } catch (e: any) { toast.error(e.message); }
   }, []);
 
   // Load periodes for a plan + year
   const loadPeriodes = useCallback(async (planId: string, year: number) => {
     setLoading(true);
-    const { data } = await supabase
-      .from("calendrier_paie" as any)
-      .select("*")
-      .eq("plan_paie_id", planId)
-      .eq("annee", year)
-      .order("numero_periode");
-    if (data) setPeriodes(data as Periode[]);
+    let data: Periode[] = [];
+    try { data = await db.list<Periode>("calendrier_paie", { plan_paie_id: planId, annee: year, select: "*", order: "numero_periode" }); }
+    catch (e: any) { toast.error(e.message); }
+    setPeriodes(data);
     setLoading(false);
   }, []);
 
@@ -143,12 +144,12 @@ const CalendrierPaiePage: React.FC = () => {
   const savePlan = async () => {
     if (!planForm.code || !planForm.libelle) { toast.error("Code et libellé obligatoires"); return; }
     if (editPlan) {
-      const { error } = await supabase.from("plan_paie").update(planForm).eq("id", editPlan.id);
-      if (error) { toast.error(error.message); return; }
+      try { await db.update("plan_paie", { id: editPlan.id }, planForm); }
+      catch (e: any) { toast.error(e.message); return; }
       toast.success("Plan modifié");
     } else {
-      const { error } = await supabase.from("plan_paie").insert(planForm);
-      if (error) { toast.error(error.message); return; }
+      try { await db.create("plan_paie", planForm); }
+      catch (e: any) { toast.error(e.message); return; }
       toast.success("Plan créé");
     }
     setPlanDialog(false);
@@ -157,8 +158,8 @@ const CalendrierPaiePage: React.FC = () => {
 
   const deletePlan = async (id: string) => {
     if (!confirm("Supprimer ce plan et toutes ses périodes ?")) return;
-    const { error } = await supabase.from("plan_paie").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    try { await db.remove("plan_paie", { id }); }
+    catch (e: any) { toast.error(e.message); return; }
     if (selectedPlan?.id === id) { setSelectedPlan(null); setPeriodes([]); }
     toast.success("Plan supprimé");
     loadPlans();
@@ -183,7 +184,7 @@ const CalendrierPaiePage: React.FC = () => {
             date_fin: df1,
             date_reference: df1,
             est_fin_mois: false, est_fin_trimestre: false, est_fin_semestre: false, est_fin_annee: false,
-            type_periode: "NORMALE", statut: "OUVERTE", date_limite_saisie: null, date_limite_validation: null, observations: null,
+            type_periode: "NORMALE", statut: "OUVERTE", intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
           });
           // 2ème quinzaine
           const lastDay = new Date(generateYear, m, 0).getDate();
@@ -194,7 +195,7 @@ const CalendrierPaiePage: React.FC = () => {
             date_fin: df2,
             date_reference: df2,
             est_fin_mois: true, est_fin_trimestre: m % 3 === 0, est_fin_semestre: m % 6 === 0, est_fin_annee: m === 12,
-            type_periode: "NORMALE", statut: "OUVERTE", date_limite_saisie: null, date_limite_validation: null, observations: null,
+            type_periode: "NORMALE", statut: "OUVERTE", intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
           });
         } else {
           const lastDay = new Date(generateYear, m, 0).getDate();
@@ -205,7 +206,7 @@ const CalendrierPaiePage: React.FC = () => {
             date_fin: df,
             date_reference: df,
             est_fin_mois: true, est_fin_trimestre: m % 3 === 0, est_fin_semestre: m % 6 === 0, est_fin_annee: m === 12,
-            type_periode: "NORMALE", statut: "OUVERTE", date_limite_saisie: null, date_limite_validation: null, observations: null,
+            type_periode: "NORMALE", statut: "OUVERTE", intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
           });
         }
       }
@@ -220,7 +221,7 @@ const CalendrierPaiePage: React.FC = () => {
           date_fin: df1,
           date_reference: df1,
           est_fin_mois: false, est_fin_trimestre: false, est_fin_semestre: false, est_fin_annee: false,
-          type_periode: "NORMALE", statut: "OUVERTE", date_limite_saisie: null, date_limite_validation: null, observations: null,
+          type_periode: "NORMALE", statut: "OUVERTE", intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
         });
         const df2 = `${generateYear}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
         newPeriodes.push({
@@ -229,7 +230,7 @@ const CalendrierPaiePage: React.FC = () => {
           date_fin: df2,
           date_reference: df2,
           est_fin_mois: true, est_fin_trimestre: m % 3 === 0, est_fin_semestre: m % 6 === 0, est_fin_annee: m === 12,
-          type_periode: "NORMALE", statut: "OUVERTE", date_limite_saisie: null, date_limite_validation: null, observations: null,
+          type_periode: "NORMALE", statut: "OUVERTE", intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
         });
       }
     } else if (freq === "HEBDOMADAIRE") {
@@ -252,7 +253,7 @@ const CalendrierPaiePage: React.FC = () => {
           date_reference: dfStr,
           est_fin_mois: finMois, est_fin_trimestre: finMois && mois % 3 === 0,
           est_fin_semestre: finMois && mois % 6 === 0, est_fin_annee: false,
-          type_periode: "NORMALE", statut: "OUVERTE", date_limite_saisie: null, date_limite_validation: null, observations: null,
+          type_periode: "NORMALE", statut: "OUVERTE", intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
         });
         d.setDate(d.getDate() + 7);
         num++;
@@ -260,8 +261,8 @@ const CalendrierPaiePage: React.FC = () => {
       if (newPeriodes.length > 0) newPeriodes[newPeriodes.length - 1].est_fin_annee = true;
     }
 
-    const { error } = await supabase.from("calendrier_paie").insert(newPeriodes);
-    if (error) { toast.error(error.message); return; }
+    try { await db.create("calendrier_paie", newPeriodes); }
+    catch (e: any) { toast.error(e.message); return; }
     toast.success(`${newPeriodes.length} périodes générées pour ${generateYear}`);
     setGenerateDialog(false);
     setSelectedYear(generateYear);
@@ -289,7 +290,7 @@ const CalendrierPaiePage: React.FC = () => {
       date_reference: dateFin,
       est_fin_mois: false, est_fin_trimestre: false, est_fin_semestre: false, est_fin_annee: false,
       type_periode: "NORMALE", statut: "OUVERTE",
-      date_limite_saisie: null, date_limite_validation: null, observations: null,
+      intitule: null, date_ouverture: null, date_limite_saisie: null, date_limite_validation: null, observations: null,
     });
     setPeriodeDialog(true);
   };
@@ -314,12 +315,12 @@ const CalendrierPaiePage: React.FC = () => {
     }
     if (editPeriode?.id) {
       const { id, ...rest } = f as Periode & { id: string };
-      const { error } = await supabase.from("calendrier_paie").update(rest).eq("id", editPeriode.id);
-      if (error) { toast.error(error.message); return; }
+      try { await db.update("calendrier_paie", { id: editPeriode.id }, rest); }
+      catch (e: any) { toast.error(e.message); return; }
       toast.success("Période modifiée");
     } else {
-      const { error } = await supabase.from("calendrier_paie").insert(f);
-      if (error) { toast.error(error.message); return; }
+      try { await db.create("calendrier_paie", f); }
+      catch (e: any) { toast.error(e.message); return; }
       toast.success("Période ajoutée");
     }
     setPeriodeDialog(false);
@@ -328,16 +329,16 @@ const CalendrierPaiePage: React.FC = () => {
 
   const deletePeriode = async (id: string) => {
     if (!confirm("Supprimer cette période ?")) return;
-    const { error } = await supabase.from("calendrier_paie").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    try { await db.remove("calendrier_paie", { id }); }
+    catch (e: any) { toast.error(e.message); return; }
     toast.success("Période supprimée");
     if (selectedPlan) loadPeriodes(selectedPlan.id, selectedYear);
   };
 
   const toggleStatutPeriode = async (p: Periode) => {
     const newStatut = p.statut === "OUVERTE" ? "FERMEE" : "OUVERTE";
-    const { error } = await supabase.from("calendrier_paie").update({ statut: newStatut }).eq("id", p.id!);
-    if (error) { toast.error(error.message); return; }
+    try { await db.update("calendrier_paie", { id: p.id! }, { statut: newStatut }); }
+    catch (e: any) { toast.error(e.message); return; }
     toast.success(`Période ${newStatut === "FERMEE" ? "fermée" : "réouverte"}`);
     if (selectedPlan) loadPeriodes(selectedPlan.id, selectedYear);
   };
@@ -383,10 +384,10 @@ const CalendrierPaiePage: React.FC = () => {
                   <Badge variant="outline" className="text-[10px]">
                     {FREQUENCES.find((f) => f.code === p.frequence)?.label || p.frequence}
                   </Badge>
-                  <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-600">
+                  <Badge variant="outline" className="text-[10px]" style={{ borderColor: "hsl(var(--info) / 0.3)", color: "hsl(var(--info))" }}>
                     Calcul : {FREQUENCES_CALCUL.find((f) => f.code === p.frequence_calcul)?.label || p.frequence_calcul || "—"}
                   </Badge>
-                  <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-600">
+                  <Badge variant="outline" className="text-[10px]" style={{ borderColor: "hsl(var(--warning) / 0.3)", color: "hsl(var(--warning))" }}>
                     RAZ : {FREQUENCES_RAZ.find((f) => f.code === p.frequence_raz_cumuls)?.label || p.frequence_raz_cumuls || "—"}
                   </Badge>
                 </div>
@@ -394,7 +395,7 @@ const CalendrierPaiePage: React.FC = () => {
               </div>
               <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPlan(p)}>
-                  <Pencil size={13} />
+                  <Pencil size={13} style={{ color: "hsl(var(--accent))" }} />
                 </Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deletePlan(p.id)}>
                   <Trash2 size={13} />
@@ -405,8 +406,8 @@ const CalendrierPaiePage: React.FC = () => {
             {/* Calendrier expanded */}
             {expandedPlan === p.id && selectedPlan?.id === p.id && (
               <div className="border-t border-border bg-muted/20 p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
                     <Calendar size={16} className="text-accent" />
                     <span className="text-sm font-medium">Calendrier {selectedYear}</span>
                     <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
@@ -446,11 +447,13 @@ const CalendrierPaiePage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border overflow-hidden">
-                    <Table>
+                    <div className="overflow-x-auto">
+                      <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/50">
                           <TableHead className="text-xs w-12">#</TableHead>
                           <TableHead className="text-xs">Mois</TableHead>
+                          <TableHead className="text-xs">Intitulé</TableHead>
                           <TableHead className="text-xs">Trimestre</TableHead>
                           <TableHead className="text-xs">Semestre</TableHead>
                           <TableHead className="text-xs">Début</TableHead>
@@ -461,21 +464,23 @@ const CalendrierPaiePage: React.FC = () => {
                           <TableHead className="text-xs text-center">Fin A</TableHead>
                           <TableHead className="text-xs">Type</TableHead>
                           <TableHead className="text-xs">Statut</TableHead>
+                          <TableHead className="text-xs">Ouverture</TableHead>
                           <TableHead className="text-xs">Lim. saisie</TableHead>
                           <TableHead className="text-xs">Lim. valid.</TableHead>
-                          <TableHead className="text-xs w-20"></TableHead>
+                          <TableHead className="text-xs w-24 sticky right-0 bg-background z-10 text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {periodes.map((per) => (
-                          <TableRow key={per.id} className="text-xs">
+                          <TableRow key={per.id} className="text-xs cursor-pointer" onDoubleClick={() => openEditPeriode(per)} title="Double-cliquez pour modifier la période">
                             <TableCell className="font-mono">{per.numero_periode}</TableCell>
                             <TableCell className="font-medium">{MOIS_LABELS[per.mois - 1]}</TableCell>
+                            <TableCell className="text-muted-foreground">{per.intitule || "—"}</TableCell>
                             <TableCell className="text-muted-foreground">T{Math.ceil(per.mois / 3)}</TableCell>
                             <TableCell className="text-muted-foreground">S{per.mois <= 6 ? 1 : 2}</TableCell>
-                            <TableCell>{per.date_debut}</TableCell>
-                            <TableCell>{per.date_fin}</TableCell>
-                            <TableCell className="font-medium text-accent">{per.date_reference}</TableCell>
+                            <TableCell>{formatDate(per.date_debut)}</TableCell>
+                            <TableCell>{formatDate(per.date_fin)}</TableCell>
+                            <TableCell className="font-medium text-accent">{formatDate(per.date_reference)}</TableCell>
                             <TableCell className="text-center">{per.est_fin_trimestre ? "✓" : ""}</TableCell>
                             <TableCell className="text-center">{per.est_fin_semestre ? "✓" : ""}</TableCell>
                             <TableCell className="text-center">{per.est_fin_annee ? "✓" : ""}</TableCell>
@@ -485,23 +490,49 @@ const CalendrierPaiePage: React.FC = () => {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <button
-                                onClick={() => toggleStatutPeriode(per)}
-                                className={`text-[10px] font-medium px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
-                                  per.statut === "OUVERTE"
-                                    ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25"
-                                    : "bg-rose-500/15 text-rose-600 hover:bg-rose-500/25"
-                                }`}
-                              >
-                                {per.statut}
-                              </button>
+                              {(() => {
+                                const today = new Date().toISOString().slice(0, 10);
+                                const estFermee = per.statut === "FERMEE" || per.statut === "CLOTUREE";
+                                const nonOuverte = !estFermee && !!per.date_ouverture && per.date_ouverture > today;
+                                if (nonOuverte) {
+                                  return (
+                                    <span
+                                      className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                                      style={{ background: "hsl(var(--warning) / 0.15)", color: "hsl(var(--warning))" }}
+                                      title={`Ouverture le ${formatDate(per.date_ouverture)}`}
+                                    >
+                                      Non ouverte
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    onClick={() => toggleStatutPeriode(per)}
+                                    className="text-[10px] font-medium px-2 py-0.5 rounded-full cursor-pointer transition-colors"
+                                    style={
+                                      per.statut === "OUVERTE"
+                                        ? { background: "hsl(var(--success) / 0.15)", color: "hsl(var(--success))" }
+                                        : { background: "hsl(var(--destructive) / 0.15)", color: "hsl(var(--destructive))" }
+                                    }
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.background = per.statut === "OUVERTE" ? "hsl(var(--success) / 0.25)" : "hsl(var(--destructive) / 0.25)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.background = per.statut === "OUVERTE" ? "hsl(var(--success) / 0.15)" : "hsl(var(--destructive) / 0.15)";
+                                    }}
+                                  >
+                                    {per.statut}
+                                  </button>
+                                );
+                              })()}
                             </TableCell>
-                            <TableCell className="text-muted-foreground">{per.date_limite_saisie || "—"}</TableCell>
-                            <TableCell className="text-muted-foreground">{per.date_limite_validation || "—"}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-1">
+                            <TableCell className="text-muted-foreground">{per.date_ouverture ? formatDate(per.date_ouverture) : "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">{per.date_limite_saisie ? formatDate(per.date_limite_saisie) : "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">{per.date_limite_validation ? formatDate(per.date_limite_validation) : "—"}</TableCell>
+                            <TableCell className="sticky right-0 bg-background z-10">
+                              <div className="flex gap-1 justify-end">
                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditPeriode(per)}>
-                                  <Pencil size={11} />
+                                  <Pencil size={11} style={{ color: "hsl(var(--accent))" }} />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => deletePeriode(per.id!)}>
                                   <Trash2 size={11} />
@@ -512,6 +543,7 @@ const CalendrierPaiePage: React.FC = () => {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -527,7 +559,7 @@ const CalendrierPaiePage: React.FC = () => {
             <DialogTitle>{editPlan ? "Modifier le plan" : "Nouveau plan de paie"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Code *</Label>
                 <Input value={planForm.code} onChange={(e) => setPlanForm({ ...planForm, code: e.target.value.toUpperCase() })} className="h-9 text-sm" />
@@ -553,7 +585,7 @@ const CalendrierPaiePage: React.FC = () => {
             {/* Fréquences des rubriques */}
             <div className="border border-border rounded-lg p-3 space-y-3 bg-muted/30">
               <p className="text-xs font-semibold text-foreground">Fréquences des rubriques</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Fréquence de calcul</Label>
                   <Select value={planForm.frequence_calcul} onValueChange={(v) => setPlanForm({ ...planForm, frequence_calcul: v })}>
@@ -596,7 +628,7 @@ const CalendrierPaiePage: React.FC = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             {/* Résumé en lecture seule */}
-            <div className="grid grid-cols-4 gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-lg bg-muted/50 border border-border">
               <div>
                 <Label className="text-[10px] text-muted-foreground uppercase">Année</Label>
                 <p className="text-sm font-medium">{periodeForm.annee}</p>
@@ -615,7 +647,11 @@ const CalendrierPaiePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            <div>
+              <Label className="text-xs">Intitulé de la période <span className="font-normal text-muted-foreground">(optionnel — sinon « Mois Année »)</span></Label>
+              <Input value={periodeForm.intitule || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, intitule: e.target.value || null })} placeholder="ex. Paie de Janvier 2026" className="h-9 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <Label className="text-xs">N° période</Label>
                 <Input type="number" value={periodeForm.numero_periode || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, numero_periode: Number(e.target.value) })} className="h-9 text-sm" />
@@ -638,7 +674,7 @@ const CalendrierPaiePage: React.FC = () => {
                 <Input type="date" value={periodeForm.date_fin || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, date_fin: e.target.value })} className="h-9 text-sm" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">
                   Date de référence
@@ -655,7 +691,7 @@ const CalendrierPaiePage: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs">Type de période</Label>
                 <Select value={periodeForm.type_periode || "NORMALE"} onValueChange={(v) => setPeriodeForm({ ...periodeForm, type_periode: v })}>
@@ -679,7 +715,11 @@ const CalendrierPaiePage: React.FC = () => {
                 <Input value={periodeForm.observations || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, observations: e.target.value || null })} className="h-9 text-sm" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Date d'ouverture <span className="font-normal text-muted-foreground">— le traitement est bloque avant cette date (vide = ouverte)</span></Label>
+              <Input type="date" value={periodeForm.date_ouverture || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, date_ouverture: e.target.value || null })} className="h-9 text-sm" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Date limite saisie</Label>
                 <Input type="date" value={periodeForm.date_limite_saisie || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, date_limite_saisie: e.target.value || null })} className="h-9 text-sm" />
@@ -689,7 +729,7 @@ const CalendrierPaiePage: React.FC = () => {
                 <Input type="date" value={periodeForm.date_limite_validation || ""} onChange={(e) => setPeriodeForm({ ...periodeForm, date_limite_validation: e.target.value || null })} className="h-9 text-sm" />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="flex items-center gap-2">
                 <Switch checked={periodeForm.est_fin_mois || false} onCheckedChange={(v) => setPeriodeForm({ ...periodeForm, est_fin_mois: v })} />
                 <Label className="text-xs">Fin mois</Label>

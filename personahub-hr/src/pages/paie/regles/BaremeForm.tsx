@@ -3,7 +3,7 @@
  * Supporte saisie manuelle et import CSV (clé;valeur;commentaire).
  */
 import React, { useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,11 +51,11 @@ const BaremeForm: React.FC<Props> = ({ editId, onBack }) => {
     if (!editId) return;
     setLoading(true);
     Promise.all([
-      supabase.from("bareme").select("*").eq("id", editId).single(),
-      supabase.from("bareme_ligne").select("*").eq("bareme_id", editId).order("ordre"),
-    ]).then(([bRes, lRes]) => {
-      if (bRes.data) {
-        const d: any = bRes.data;
+      db.findOne<any>("bareme", { id: editId, select: "*" }),
+      db.list<any>("bareme_ligne", { bareme_id: editId, select: "*", order: "ordre" }),
+    ]).then(([b, l]) => {
+      if (b) {
+        const d: any = b;
         setForm({
           code: d.code,
           libelle: d.libelle,
@@ -68,9 +68,9 @@ const BaremeForm: React.FC<Props> = ({ editId, onBack }) => {
           actif: d.actif,
         });
       }
-      if (lRes.data) {
+      if (l && l.length) {
         setLignes(
-          lRes.data.map((l: any) => ({
+          l.map((l: any) => ({
             id: l.id,
             cle: l.cle,
             valeur: l.valeur != null ? String(l.valeur) : "",
@@ -80,7 +80,7 @@ const BaremeForm: React.FC<Props> = ({ editId, onBack }) => {
         );
       }
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, [editId]);
 
   const addLigne = () => {
@@ -152,20 +152,27 @@ const BaremeForm: React.FC<Props> = ({ editId, onBack }) => {
     };
     let baremeId = editId;
     if (editId) {
-      const { error } = await supabase.from("bareme").update(payload).eq("id", editId);
-      if (error) {
+      try {
+        await db.update("bareme", { id: editId }, payload);
+      } catch (e: any) {
         setSaving(false);
-        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        toast({ title: "Erreur", description: e.message, variant: "destructive" });
         return;
       }
     } else {
-      const data = []; const error = null; // Supabase desactive
-      if (error || !data) {
+      try {
+        const created: any = await db.create("bareme", payload);
+        baremeId = Array.isArray(created) ? created[0]?.id : created?.id;
+      } catch (e: any) {
         setSaving(false);
-        toast({ title: "Erreur", description: error?.message, variant: "destructive" });
+        toast({ title: "Erreur", description: e.message, variant: "destructive" });
         return;
       }
-      baremeId = data.id;
+      if (!baremeId) {
+        setSaving(false);
+        toast({ title: "Erreur", description: "Échec création du barème", variant: "destructive" });
+        return;
+      }
     }
 
     // Synchroniser les lignes
@@ -183,21 +190,18 @@ const BaremeForm: React.FC<Props> = ({ editId, onBack }) => {
     const toUpdate = lignes.filter((l) => l.id && !l._new && !l._deleted);
 
     if (toDelete.length > 0) {
-      await supabase.from("bareme_ligne").delete().in("id", toDelete);
+      await db.remove("bareme_ligne", { id: `in.(${toDelete.join(",")})` });
     }
     if (toInsert.length > 0) {
-      await supabase.from("bareme_ligne").insert(toInsert);
+      await db.create("bareme_ligne", toInsert);
     }
     for (const l of toUpdate) {
-      await supabase
-        .from("bareme_ligne")
-        .update({
-          cle: l.cle,
-          valeur: l.valeur ? Number(l.valeur) : null,
-          valeur_texte: form.type_valeur === "TEXTE" ? l.valeur_texte || l.valeur : null,
-          commentaire: l.commentaire || null,
-        })
-        .eq("id", l.id!);
+      await db.update("bareme_ligne", { id: l.id! }, {
+        cle: l.cle,
+        valeur: l.valeur ? Number(l.valeur) : null,
+        valeur_texte: form.type_valeur === "TEXTE" ? l.valeur_texte || l.valeur : null,
+        commentaire: l.commentaire || null,
+      });
     }
 
     setSaving(false);

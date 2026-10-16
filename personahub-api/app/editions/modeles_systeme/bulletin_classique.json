@@ -1,0 +1,562 @@
+{
+  "schema_version": 1,
+  "parametres": [
+    {
+      "code": "periode",
+      "libelle": "Période",
+      "type": "PERIODE"
+    },
+    {
+      "code": "collaborateurs",
+      "libelle": "Collaborateurs",
+      "type": "COLLABORATEUR",
+      "obligatoire": false,
+      "multiple": true
+    },
+    {
+      "code": "plan_paie",
+      "libelle": "Plan de paie",
+      "type": "PLAN_PAIE",
+      "obligatoire": false
+    }
+  ],
+  "jeux": [
+    {
+      "code": "b",
+      "source": "BULLETIN",
+      "role": "PRINCIPAL",
+      "filtres": [
+        "periode_id = @periode.id"
+      ],
+      "tri": [
+        {
+          "champ": "identite.nom"
+        },
+        {
+          "champ": "identite.prenom"
+        }
+      ]
+    },
+    {
+      "code": "l",
+      "source": "BULLETIN_LIGNE",
+      "role": "SECONDAIRE",
+      "parent": "b",
+      "relation": "lignes",
+      "filtres": [
+        "sens = \"GAIN\" OU sens = \"RETENUE\""
+      ],
+      "tri": [
+        {
+          "champ": "ordre_affichage"
+        }
+      ]
+    }
+  ],
+  "page": {
+    "format": "A4",
+    "orientation": "PORTRAIT",
+    "marges": [
+      12,
+      12,
+      12,
+      12
+    ]
+  },
+  "bandes": [
+    {
+      "id": "entete",
+      "type": "EN_TETE_PAGE",
+      "hauteur": 48,
+      "elements": [
+        {
+          "id": "logo",
+          "type": "IMAGE",
+          "x": 0,
+          "y": 0,
+          "l": 35,
+          "h": 18,
+          "valeur": "CHARTE(\"logo\")"
+        },
+        {
+          "id": "societe_nom",
+          "type": "CHAMP",
+          "x": 40,
+          "y": 0,
+          "l": 100,
+          "h": 6,
+          "valeur": "societe.raison_sociale",
+          "style": {
+            "gras": true,
+            "taille": 11
+          }
+        },
+        {
+          "id": "societe_adresse",
+          "type": "CHAMP",
+          "x": 40,
+          "y": 6,
+          "l": 100,
+          "h": 5,
+          "valeur": "societe.adresse + \" \" + societe.ville",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "societe_ids",
+          "type": "CHAMP",
+          "x": 40,
+          "y": 11,
+          "l": 100,
+          "h": 5,
+          "valeur": "\"ICE : \" + societe.ice + \"   CNSS : \" + societe.numero_cnss",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "titre",
+          "type": "TEXTE",
+          "x": 140,
+          "y": 0,
+          "l": 46,
+          "h": 8,
+          "valeur": "\"BULLETIN DE PAIE\"",
+          "style": {
+            "gras": true,
+            "taille": 12,
+            "alignement": "DROITE"
+          },
+          "verrou": "FORME"
+        },
+        {
+          "id": "periode",
+          "type": "CHAMP",
+          "x": 140,
+          "y": 8,
+          "l": 46,
+          "h": 6,
+          "valeur": "FORMAT(@periode.date_fin, \"MOIS_ANNEE\")",
+          "style": {
+            "alignement": "DROITE"
+          }
+        },
+        {
+          "id": "cadre_identite",
+          "type": "CADRE",
+          "x": 0,
+          "y": 21,
+          "l": 186,
+          "h": 25
+        },
+        {
+          "id": "lib_matricule",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 23,
+          "l": 30,
+          "h": 5,
+          "valeur": "\"Matricule\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "matricule",
+          "type": "CHAMP",
+          "x": 32,
+          "y": 23,
+          "l": 40,
+          "h": 5,
+          "valeur": "identite.matricule",
+          "style": {
+            "gras": true
+          }
+        },
+        {
+          "id": "lib_nom",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 28,
+          "l": 30,
+          "h": 5,
+          "valeur": "\"Nom et prénom\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "nom",
+          "type": "CHAMP",
+          "x": 32,
+          "y": 28,
+          "l": 70,
+          "h": 5,
+          "valeur": "identite.nom + \" \" + identite.prenom",
+          "style": {
+            "gras": true
+          }
+        },
+        {
+          "id": "lib_cin",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 33,
+          "l": 30,
+          "h": 5,
+          "valeur": "\"CIN\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "cin",
+          "type": "CHAMP",
+          "x": 32,
+          "y": 33,
+          "l": 40,
+          "h": 5,
+          "valeur": "identite.cin"
+        },
+        {
+          "id": "lib_cnss",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 38,
+          "l": 30,
+          "h": 5,
+          "valeur": "\"N° CNSS\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "cnss",
+          "type": "CHAMP",
+          "x": 32,
+          "y": 38,
+          "l": 40,
+          "h": 5,
+          "valeur": "identite.num_cnss"
+        },
+        {
+          "id": "lib_embauche",
+          "type": "TEXTE",
+          "x": 100,
+          "y": 23,
+          "l": 35,
+          "h": 5,
+          "valeur": "\"Date d'embauche\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "embauche",
+          "type": "CHAMP",
+          "x": 135,
+          "y": 23,
+          "l": 48,
+          "h": 5,
+          "valeur": "contrat.date_embauche",
+          "affichage": {
+            "masque": "DATE_FR"
+          }
+        },
+        {
+          "id": "lib_emploi",
+          "type": "TEXTE",
+          "x": 100,
+          "y": 28,
+          "l": 35,
+          "h": 5,
+          "valeur": "\"Emploi\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "emploi",
+          "type": "CHAMP",
+          "x": 135,
+          "y": 28,
+          "l": 48,
+          "h": 5,
+          "valeur": "affectation.emploi_libelle"
+        },
+        {
+          "id": "lib_sf",
+          "type": "TEXTE",
+          "x": 100,
+          "y": 33,
+          "l": 35,
+          "h": 5,
+          "valeur": "\"Situation familiale\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "sf",
+          "type": "CHAMP",
+          "x": 135,
+          "y": 33,
+          "l": 48,
+          "h": 5,
+          "valeur": "situation_familiale.libelle"
+        },
+        {
+          "id": "lib_enfants",
+          "type": "TEXTE",
+          "x": 100,
+          "y": 38,
+          "l": 35,
+          "h": 5,
+          "valeur": "\"Enfants à charge\"",
+          "style": {
+            "taille": 8
+          }
+        },
+        {
+          "id": "enfants",
+          "type": "CHAMP",
+          "x": 135,
+          "y": 38,
+          "l": 48,
+          "h": 5,
+          "valeur": "situation_familiale.nb_enfants_a_charge"
+        }
+      ]
+    },
+    {
+      "id": "corps",
+      "type": "CORPS",
+      "hauteur": 40,
+      "extensible": true,
+      "saut_apres": true,
+      "elements": [
+        {
+          "id": "lignes",
+          "type": "TABLEAU",
+          "x": 0,
+          "y": 0,
+          "l": 186,
+          "h": 20,
+          "jeu": "l",
+          "zebre": true,
+          "colonnes": [
+            {
+              "id": "col_code",
+              "titre": "Code",
+              "largeur": 20,
+              "valeur": "code_rubrique"
+            },
+            {
+              "id": "col_libelle",
+              "titre": "Désignation",
+              "largeur": 62,
+              "valeur": "libelle"
+            },
+            {
+              "id": "col_base",
+              "titre": "Base",
+              "largeur": 24,
+              "valeur": "base",
+              "affichage": {
+                "masque": "MONTANT_SANS_ZERO"
+              }
+            },
+            {
+              "id": "col_nombre",
+              "titre": "Nombre",
+              "largeur": 16,
+              "valeur": "nombre",
+              "affichage": {
+                "masque": "MONTANT_SANS_ZERO"
+              }
+            },
+            {
+              "id": "col_taux",
+              "titre": "Taux",
+              "largeur": 16,
+              "valeur": "taux",
+              "affichage": {
+                "masque": "MONTANT_SANS_ZERO"
+              }
+            },
+            {
+              "id": "col_gain",
+              "titre": "Gains",
+              "largeur": 24,
+              "valeur": "SI(sens = \"GAIN\", montant)",
+              "affichage": {
+                "masque": "MONTANT_SANS_ZERO"
+              },
+              "total": "SOMME"
+            },
+            {
+              "id": "col_retenue",
+              "titre": "Retenues",
+              "largeur": 24,
+              "valeur": "SI(sens = \"RETENUE\", montant)",
+              "affichage": {
+                "masque": "MONTANT_SANS_ZERO"
+              },
+              "total": "SOMME"
+            }
+          ],
+          "sections": [
+            {
+              "id": "sec_gains",
+              "titre": "Gains",
+              "filtre": "sens = \"GAIN\""
+            },
+            {
+              "id": "sec_retenues",
+              "titre": "Retenues",
+              "filtre": "sens = \"RETENUE\""
+            }
+          ]
+        },
+        {
+          "id": "cadre_totaux",
+          "type": "CADRE",
+          "x": 0,
+          "y": 22,
+          "l": 186,
+          "h": 16
+        },
+        {
+          "id": "lib_brut",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 24,
+          "l": 40,
+          "h": 5,
+          "valeur": "\"Salaire brut\""
+        },
+        {
+          "id": "brut",
+          "type": "CHAMP",
+          "x": 42,
+          "y": 24,
+          "l": 30,
+          "h": 5,
+          "valeur": "total_brut",
+          "affichage": {
+            "masque": "MONTANT"
+          }
+        },
+        {
+          "id": "lib_imposable",
+          "type": "TEXTE",
+          "x": 76,
+          "y": 24,
+          "l": 40,
+          "h": 5,
+          "valeur": "\"Net imposable\""
+        },
+        {
+          "id": "imposable",
+          "type": "CHAMP",
+          "x": 116,
+          "y": 24,
+          "l": 30,
+          "h": 5,
+          "valeur": "net_imposable",
+          "affichage": {
+            "masque": "MONTANT"
+          }
+        },
+        {
+          "id": "lib_net",
+          "type": "TEXTE",
+          "x": 2,
+          "y": 31,
+          "l": 40,
+          "h": 6,
+          "valeur": "\"NET À PAYER\"",
+          "style": {
+            "gras": true,
+            "taille": 11
+          },
+          "verrou": "TOTAL"
+        },
+        {
+          "id": "net",
+          "type": "CHAMP",
+          "x": 42,
+          "y": 31,
+          "l": 40,
+          "h": 6,
+          "valeur": "net_a_payer",
+          "affichage": {
+            "masque": "MONTANT",
+            "texte_apres": " DH"
+          },
+          "style": {
+            "gras": true,
+            "taille": 11
+          },
+          "verrou": "TOTAL"
+        },
+        {
+          "id": "net_lettres",
+          "type": "CHAMP",
+          "x": 86,
+          "y": 31,
+          "l": 98,
+          "h": 6,
+          "valeur": "MONTANT_EN_LETTRES(net_a_payer)",
+          "style": {
+            "italique": true,
+            "taille": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "pied",
+      "type": "PIED_PAGE",
+      "hauteur": 10,
+      "elements": [
+        {
+          "id": "mention",
+          "type": "TEXTE",
+          "x": 0,
+          "y": 0,
+          "l": 140,
+          "h": 8,
+          "valeur": "\"Pour vous aider à faire valoir vos droits, conservez ce bulletin sans limitation de durée.\"",
+          "style": {
+            "taille": 7,
+            "italique": true
+          },
+          "verrou": "TOTAL"
+        },
+        {
+          "id": "pagination",
+          "type": "CHAMP",
+          "x": 140,
+          "y": 0,
+          "l": 46,
+          "h": 8,
+          "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+          "style": {
+            "taille": 7,
+            "alignement": "DROITE"
+          }
+        }
+      ]
+    }
+  ],
+  "sortie": {
+    "formats": [
+      "PDF"
+    ],
+    "nom_fichier": "\"Bulletin_\" + identite.matricule + \"_\" + @periode.code",
+    "eclatement": "collaborateur_id",
+    "qr_verification": true
+  }
+}

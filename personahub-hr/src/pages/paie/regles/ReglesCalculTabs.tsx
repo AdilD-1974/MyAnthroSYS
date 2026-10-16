@@ -1,65 +1,89 @@
 /**
- * ReglesCalculTabs – Conteneur des 3 sous-onglets du module "Règles de calcul"
- * (Standards / Spécifiques / Barèmes).
+ * ReglesCalculTabs – conteneur de l'onglet « Règles de calcul »
+ * (Paie / Paramétrage réglementaire), monté par ParametragePaiePage.tsx.
+ *
+ * 4 cartes de sélection (icône + libellé + sous-titre), carte active
+ * surlignée par une bordure d'accent. Câblé sur les composants réels :
+ *   - Règles standards     -> CatalogueReglesStandards (nouveau, catalogue statique repliable)
+ *   - Règles spécifiques   -> ReglesSpecifiquesList (export default)
+ *   - Règles de cotisation -> ReglesCotisationList (export default)
+ *   - Barèmes              -> BaremesListPage (export nommé, gère elle-même
+ *                              la navigation vers /paie/parametrage/baremes/new
+ *                              et /paie/parametrage/baremes/:id)
  */
 import React, { useState } from "react";
-import { BookOpenCheck, Sparkles, Table2, Shield } from "lucide-react";
-import ReglesStandardsList from "./ReglesStandardsList";
+import { ListChecks, Sparkles, Landmark, Table2 } from "lucide-react";
+
+import { CatalogueReglesStandards } from "./CatalogueReglesStandards";
 import ReglesSpecifiquesList from "./ReglesSpecifiquesList";
 import ReglesCotisationList from "./ReglesCotisationList";
-// ⚠️ Ancien composant remplacé par le nouveau (refonte multi-clés / multi-sorties)
-// import BaremesList from "./BaremesList";
-import { BaremesListPage } from "@/pages/paie/parametrage/BaremesPages";
+import { BaremesListPage } from "../parametrage/BaremesPages";
 
-type SubTab = "standards" | "specifiques" | "cotisations" | "baremes";
+type OngletRegle = "standards" | "specifiques" | "cotisation" | "baremes";
 
-const TABS: { key: SubTab; label: string; icon: React.ElementType; description: string }[] = [
-  { key: "standards", label: "Règles standards", icon: BookOpenCheck, description: "Catalogue système prédéfini" },
-  { key: "specifiques", label: "Règles spécifiques", icon: Sparkles, description: "Bibliothèque métier personnalisée" },
-  { key: "cotisations", label: "Règles de cotisation", icon: Shield, description: "CNSS, AMO, IR, CIMR — taux et plafonds" },
-  { key: "baremes", label: "Barèmes", icon: Table2, description: "Tables de correspondance clé → valeur" },
+interface OngletDef {
+  id: OngletRegle;
+  libelle: string;
+  sousTitre: string;
+  icone: React.ElementType;
+}
+
+const ONGLETS: OngletDef[] = [
+  { id: "standards", libelle: "Règles standards", sousTitre: "Catalogue système prédéfini", icone: ListChecks },
+  { id: "specifiques", libelle: "Règles spécifiques", sousTitre: "Bibliothèque métier personnalisée", icone: Sparkles },
+  { id: "cotisation", libelle: "Règles de cotisation", sousTitre: "CNSS, AMO, IR, CIMR — taux et plafonds", icone: Landmark },
+  { id: "baremes", libelle: "Barèmes", sousTitre: "Tables de correspondance clé → valeur", icone: Table2 },
 ];
 
 const ReglesCalculTabs: React.FC = () => {
-  const [active, setActive] = useState<SubTab>("standards");
+  const [onglet, setOnglet] = useState<OngletRegle>("standards");
 
   return (
-    <div>
-      {/* Sous-onglets */}
-      <div className="flex flex-wrap items-stretch gap-2 mb-5">
-        {TABS.map(({ key, label, icon: Icon, description }) => {
-          const isActive = active === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setActive(key)}
-              className={`group flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left ${
-                isActive
-                  ? "border-accent bg-accent/10 shadow-sm"
-                  : "border-border bg-background hover:border-accent/40 hover:bg-accent/5"
-              }`}
-            >
-              <div className={`p-2 rounded-lg ${isActive ? "bg-accent/20 text-accent" : "bg-muted text-muted-foreground group-hover:text-accent"}`}>
-                <Icon size={18} />
-              </div>
-              <div>
-                <div className={`text-sm font-semibold ${isActive ? "text-accent" : "text-foreground"}`}>{label}</div>
-                <div className="text-[11px] text-muted-foreground">{description}</div>
-              </div>
-            </button>
-          );
-        })}
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {ONGLETS.map((o) => (
+          <SelecteurOnglet key={o.id} def={o} actif={onglet === o.id} onClick={() => setOnglet(o.id)} />
+        ))}
       </div>
 
-      {/* Contenu */}
-      <div className="rounded-2xl border border-border bg-background p-5">
-        {active === "standards" && <ReglesStandardsList />}
-        {active === "specifiques" && <ReglesSpecifiquesList />}
-        {active === "cotisations" && <ReglesCotisationList />}
-        {active === "baremes" && <BaremesListPage />}
+      <div>
+        {onglet === "standards" && <CatalogueReglesStandards />}
+        {onglet === "specifiques" && <ReglesSpecifiquesList />}
+        {onglet === "cotisation" && <ReglesCotisationList />}
+        {onglet === "baremes" && <BaremesListPage embedded />}
       </div>
     </div>
   );
 };
+
+function SelecteurOnglet({ def, actif, onClick }: { def: OngletDef; actif: boolean; onClick: () => void }) {
+  const Icone = def.icone;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border p-3 text-left transition-colors"
+      style={
+        actif
+          ? { borderColor: "hsl(var(--accent))", borderWidth: 2, background: "hsl(var(--accent) / 0.06)" }
+          : { borderColor: "hsl(var(--border))" }
+      }
+      onMouseEnter={(e) => {
+        if (!actif) e.currentTarget.style.background = "hsl(var(--muted) / 0.4)";
+      }}
+      onMouseLeave={(e) => {
+        if (!actif) e.currentTarget.style.background = "transparent";
+      }}
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <Icone size={18} className="shrink-0" style={{ color: actif ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))" }} />
+        <span className="text-sm font-medium" style={{ color: actif ? "hsl(var(--accent))" : "hsl(var(--foreground))" }}>
+          {def.libelle}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">{def.sousTitre}</p>
+    </button>
+  );
+}
 
 export default ReglesCalculTabs;

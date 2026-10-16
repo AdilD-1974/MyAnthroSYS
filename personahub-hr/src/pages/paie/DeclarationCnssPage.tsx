@@ -6,8 +6,12 @@
  * RG-DECL-CNSS-04 : Génération du fichier XML Damancom
  */
 import React, { useState, useEffect, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { postForBlob } from "@/lib/api";
+import { StatutSelector, type CodeStatutDeclaration } from "@/components/paie/StatutDeclaration";
 import {
   Shield, FileText, Upload, CheckCircle2, AlertTriangle, Download,
   Loader2, ArrowRight, ArrowLeft, Users, RefreshCw, Search, Eye, X,
@@ -28,6 +32,7 @@ interface DeclarationLigne {
   nom: string;
   prenom: string;
   salaire_brut: number;
+  salaire_brut_declare?: number;
   nombre_jours: number;
   statut_salarie: string;
   observations: string;
@@ -43,9 +48,19 @@ interface Declaration {
   nombre_lignes: number;
   total_salaires: number;
   total_jours: number;
+  fichier_xml_path?: string | null;
+  created_at?: string;
 }
 
 const DeclarationCnssPage: React.FC = () => {
+  const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [viewMode, setViewMode] = useState<"wizard" | "historique">("wizard");
+  const [historique, setHistorique] = useState<Declaration[]>([]);
+  const [historiqueLoading, setHistoriqueLoading] = useState(false);
+  const [consultationMode, setConsultationMode] = useState(false);
+  const [societeInfo, setSocieteInfo] = useState<{ raisonSociale: string; numAffilieCnss: string } | null>(null);
   const [step, setStep] = useState(1);
   const [mois, setMois] = useState(new Date().getMonth() + 1);
   const [annee, setAnnee] = useState(new Date().getFullYear());
@@ -66,6 +81,10 @@ const DeclarationCnssPage: React.FC = () => {
     deadlineJour: 10,
     rubriqueSalaireBrut: "",
     rubriqueNbrJours: "",
+    tauxAF: 6.40,
+    tauxTFP: 1.60,
+    tauxAmoSalarial: 1.85,
+    tauxAmoPatronal: 4.52,
   });
   const [paramsLoaded, setParamsLoaded] = useState(false);
   // Rubriques disponibles pour la sélection source
@@ -149,7 +168,11 @@ const DeclarationCnssPage: React.FC = () => {
       const { data } = await supabase
         .from("ref_constante_paie" as never)
         .select("code, valeur" as never)
-        .in("code" as never, ["CNSS_PLAFOND_JOURS", "CNSS_PLAFOND_BASE", "CNSS_TAUX_SALARIAL", "CNSS_TAUX_PATRONAL"] as never);
+        .in("code" as never, [
+          "CNSS_PLAFOND_JOURS", "CNSS_PLAFOND_BASE", "CNSS_TAUX_SALARIAL", "CNSS_TAUX_PATRONAL",
+          "CNSS_DEADLINE_JOUR", "CNSS_RUBRIQUE_SALAIRE_BRUT", "CNSS_RUBRIQUE_NBR_JOURS",
+          "CNSS_TAUX_AF", "CNSS_TAUX_TFP", "CNSS_TAUX_AMO_SALARIAL", "CNSS_TAUX_AMO_PATRONAL",
+        ] as never);
 
       if (data && (data as any[]).length > 0) {
         const map: Record<string, string> = {};
@@ -162,6 +185,10 @@ const DeclarationCnssPage: React.FC = () => {
           deadlineJour: parseFloat(map["CNSS_DEADLINE_JOUR"]) || 10,
           rubriqueSalaireBrut: map["CNSS_RUBRIQUE_SALAIRE_BRUT"] || "",
           rubriqueNbrJours: map["CNSS_RUBRIQUE_NBR_JOURS"] || "",
+          tauxAF: parseFloat(map["CNSS_TAUX_AF"]) || 6.40,
+          tauxTFP: parseFloat(map["CNSS_TAUX_TFP"]) || 1.60,
+          tauxAmoSalarial: parseFloat(map["CNSS_TAUX_AMO_SALARIAL"]) || 1.85,
+          tauxAmoPatronal: parseFloat(map["CNSS_TAUX_AMO_PATRONAL"]) || 4.52,
         });
       }
       setParamsLoaded(true);
@@ -219,6 +246,10 @@ const DeclarationCnssPage: React.FC = () => {
         CNSS_TAUX_SALARIAL: "tauxSalarial",
         CNSS_TAUX_PATRONAL: "tauxPatronal",
         CNSS_DEADLINE_JOUR: "deadlineJour",
+        CNSS_TAUX_AF: "tauxAF",
+        CNSS_TAUX_TFP: "tauxTFP",
+        CNSS_TAUX_AMO_SALARIAL: "tauxAmoSalarial",
+        CNSS_TAUX_AMO_PATRONAL: "tauxAmoPatronal",
       };
       if (keyMap[constCode]) {
         setParamsCnss(prev => ({ ...prev, [keyMap[constCode]]: numVal }));
@@ -230,27 +261,34 @@ const DeclarationCnssPage: React.FC = () => {
   };
 
   // ─── Étape 1 : Initialiser ou charger une déclaration ───
-  const initDeclaration = async () => {
+  const initDeclaration = async (moisOverride?: number, anneeOverride?: number) => {
+    const moisCible = moisOverride ?? mois;
+    const anneeCible = anneeOverride ?? annee;
     setLoading(true);
     try {
       // Vérifier si une déclaration existe déjà
       const { data: existingArr } = await supabase
         .from("cnss_declarations" as never)
         .select("*")
-        .eq("mois" as never, mois as never)
-        .eq("annee" as never, annee as never);
+        .eq("mois" as never, moisCible as never)
+        .eq("annee" as never, anneeCible as never);
       const existing = (existingArr as any[])?.[0];
 
       if (existing) {
         setDeclaration(existing as any);
         // Charger les lignes
-        const { data: l } = await supabase
+        const { data: l, error: errLignes } = await supabase
           .from("cnss_declaration_lignes" as never)
           .select("*")
           .eq("declaration_id" as never, existing.id as never)
           .order("nom" as never);
-        setLignes((l || []) as any);
-        toast.info(`Déclaration ${MOIS_LABELS[mois]} ${annee} chargée (${(l as any[])?.length || 0} lignes)`);
+        if (errLignes) {
+          toast.error(`Erreur de chargement des lignes : ${errLignes.message}`);
+          setLignes([]);
+        } else {
+          setLignes((l || []) as any);
+          toast.info(`Déclaration ${MOIS_LABELS[moisCible]} ${anneeCible} chargée (${(l as any[])?.length || 0} lignes)`);
+        }
       } else {
         setDeclaration(null);
         setLignes([]);
@@ -260,6 +298,280 @@ const DeclarationCnssPage: React.FC = () => {
     }
     setLoading(false);
   };
+
+  // Ouvrir une déclaration active depuis l'historique (bascule en mode assistant sur l'étape Contrôle).
+  // Réservé aux statuts encore modifiables — TRAITEE/ARCHIVEE passent par
+  // ouvrirConsultationCnss (panneau séparé, aucune action de régénération possible).
+  const ouvrirDepuisHistorique = async (d: Declaration) => {
+    setMois(d.mois);
+    setAnnee(d.annee);
+    setConsultationMode(false);
+    setViewMode("wizard");
+    setStep(3);
+    await initDeclaration(d.mois, d.annee);
+  };
+
+  // ─── Consultation en lecture seule (Traité / Archivé) ───────────────────
+  // RG-DECL-CNSS-CONSULT : un panneau dédié, hors du wizard, pour qu'il soit
+  // structurellement impossible de relancer "Génération XML" sur une
+  // déclaration déjà transmise/traitée/archivée.
+  const [consultationCnss, setConsultationCnss] = useState<{ declaration: Declaration; lignes: any[] } | null>(null);
+  const [consultationCnssLoading, setConsultationCnssLoading] = useState(false);
+  const [consultationCnssSearch, setConsultationCnssSearch] = useState("");
+  const [consultationCnssFilter, setConsultationCnssFilter] = useState("TOUS");
+
+  const ouvrirConsultationCnss = async (d: Declaration) => {
+    setConsultationCnssLoading(true);
+    const { data, error } = await supabase.from("cnss_declaration_lignes" as never)
+      .select("*" as never).eq("declaration_id" as never, d.id as never)
+      .order("nom" as never);
+    if (error) { toast.error(error.message); setConsultationCnssLoading(false); return; }
+    setConsultationCnss({ declaration: d, lignes: (data as any[]) || [] });
+    setConsultationCnssSearch("");
+    setConsultationCnssFilter("TOUS");
+    setConsultationCnssLoading(false);
+  };
+  const estVerrouilleeCnss = (statut: string) => statut === "TRAITEE" || statut === "ARCHIVEE";
+
+  function renderConsultationCnss() {
+    if (!consultationCnss) return null;
+        const lignesFiltreesConsult = consultationCnss.lignes.filter((l: any) => {
+          const matchSearch = !consultationCnssSearch ||
+            `${l.nom} ${l.prenom} ${l.matricule} ${l.cin} ${l.num_cnss}`.toLowerCase().includes(consultationCnssSearch.toLowerCase());
+          const matchStatut = consultationCnssFilter === "TOUS" ||
+            (consultationCnssFilter === "ERREUR" ? !l.est_valide : l.statut_salarie === consultationCnssFilter);
+          return matchSearch && matchStatut;
+        });
+        const kpi = {
+          total: consultationCnss.lignes.length,
+          actifs: consultationCnss.lignes.filter((l: any) => l.statut_salarie === "ACTIF").length,
+          entrants: consultationCnss.lignes.filter((l: any) => l.statut_salarie === "ENTRANT").length,
+          sortants: consultationCnss.lignes.filter((l: any) => l.statut_salarie === "SORTANT").length,
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setConsultationCnss(null)}>
+            <div className="rounded-xl border border-border bg-background w-full max-w-6xl max-h-[85vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background z-10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted">
+                    <Shield size={16} className="text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">
+                      {MOIS_LABELS[consultationCnss.declaration.mois]} {consultationCnss.declaration.annee} — Consultation
+                    </p>
+                    <p className="text-[11px] flex items-center gap-1.5 text-muted-foreground">
+                      🔒 {consultationCnss.declaration.statut === "TRAITEE" ? "Traitée" : "Archivée"} · déclaration verrouillée, non modifiable
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => navigate(-1)}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted">
+                    ← Retour
+                  </button>
+                  <button onClick={() => setConsultationCnss(null)} className="p-1 rounded hover:bg-muted">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {!consultationCnssLoading && consultationCnss.lignes.length > 0 && (
+                <>
+                  <div className="grid grid-cols-4 gap-3 p-4">
+                    <div className="rounded-xl bg-muted/50 p-4 text-center">
+                      <p className="text-2xl font-bold">{kpi.total}</p>
+                      <p className="text-xs text-muted-foreground">Salariés</p>
+                    </div>
+                    <div className="rounded-xl p-4 text-center" style={{ background: "hsl(var(--success) / 0.08)" }}>
+                      <p className="text-2xl font-bold" style={{ color: "hsl(var(--success))" }}>{kpi.actifs}</p>
+                      <p className="text-xs" style={{ color: "hsl(var(--success))" }}>Actifs</p>
+                    </div>
+                    <div className="rounded-xl p-4 text-center" style={{ background: "hsl(var(--primary) / 0.06)" }}>
+                      <p className="text-2xl font-bold" style={{ color: "hsl(var(--primary))" }}>{kpi.entrants}</p>
+                      <p className="text-xs" style={{ color: "hsl(var(--primary))" }}>Entrants</p>
+                    </div>
+                    <div className="rounded-xl p-4 text-center" style={{ background: "hsl(var(--warning) / 0.1)" }}>
+                      <p className="text-2xl font-bold" style={{ color: "hsl(var(--warning))" }}>{kpi.sortants}</p>
+                      <p className="text-xs" style={{ color: "hsl(var(--warning))" }}>Sortants</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 px-4 pb-3">
+                    <div className="relative flex-1">
+                      <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input value={consultationCnssSearch} onChange={e => setConsultationCnssSearch(e.target.value)}
+                        placeholder="Rechercher (nom, CIN, matricule)…"
+                        className="w-full pl-7 pr-2 py-1.5 rounded-lg border border-border text-sm bg-background" />
+                    </div>
+                    <select value={consultationCnssFilter} onChange={e => setConsultationCnssFilter(e.target.value)}
+                      className="px-2 py-1.5 rounded-lg border border-border text-sm bg-background">
+                      <option value="TOUS">Tous les statuts</option>
+                      <option value="ACTIF">Actifs</option>
+                      <option value="ENTRANT">Entrants</option>
+                      <option value="SORTANT">Sortants</option>
+                      <option value="ERREUR">En erreur</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {consultationCnssLoading ? (
+                <p className="text-sm text-center py-8 text-muted-foreground">Chargement…</p>
+              ) : consultationCnss.lignes.length === 0 ? (
+                <p className="text-sm text-center py-8 text-muted-foreground">Aucune ligne enregistrée pour cette déclaration</p>
+              ) : lignesFiltreesConsult.length === 0 ? (
+                <p className="text-sm text-center py-8 text-muted-foreground">Aucune ligne ne correspond à ce filtre</p>
+              ) : (
+                <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50 border-b border-border">
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground">Matricule</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground">CIN *</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground">N°CNSS</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground">Nom &amp; Prénom</th>
+                      <th className="text-right py-2 px-3 font-medium text-muted-foreground">Déclaré</th>
+                      <th className="text-right py-2 px-3 font-medium text-muted-foreground">Plafonné (CNSS)</th>
+                      <th className="text-center py-2 px-3 font-medium text-muted-foreground">Jours</th>
+                      <th className="text-center py-2 px-3 font-medium text-muted-foreground">Statut</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground">Observations</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lignesFiltreesConsult.map((l: any) => (
+                      <tr key={l.id} className="border-b border-border">
+                        <td className="py-1.5 px-3 font-mono">{l.matricule}</td>
+                        <td className="py-1.5 px-3">{l.cin}</td>
+                        <td className="py-1.5 px-3">{l.num_cnss || "—"}</td>
+                        <td className="py-1.5 px-3 font-medium">{l.nom} {l.prenom}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{Number(l.salaire_brut || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2 })}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{Number(l.salaire_brut || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2 })}</td>
+                        <td className="py-1.5 px-3 text-center">{l.nombre_jours}</td>
+                        <td className="py-1.5 px-3 text-center">
+                          <span className="text-[10px] px-2 py-0.5 rounded font-semibold" style={{
+                            background: l.statut_salarie === "ACTIF" ? "hsl(var(--success) / 0.12)"
+                              : l.statut_salarie === "ENTRANT" ? "hsl(var(--primary) / 0.1)" : "hsl(var(--warning) / 0.12)",
+                            color: l.statut_salarie === "ACTIF" ? "hsl(var(--success))"
+                              : l.statut_salarie === "ENTRANT" ? "hsl(var(--primary))" : "hsl(var(--warning))",
+                          }}>{l.statut_salarie === "ACTIF" ? "Actif" : l.statut_salarie === "ENTRANT" ? "Entrant" : "Sortant"}</span>
+                        </td>
+                        <td className="py-1.5 px-3 text-muted-foreground">{l.observations || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground px-4 py-3 border-t border-border">
+                "Déclaré" et "Plafonné (CNSS)" affichent la même valeur : seul le montant effectivement soumis au plafond
+                CNSS est conservé pour une déclaration verrouillée — le détail avant plafonnement n'est pas historisé.
+              </p>
+            </div>
+          </div>
+        );
+  }
+
+  // ─── Arrivée depuis le tableau de bord "Vue déclarations" avec une cible ───
+  // précise à consulter : panneau de consultation si verrouillée, wizard actif sinon.
+  useEffect(() => {
+    const cibleId = (location.state as { consulterDeclarationId?: string } | null)?.consulterDeclarationId;
+    if (!cibleId) return;
+    (async () => {
+      const { data, error } = await supabase.from("cnss_declarations" as never)
+        .select("*" as never).eq("id" as never, cibleId as never).single();
+      if (error || !data) return;
+      const decl = data as any as Declaration;
+      if (estVerrouilleeCnss(decl.statut)) await ouvrirConsultationCnss(decl);
+      else await ouvrirDepuisHistorique(decl);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Historique : chargement + archivage automatique (RG-DECL-CNSS-HIST-01) ───
+  // Une déclaration est historisée automatiquement une fois passé le 15 du mois
+  // suivant la période déclarée (ex. déclaration de janvier → archivée dès le 16 février).
+  const loadHistorique = async () => {
+    setHistoriqueLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("cnss_declarations" as never)
+        .select("*" as never)
+        .order("annee" as never, { ascending: false } as never)
+        .order("mois" as never, { ascending: false } as never);
+      if (error) throw error;
+      let rows = (data as any[]) || [];
+
+      // Déterminer les déclarations à archiver
+      const aujourdHui = new Date();
+      const aArchiver = rows.filter((d: any) => {
+        if (d.statut === "ARCHIVEE") return false;
+        const anneeLimite = d.mois === 12 ? d.annee + 1 : d.annee;
+        const moisLimite = d.mois === 12 ? 1 : d.mois + 1;
+        const dateLimiteArchivage = new Date(anneeLimite, moisLimite - 1, 15, 23, 59, 59);
+        return aujourdHui > dateLimiteArchivage;
+      });
+
+      if (aArchiver.length > 0) {
+        await Promise.all(aArchiver.map((d: any) =>
+          supabase.from("cnss_declarations" as never).update({ statut: "ARCHIVEE" } as never).eq("id" as never, d.id as never)
+        ));
+        rows = rows.map((d: any) => aArchiver.some((a: any) => a.id === d.id) ? { ...d, statut: "ARCHIVEE" } : d);
+      }
+
+      setHistorique(rows as Declaration[]);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+    setHistoriqueLoading(false);
+  };
+
+  // ─── Changement manuel de statut (depuis l'historique) ─────────────────
+  const changerStatutCnss = async (declId: string, nouveauStatut: CodeStatutDeclaration) => {
+    const { error } = await supabase.from("cnss_declarations" as never)
+      .update({ statut: nouveauStatut } as never).eq("id" as never, declId as never);
+    if (error) { toast.error(error.message); return; }
+    setHistorique(prev => prev.map(d => (d as any).id === declId ? { ...d, statut: nouveauStatut } : d));
+    toast.success(`Statut mis à jour : ${nouveauStatut}`);
+  };
+
+  // RG-DECL-CNSS-BDX : Charger l'identité de la société pour le bordereau de paiement
+  useEffect(() => {
+    const loadSocieteInfo = async () => {
+      try {
+        const { data: societes } = await supabase
+          .from("societes" as never)
+          .select("id, raison_sociale" as never)
+          .limit(1);
+        const societe = (societes as any[])?.[0];
+        if (!societe) return;
+
+        const [{ data: affiliations }, { data: typesAff }] = await Promise.all([
+          supabase.from("societe_affiliations" as never).select("*" as never).eq("societe_id" as never, societe.id as never),
+          supabase.from("ref_type_affiliation" as never).select("code, libelle" as never),
+        ]);
+
+        const typeCnss = ((typesAff as any[]) || []).find((t: any) => (t.libelle || "").toUpperCase().includes("CNSS"));
+        const affCnss = ((affiliations as any[]) || []).find((a: any) =>
+          typeCnss ? a.code_type_affiliation === typeCnss.code : (a.code_type_affiliation || "").toUpperCase().includes("CNSS")
+        );
+
+        setSocieteInfo({
+          raisonSociale: societe.raison_sociale || "",
+          numAffilieCnss: affCnss?.numero_affiliation || "",
+        });
+      } catch {
+        // Silencieux : le bordereau signalera l'absence d'info au moment de la génération
+      }
+    };
+    loadSocieteInfo();
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "historique") loadHistorique();
+  }, [viewMode]);
 
   // ─── Étape 1 : Import fichier préétabli ───
   const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -338,20 +650,13 @@ const DeclarationCnssPage: React.FC = () => {
     setLoading(true);
     try {
       // RG-DECL-CNSS-02 : Récupérer les collaborateurs actifs avec contrat en cours
-      // RG-DECL-CNSS-SOURCE : Récupérer dynamiquement les champs configurés via rubriques
-      const zfKeySalaire = sourceSalaire?.zone_fixe_key || null;
-      const zfKeyJours = sourceJours?.zone_fixe_key || null;
-
-      // Construire la sélection dynamique des champs salaires_fixes
       const sfFields = ["salaire_base", "date_debut", "date_fin", "archive"];
-      if (zfKeySalaire && !sfFields.includes(zfKeySalaire)) sfFields.push(zfKeySalaire);
-      if (zfKeyJours && !sfFields.includes(zfKeyJours)) sfFields.push(zfKeyJours);
 
       // Charger les collaborateurs actifs avec contrats et salaires fixes
       // (3 requêtes séparées + jointure JS, vu que le backend FastAPI ne gère pas les SELECT imbriqués multi-niveaux)
       const { data: collabsRaw, error } = await supabase
         .from("collaborateurs")
-        .select("id, matricule, nom, prenom, cin, num_cnss, code_statut_cnss")
+        .select("id, matricule, nom, prenom, cin, num_cnss, statut_collaborateur")
         .eq("archive", false)
         .neq("statut_collaborateur", "SORTI");
 
@@ -400,7 +705,86 @@ const DeclarationCnssPage: React.FC = () => {
       const periodeFin = new Date(annee, mois, 0);
       const joursOuvres = calculerJoursOuvres(periodeDebut, periodeFin);
 
-      const newLignes: DeclarationLigne[] = (collabs || []).map((c: any) => {
+      // RG-DECL-CNSS-SOURCE (Option A) : lire salaire brut / nombre de jours depuis le
+      // bulletin déjà calculé de la période, sur les rubriques configurées en Paramétrage
+      // (ASSIETTE_CNSS, NBJCNSS...). Le proxy /db n'acceptant pas les jointures, on fait
+      // bulletin puis bulletin_ligne en deux requêtes séparées.
+      const codeRubriqueSalaire = paramsCnss.rubriqueSalaireBrut || null;
+      const codeRubriqueJours = paramsCnss.rubriqueNbrJours || null;
+      const codesRubriquesBulletin = [codeRubriqueSalaire, codeRubriqueJours].filter(Boolean) as string[];
+
+      const bulletinParCollab: Record<string, { id: string; statut: string }> = {};
+      const montantsParCollab: Record<string, Record<string, number>> = {};
+
+      if (collabIds.length > 0) {
+        // 1) Retrouver la/les période(s) de calendrier_paie correspondant au mois/année
+        const { data: periodesData, error: errPeriodes } = await supabase
+          .from("calendrier_paie" as never)
+          .select("id, annee, mois" as never)
+          .eq("annee" as never, annee as never)
+          .eq("mois" as never, mois as never);
+
+        if (errPeriodes) throw errPeriodes;
+        const periodeIds = ((periodesData as any[]) || []).map(p => p.id);
+
+        // 2) Bulletins des collaborateurs sur ces périodes
+        const { data: bulletinsData, error: errBulletins } = periodeIds.length > 0
+          ? await supabase
+              .from("bulletin" as never)
+              .select("id, collaborateur_id, periode_id, statut" as never)
+              .in("collaborateur_id" as never, collabIds as never)
+              .in("periode_id" as never, periodeIds as never)
+          : { data: [], error: null };
+
+        if (errBulletins) throw errBulletins;
+
+        // Un seul bulletin par collaborateur/période en principe ; en cas de doublon
+        // (ex. recalcul), on garde le plus finalisé : CLOTURE > VALIDE > CALCULE
+        const prioriteStatut: Record<string, number> = { CLOTURE: 3, VALIDE: 2, CALCULE: 1 };
+        ((bulletinsData as any[]) || []).forEach((b: any) => {
+          const courant = bulletinParCollab[b.collaborateur_id];
+          if (!courant || (prioriteStatut[b.statut] || 0) > (prioriteStatut[courant.statut] || 0)) {
+            bulletinParCollab[b.collaborateur_id] = { id: b.id, statut: b.statut };
+          }
+        });
+
+        // 3) Lignes de bulletin pour les rubriques configurées (montant + nombre)
+        const bulletinIds = Object.values(bulletinParCollab).map(b => b.id);
+        if (bulletinIds.length > 0 && codesRubriquesBulletin.length > 0) {
+          const { data: lignesData, error: errLignes } = await supabase
+            .from("bulletin_ligne" as never)
+            .select("bulletin_id, code_rubrique, montant, nombre" as never)
+            .in("bulletin_id" as never, bulletinIds as never)
+            .in("code_rubrique" as never, codesRubriquesBulletin as never);
+
+          if (errLignes) throw errLignes;
+
+          // Salaire brut = montant ; Nombre de jours = nombre (attributs distincts en base)
+          const montantsParBulletin: Record<string, Record<string, number>> = {};
+          ((lignesData as any[]) || []).forEach((l: any) => {
+            if (!montantsParBulletin[l.bulletin_id]) montantsParBulletin[l.bulletin_id] = {};
+            if (l.code_rubrique === codeRubriqueJours) {
+              montantsParBulletin[l.bulletin_id][l.code_rubrique] = Number(l.nombre) || 0;
+            } else {
+              montantsParBulletin[l.bulletin_id][l.code_rubrique] = Number(l.montant) || 0;
+            }
+          });
+          Object.entries(bulletinParCollab).forEach(([collabId, b]) => {
+            montantsParCollab[collabId] = montantsParBulletin[b.id] || {};
+          });
+        }
+      }
+
+      const newLignesRaw: (DeclarationLigne | null)[] = (collabs || []).map((c: any) => {
+        // RG-DECL-CNSS-02e : Exclure les collaborateurs dont AUCUN contrat n'a démarré
+        // au plus tard à la fin de la période déclarée — ils n'ont pas encore d'existence
+        // sur ce mois (ex. embauche prévue le mois suivant) et ne doivent pas apparaître
+        // dans la déclaration, plutôt que d'y figurer avec un salaire à 0.
+        const aUnContratDemarre = c.collaborateur_contrats?.some((ct: any) =>
+          !ct.archive && new Date(ct.date_debut) <= periodeFin
+        );
+        if (!aUnContratDemarre) return null;
+
         // Contrat actif
         const contratActif = c.collaborateur_contrats?.find((ct: any) =>
           !ct.archive && ct.code_statut_contrat !== "CLOTURE" &&
@@ -423,13 +807,18 @@ const DeclarationCnssPage: React.FC = () => {
           statut = "SORTANT";
         }
 
-        // RG-DECL-CNSS-SOURCE : Résolution dynamique du nombre de jours
+        const bulletinCollab = bulletinParCollab[c.id];
+        const montantsBulletin = montantsParCollab[c.id] || {};
+        const bulletinProvisoire = bulletinCollab?.statut === "CALCULE";
+
+        // RG-DECL-CNSS-SOURCE (Option A) : nombre de jours, lu depuis le bulletin réel
         let jours: number;
-        if (zfKeyJours && salaireActif && salaireActif[zfKeyJours] != null) {
-          // Source configurée via rubrique → zone fixe
-          jours = Math.min(Number(salaireActif[zfKeyJours]) || 0, paramsCnss.plafondJours);
+        let joursSource: "bulletin" | "estime" = "estime";
+        if (codeRubriqueJours && montantsBulletin[codeRubriqueJours] != null) {
+          jours = Math.min(montantsBulletin[codeRubriqueJours], paramsCnss.plafondJours);
+          joursSource = "bulletin";
         } else {
-          // Fallback : calcul automatique des jours ouvrés
+          // Fallback : calcul automatique des jours ouvrés (bulletin absent/rubrique non trouvée)
           jours = Math.min(joursOuvres, paramsCnss.plafondJours);
           if (statut === "ENTRANT" && contratActif) {
             const dateEntree = new Date(contratActif.date_debut);
@@ -437,20 +826,27 @@ const DeclarationCnssPage: React.FC = () => {
           }
         }
 
-        // RG-DECL-CNSS-SOURCE : Résolution dynamique du salaire brut
+        // RG-DECL-CNSS-SOURCE (Option A) : salaire brut, lu depuis le bulletin réel
         let salaireBase: number;
-        if (zfKeySalaire && salaireActif && salaireActif[zfKeySalaire] != null) {
-          // Source configurée via rubrique → zone fixe
-          salaireBase = Number(salaireActif[zfKeySalaire]) || 0;
+        if (codeRubriqueSalaire && montantsBulletin[codeRubriqueSalaire] != null) {
+          salaireBase = montantsBulletin[codeRubriqueSalaire];
         } else {
-          // Fallback : salaire_base
+          // Fallback : salaire_base (bulletin absent/rubrique non trouvée)
           salaireBase = salaireActif?.salaire_base || 0;
         }
         const salairePlafonne = Math.min(salaireBase, paramsCnss.plafondBase);
 
         const obs: string[] = [];
         if (!c.num_cnss) obs.push("⚠ Pas de N°CNSS");
+        if (!bulletinCollab) obs.push("⚠ Aucun bulletin calculé pour cette période – valeurs estimées");
+        else if (bulletinProvisoire) obs.push("⚠ Bulletin non validé (CALCULE) – valeurs provisoires");
         if (salaireBase > paramsCnss.plafondBase) obs.push(`Base plafonnée : ${salaireBase.toFixed(2)} → ${salairePlafonne.toFixed(2)}`);
+        // Vérification de la rubrique jours réellement utilisée (RG-DECL-CNSS-SOURCE)
+        if (codeRubriqueJours) {
+          obs.push(joursSource === "bulletin"
+            ? `Jours issus du bulletin (rubrique ${codeRubriqueJours})`
+            : `⚠ Rubrique jours "${codeRubriqueJours}" introuvable sur le bulletin – jours estimés`);
+        }
 
         return {
           collaborateur_id: c.id,
@@ -460,12 +856,14 @@ const DeclarationCnssPage: React.FC = () => {
           nom: c.nom,
           prenom: c.prenom,
           salaire_brut: salairePlafonne,
+          salaire_brut_declare: salaireBase,
           nombre_jours: jours,
           statut_salarie: statut,
           observations: obs.join(" | "),
           est_valide: true,
         };
       });
+      const newLignes: DeclarationLigne[] = newLignesRaw.filter((l): l is DeclarationLigne => l !== null);
 
       // Si on avait importé un fichier préétabli, fusionner avec les données réelles
       if (importMode === "file" && lignes.length > 0) {
@@ -481,6 +879,7 @@ const DeclarationCnssPage: React.FC = () => {
               ...l,
               collaborateur_id: match.collaborateur_id,
               salaire_brut: match.salaire_brut,
+              salaire_brut_declare: match.salaire_brut_declare,
               nombre_jours: match.nombre_jours,
               statut_salarie: match.statut_salarie,
               observations: match.observations || l.observations,
@@ -573,6 +972,17 @@ const DeclarationCnssPage: React.FC = () => {
 
       let declId = declaration?.id;
       if (!declId) {
+        // RG-DECL-CNSS-04 : Revérifier en base avant d'insérer, au cas où l'état React
+        // n'aurait pas été chargé via "Charger" (ex. flux "Créer automatiquement" direct) —
+        // évite un INSERT en double sur la contrainte unique (mois, annee).
+        const { data: existingArr } = await supabase
+          .from("cnss_declarations" as never)
+          .select("id" as never)
+          .eq("mois" as never, mois as never)
+          .eq("annee" as never, annee as never);
+        declId = (existingArr as any[])?.[0]?.id;
+      }
+      if (!declId) {
         const { data, error } = await supabase
           .from("cnss_declarations" as never)
           .insert({
@@ -582,6 +992,7 @@ const DeclarationCnssPage: React.FC = () => {
             nombre_lignes: lignes.length,
             total_salaires: totalSalaires,
             total_jours: totalJours,
+            created_by: user?.id || null,
           } as never)
           .select("id")
           .single();
@@ -688,11 +1099,49 @@ const DeclarationCnssPage: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
 
-    sauvegarder("GENEREE");
+    if (!consultationMode) {
+      sauvegarder("GENEREE");
+    }
     toast.success(`RG-DECL-CNSS-04 : Fichier XML généré (${lignesValides.length} salariés)`);
   };
 
-  // ─── Helpers ───
+  // ─── Bordereau de paiement CNSS (Régime Général + AMO) — généré côté backend
+  // (xhtml2pdf, bilingue FR/AR) via /paie/rapports/cnss/bordereau ───
+  const genererBordereauPDF = async (lignesArg?: DeclarationLigne[], moisArg?: number, anneeArg?: number) => {
+    const lignesCible = lignesArg ?? lignes;
+    const moisCible = moisArg ?? mois;
+    const anneeCible = anneeArg ?? annee;
+
+    if (lignesCible.length === 0) {
+      toast.error("Aucune ligne à déclarer pour cette période — impossible de générer le bordereau");
+      return;
+    }
+
+    const assiettePlafonnee = lignesCible.reduce((s, l) => s + l.salaire_brut, 0);
+    const assietteNonPlafonnee = lignesCible.reduce((s, l) => s + (l.salaire_brut_declare ?? l.salaire_brut), 0);
+
+    try {
+      const blob = await postForBlob("/paie/rapports/cnss/bordereau", {
+        mois: moisCible,
+        annee: anneeCible,
+        assiette_plafonnee: assiettePlafonnee,
+        assiette_non_plafonnee: assietteNonPlafonnee,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Bordereau_CNSS_${anneeCible}_${String(moisCible).padStart(2, "0")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Bordereau de paiement CNSS généré (Régime Général + AMO)");
+    } catch (e: any) {
+      toast.error(e.message || "Échec de la génération du bordereau");
+    }
+  };
+
+
   const escapeXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const calculerJoursOuvres = (debut: Date, fin: Date): number => {
@@ -724,6 +1173,10 @@ const DeclarationCnssPage: React.FC = () => {
     erreurs: lignes.filter(l => !l.est_valide).length,
     sansCnss: lignes.filter(l => !l.num_cnss).length,
     totalSalaires: lignes.reduce((s, l) => s + l.salaire_brut, 0),
+    totalSalairesDeclare: lignes.reduce((s, l) => s + (l.salaire_brut_declare ?? l.salaire_brut), 0),
+    totalJours: lignes.reduce((s, l) => s + (l.nombre_jours || 0), 0),
+    totalJoursEntrants: lignes.filter(l => l.statut_salarie === "ENTRANT").reduce((s, l) => s + (l.nombre_jours || 0), 0),
+    totalSalairesDeclareEntrants: lignes.filter(l => l.statut_salarie === "ENTRANT").reduce((s, l) => s + (l.salaire_brut_declare ?? l.salaire_brut), 0),
   };
 
   const steps = [
@@ -734,19 +1187,151 @@ const DeclarationCnssPage: React.FC = () => {
     { num: 4, label: "Génération XML", icon: <Download size={16} /> },
   ];
 
+  const STATUT_BADGE: Record<string, string> = {
+    GENEREE: "bg-emerald-500/10 text-emerald-600",
+    CONTROLEE: "bg-blue-500/10 text-blue-600",
+    ARCHIVEE: "bg-slate-500/10 text-slate-600",
+  };
+
+  // ─── Mode Historique des déclarations (RG-DECL-CNSS-HIST) ───
+  if (viewMode === "historique") {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="p-2 rounded-xl bg-accent/10">
+            <Shield size={20} className="text-accent" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Déclaration CNSS</h1>
+            <p className="text-xs text-muted-foreground">Historique des déclarations</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mb-6 pb-3 border-b border-border">
+          <button
+            onClick={() => setViewMode("wizard")}
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-all"
+          >
+            Déclaration en cours
+          </button>
+          <button
+            onClick={() => setViewMode("historique")}
+            className="px-4 py-2.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground shadow transition-all"
+          >
+            Historique
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {historiqueLoading ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">Chargement…</div>
+          ) : historique.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">Aucune déclaration enregistrée</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Période</th>
+                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Statut</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Salariés</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Total salaires</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Total jours</th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Créée le</th>
+                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historique.map((d, idx) => (
+                  <tr key={d.id || idx} className="border-t border-border hover:bg-muted/30">
+                    <td className="px-3 py-2 font-medium">{MOIS_LABELS[d.mois]} {d.annee}</td>
+                    <td className="px-3 py-2 text-center">
+                      <StatutSelector code={d.statut} onChange={(nouveau) => changerStatutCnss(d.id!, nouveau)} />
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">{d.nombre_lignes}</td>
+                    <td className="px-3 py-2 text-right font-mono">{(d.total_salaires || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right font-mono">{d.total_jours}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">
+                      {d.created_at ? new Date(d.created_at).toLocaleDateString("fr-FR") : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => estVerrouilleeCnss(d.statut) ? ouvrirConsultationCnss(d) : ouvrirDepuisHistorique(d)}
+                          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded font-semibold"
+                          style={estVerrouilleeCnss(d.statut)
+                            ? { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
+                            : { background: "hsl(var(--primary) / 0.1)", color: "hsl(var(--primary))" }}
+                        >
+                          {estVerrouilleeCnss(d.statut) ? <Eye size={12} /> : <Pencil size={12} />}
+                          {estVerrouilleeCnss(d.statut) ? "Consulter" : "Ouvrir"}
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const { data: l, error } = await supabase
+                              .from("cnss_declaration_lignes" as never)
+                              .select("*" as never)
+                              .eq("declaration_id" as never, d.id as never);
+                            if (error) { toast.error(error.message); return; }
+                            genererBordereauPDF((l || []) as any, d.mois, d.annee);
+                            // Navigation vers l'écran de consultation (n'affecte pas le PDF déjà généré)
+                            if (estVerrouilleeCnss(d.statut)) await ouvrirConsultationCnss(d);
+                            else await ouvrirDepuisHistorique(d);
+                          }}
+                          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded font-semibold"
+                          style={{ background: "hsl(var(--accent) / 0.1)", color: "hsl(var(--accent))" }}
+                        >
+                          <Download size={12} /> Bordereau
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-border bg-blue-500/5 p-4 text-xs text-muted-foreground">
+          <strong className="text-foreground">RG-DECL-CNSS-HIST-01</strong> : une déclaration est automatiquement
+          archivée dès le 16 du mois suivant la fin de la période déclarée (ex. déclaration de janvier →
+          archivée à partir du 16 février).
+        </div>
+
+        {renderConsultationCnss()}
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="p-2 rounded-xl bg-accent/10">
-          <Shield size={20} className="text-accent" />
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-accent/10">
+            <Shield size={20} className="text-accent" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Déclaration CNSS</h1>
+            <p className="text-xs text-muted-foreground">
+              Paramétrage → Import → Alimentation → Contrôle → Génération XML
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Déclaration CNSS</h1>
-          <p className="text-xs text-muted-foreground">
-            Paramétrage → Import → Alimentation → Contrôle → Génération XML
-          </p>
-        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-6 pb-3 border-b border-border">
+        <button
+          onClick={() => { setViewMode("wizard"); setConsultationMode(false); }}
+          className="px-4 py-2.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground shadow transition-all"
+        >
+          Déclaration en cours
+        </button>
+        <button
+          onClick={() => setViewMode("historique")}
+          className="px-4 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-all"
+        >
+          🗂 Historique
+        </button>
       </div>
 
       {/* Stepper */}
@@ -892,9 +1477,9 @@ const DeclarationCnssPage: React.FC = () => {
                           </select>
                         </div>
                       </div>
-                      {rub && !rub.zone_fixe_key && (
-                        <p className="text-[11px] text-amber-600 mt-1">ℹ Cette rubrique n'a pas de zone fixe – le salaire_base sera utilisé par défaut.</p>
-                      )}
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        ℹ La valeur sera lue sur le bulletin calculé/validé de la période (ligne {rub?.code}). Si aucun bulletin n'existe pour un collaborateur, le salaire_base sera utilisé en repli.
+                      </p>
                       {attrs.length === 0 && (
                         <p className="text-[11px] text-muted-foreground mt-1">Aucune alimentation configurée pour cette rubrique.</p>
                       )}
@@ -944,9 +1529,9 @@ const DeclarationCnssPage: React.FC = () => {
                           </select>
                         </div>
                       </div>
-                      {rub && !rub.zone_fixe_key && (
-                        <p className="text-[11px] text-amber-600 mt-1">ℹ Cette rubrique n'a pas de zone fixe – les jours ouvrés seront calculés.</p>
-                      )}
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        ℹ La valeur sera lue sur le bulletin calculé/validé de la période (ligne {rub?.code}). Si aucun bulletin n'existe pour un collaborateur, les jours ouvrés seront calculés en repli.
+                      </p>
                       {attrs.length === 0 && (
                         <p className="text-[11px] text-muted-foreground mt-1">Aucune alimentation configurée pour cette rubrique.</p>
                       )}
@@ -1189,29 +1774,52 @@ const DeclarationCnssPage: React.FC = () => {
                 <CheckCircle2 size={16} className="text-primary" />
                 Contrôle de cohérence
               </h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={controler}
-                  className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium flex items-center gap-2 hover:bg-amber-700"
-                >
-                  <CheckCircle2 size={14} /> Lancer le contrôle
-                </button>
-                <button
-                  onClick={() => sauvegarder("CONTROLEE")}
-                  disabled={loading || stats.erreurs > 0}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium flex items-center gap-2 hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {loading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  Valider et sauvegarder
-                </button>
-              </div>
+              {consultationMode ? (
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 rounded-full bg-slate-500/10 text-slate-600 text-xs font-medium flex items-center gap-1.5">
+                    🔒 Mode consultation — déclaration {declaration?.statut === "TRAITEE" ? "traitée" : "archivée"}
+                  </span>
+                  <button
+                    onClick={() => navigate(-1)}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted flex items-center gap-1.5"
+                  >
+                    ← Retour
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={controler}
+                    className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium flex items-center gap-2 hover:bg-amber-700"
+                  >
+                    <CheckCircle2 size={14} /> Lancer le contrôle
+                  </button>
+                  <button
+                    onClick={() => sauvegarder("CONTROLEE")}
+                    disabled={loading || stats.erreurs > 0}
+                    className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium flex items-center gap-2 hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {loading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    Valider et sauvegarder
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* KPIs contrôle */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
               <div className="rounded-xl bg-muted/50 p-3 text-center">
                 <p className="text-lg font-bold text-foreground">{stats.total}</p>
                 <p className="text-xs text-muted-foreground">Total lignes</p>
+              </div>
+              <div className="rounded-xl bg-blue-500/10 p-3 text-center">
+                <p className="text-lg font-bold text-blue-600">{stats.entrants}</p>
+                <p className="text-xs text-muted-foreground">Entrants</p>
+                {stats.entrants > 0 && (
+                  <p className="text-[10px] text-blue-600/80 mt-1">
+                    {stats.totalJoursEntrants} j · {stats.totalSalairesDeclareEntrants.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} MAD
+                  </p>
+                )}
               </div>
               <div className="rounded-xl bg-red-500/10 p-3 text-center">
                 <p className="text-lg font-bold text-red-600">{stats.erreurs}</p>
@@ -1221,11 +1829,21 @@ const DeclarationCnssPage: React.FC = () => {
                 <p className="text-lg font-bold text-amber-600">{stats.sansCnss}</p>
                 <p className="text-xs text-muted-foreground">Sans N°CNSS</p>
               </div>
+              <div className="rounded-xl bg-sky-500/10 p-3 text-center">
+                <p className="text-lg font-bold text-sky-600">{stats.totalJours}</p>
+                <p className="text-xs text-muted-foreground">Jours déclarés</p>
+              </div>
+              <div className="rounded-xl bg-muted/50 p-3 text-center">
+                <p className="text-lg font-bold text-foreground">
+                  {stats.totalSalairesDeclare.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-muted-foreground">Montant déclaré (MAD)</p>
+              </div>
               <div className="rounded-xl bg-emerald-500/10 p-3 text-center">
                 <p className="text-lg font-bold text-emerald-600">
                   {stats.totalSalaires.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}
                 </p>
-                <p className="text-xs text-muted-foreground">Total salaires (MAD)</p>
+                <p className="text-xs text-muted-foreground">Total salaires plafonnés (MAD)</p>
               </div>
             </div>
 
@@ -1341,14 +1959,23 @@ const DeclarationCnssPage: React.FC = () => {
               </pre>
             </div>
 
-            <button
-              onClick={genererXML}
-              disabled={loading}
-              className="w-full px-4 py-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              Télécharger le fichier XML
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={genererXML}
+                disabled={loading}
+                className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Télécharger le fichier XML
+              </button>
+              <button
+                onClick={() => genererBordereauPDF()}
+                className="flex-1 px-4 py-3 rounded-lg border border-primary text-primary text-sm font-semibold flex items-center justify-center gap-2 hover:bg-primary/5"
+              >
+                <FileUp size={16} className="rotate-180" />
+                Bordereau de paiement (PDF)
+              </button>
+            </div>
           </div>
 
           {/* Règles */}
@@ -1361,6 +1988,7 @@ const DeclarationCnssPage: React.FC = () => {
               <li><strong>RG-DECL-CNSS-04b</strong> : Le format respecte la structure Damancom (balises normalisées).</li>
               <li><strong>RG-DECL-CNSS-04c</strong> : Le fichier est nommé CNSS_AAAA_MM.xml.</li>
               <li><strong>RG-DECL-CNSS-04d</strong> : La déclaration est sauvegardée avec le statut GENEREE après téléchargement.</li>
+              <li><strong>RG-DECL-CNSS-BDX-01</strong> : Le bordereau de paiement applique le plafond CNSS uniquement sur la ligne « Prestations sociales » ; AF, TFP et AMO se calculent sur la masse salariale non plafonnée.</li>
             </ul>
           </div>
 
@@ -1371,6 +1999,9 @@ const DeclarationCnssPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ─── Consultation en lecture seule (Traité / Archivé) — panneau indépendant du wizard ─── */}
+      {renderConsultationCnss()}
     </div>
   );
 
@@ -1425,16 +2056,19 @@ const DeclarationCnssPage: React.FC = () => {
               <th className="px-2 py-2 text-left font-medium text-muted-foreground">CIN *</th>
               <th className="px-2 py-2 text-left font-medium text-muted-foreground">N°CNSS</th>
               <th className="px-2 py-2 text-left font-medium text-muted-foreground">Nom & Prénom</th>
-              <th className="px-2 py-2 text-right font-medium text-muted-foreground">Salaire brut</th>
+              <th className="px-2 py-2 text-right font-medium text-muted-foreground">Déclaré</th>
+              <th className="px-2 py-2 text-right font-medium text-muted-foreground">Plafonné (CNSS)</th>
               <th className="px-2 py-2 text-center font-medium text-muted-foreground">Jours</th>
               <th className="px-2 py-2 text-center font-medium text-muted-foreground">Statut</th>
               <th className="px-2 py-2 text-left font-medium text-muted-foreground">Observations</th>
-              <th className="px-2 py-2 text-center font-medium text-muted-foreground w-16">Actions</th>
+              {!consultationMode && (
+                <th className="px-2 py-2 text-center font-medium text-muted-foreground w-16">Actions</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {filteredLignes.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Aucune donnée</td></tr>
+              <tr><td colSpan={consultationMode ? 9 : 10} className="px-4 py-8 text-center text-muted-foreground">Aucune donnée</td></tr>
             )}
             {filteredLignes.map((l, i) => {
               const editing = isEditing(i);
@@ -1473,6 +2107,11 @@ const DeclarationCnssPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-2 py-1.5 font-medium">{l.nom} {l.prenom}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">
+                    {l.salaire_brut_declare != null
+                      ? l.salaire_brut_declare.toLocaleString("fr-FR", { minimumFractionDigits: 2 })
+                      : "—"}
+                  </td>
                   <td className="px-2 py-1.5 text-right">
                     {editing ? (
                       <input
@@ -1483,7 +2122,9 @@ const DeclarationCnssPage: React.FC = () => {
                         step="0.01" min="0"
                       />
                     ) : (
-                      <span className="font-mono">{l.salaire_brut.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}</span>
+                      <span className={`font-mono ${l.salaire_brut_declare != null && l.salaire_brut_declare > l.salaire_brut ? "text-amber-600 font-semibold" : ""}`}>
+                        {l.salaire_brut.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}
+                      </span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-center">
@@ -1523,22 +2164,24 @@ const DeclarationCnssPage: React.FC = () => {
                   <td className="px-2 py-1.5 text-muted-foreground max-w-[200px] truncate" title={l.observations}>
                     {l.observations}
                   </td>
-                  <td className="px-2 py-1.5 text-center">
-                    {editing ? (
-                      <div className="flex items-center gap-1 justify-center">
-                        <button onClick={saveEdit} className="p-1 rounded hover:bg-emerald-500/10 text-emerald-600" title="Sauvegarder">
-                          <Save size={13} />
+                  {!consultationMode && (
+                    <td className="px-2 py-1.5 text-center">
+                      {editing ? (
+                        <div className="flex items-center gap-1 justify-center">
+                          <button onClick={saveEdit} className="p-1 rounded hover:bg-emerald-500/10 text-emerald-600" title="Sauvegarder">
+                            <Save size={13} />
+                          </button>
+                          <button onClick={cancelEdit} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Annuler">
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => startEdit(i)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Modifier">
+                          <Pencil size={13} />
                         </button>
-                        <button onClick={cancelEdit} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Annuler">
-                          <X size={13} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => startEdit(i)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Modifier">
-                        <Pencil size={13} />
-                      </button>
-                    )}
-                  </td>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}

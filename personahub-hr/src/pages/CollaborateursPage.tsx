@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useManagerPopulation } from "@/hooks/useManagerPopulation";
 import { setListNavigationContext } from "@/hooks/useListNavigationContext";
-import { Search, Plus, User, Mail, ChevronRight, LayoutGrid, List, Building2, Briefcase, X, Filter, Download } from "lucide-react";
+import { Search, Plus, User, Mail, ChevronRight, ChevronDown, LayoutGrid, List, Building2, Briefcase, X, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCollaborateurNotifications } from "@/hooks/useCollaborateurNotifications";
 import CollabNotifBadge from "@/components/CollabNotifBadge";
@@ -76,6 +76,12 @@ const CollaborateursPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   const [retentionYears, setRetentionYears] = useState<number | null>(null);
 
@@ -557,153 +563,169 @@ const CollaborateursPage: React.FC = () => {
   const showLoadingSpinner = loading || (isManager && popLoading);
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Collaborateurs</h1>
-          <p className="page-subtitle">
-            {showLoadingSpinner ? "Chargement…" : `${filtered.length} collaborateur(s)`}
-            {isManager && !showLoadingSpinner && (
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full"
-                style={{ background: "hsl(39 95% 50% / 0.15)", color: "hsl(39 95% 35%)" }}>
-                Ma population
-              </span>
-            )}
-          </p>
-        </div>
-        {/* RG-MGR-COLLAB-01 : le manager ne peut pas créer de collaborateur */}
+    <div className="p-0">
+      {/* ── Fil d'Ariane façon Odoo ── */}
+      <div
+        className="flex items-center gap-1.5 px-6 pt-3 pb-2 text-[13px]"
+        style={{ color: "hsl(var(--muted-foreground))", borderBottom: "1px solid hsl(var(--border))" }}
+      >
+        <span className="hover:underline cursor-pointer" onClick={() => navigate("/accueil")}>Accueil</span>
+        <ChevronRight size={12} />
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Collaborateurs</span>
+        {isManager && (
+          <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full" style={{ background: "hsl(var(--warning) / 0.15)", color: "hsl(var(--warning))" }}>
+            Ma population
+          </span>
+        )}
+      </div>
+
+      {/* ── Barre d'outils (New / recherche facettée / pagination / vues) ── */}
+      <div
+        className="flex items-center gap-2 px-6 py-2.5 flex-wrap"
+        style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+      >
         {!isManager && (
           <Button
             onClick={() => navigate("/collaborateurs/nouveau")}
-            className="flex items-center gap-2"
-            style={{ background: "hsl(var(--accent))", color: "white" }}
+            className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+            style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}
           >
-            <Plus size={16} /> Nouveau collaborateur
+            <Plus size={14} /> Nouveau
           </Button>
         )}
-      </div>
 
-      {/* Filtres + toggle vue */}
-      <div className="flex items-center gap-3 mb-5 flex-wrap justify-between">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher (nom, matricule, poste, UO)…"
-              className="pl-9 pr-4 py-2 rounded-lg text-sm border outline-none w-80"
-              style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
-            />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {STATUTS.map((s) => (
-              <button
-                key={s.value}
-                onClick={() => setFilterStatut(s.value)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
-                style={{
-                  background: filterStatut === s.value ? "hsl(var(--accent))" : "transparent",
-                  borderColor: filterStatut === s.value ? "hsl(var(--accent))" : "hsl(var(--border))",
-                  color: filterStatut === s.value ? "white" : "hsl(var(--foreground))",
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Sélecteur de modèles d'affichage (uniquement en vue tableau) */}
-        {viewMode === "list" && (
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Modèle :
-            </span>
-            {([
-              { value: "standard", label: "Standard" },
-              { value: "identite", label: "Identité" },
-              { value: "contrats", label: "Contrats" },
-              { value: "paie", label: "Paie" },
-              { value: "affectation", label: "Affectation" },
-            ] as { value: ModeleAffichage; label: string }[]).map(m => (
-              <button
-                key={m.value}
-                onClick={() => setModele(m.value)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
-                style={{
-                  background: modele === m.value ? "hsl(var(--accent))" : "transparent",
-                  borderColor: modele === m.value ? "hsl(var(--accent))" : "hsl(var(--border))",
-                  color: modele === m.value ? "white" : "hsl(var(--foreground))",
-                }}
-                type="button"
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Bouton Filtres avancés */}
-        <button
-          onClick={() => setShowFilters(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-colors relative"
-          style={{
-            borderColor: nbFiltresActifs > 0 ? "hsl(var(--accent))" : "hsl(var(--border))",
-            background: nbFiltresActifs > 0 ? "hsl(var(--accent) / 0.08)" : "transparent",
-            color: nbFiltresActifs > 0 ? "hsl(var(--accent))" : "hsl(var(--foreground))",
-          }}
-          type="button"
-        >
-          <Filter size={14} /> Filtres avancés
-          {nbFiltresActifs > 0 && (
-            <span
-              className="ml-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full w-5 h-5"
-              style={{ background: "hsl(var(--accent))", color: "white" }}
-            >
-              {nbFiltresActifs}
-            </span>
-          )}
-        </button>
-
-        {/* Bouton Export CSV */}
         <button
           onClick={() => exportCSV(filtered, listeInfoMap, modele)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-colors"
-          style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+          className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors"
+          style={{ color: "hsl(var(--muted-foreground))" }}
           type="button"
           title="Exporter la liste filtrée en CSV"
         >
-          <Download size={14} /> Export CSV
+          <Download size={14} /> Export
         </button>
 
-        {/* Boutons de bascule mode étiquette / liste */}
-        <div className="flex items-center rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+
+        {/* Recherche facettée : champ + chips de filtres actifs, à la Odoo */}
+        <div
+          className="flex items-center flex-wrap gap-1.5 flex-1 min-w-[260px] h-8 px-2.5"
+          style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))" }}
+        >
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0" />
+          {filterStatut !== "hors_sortis" && (
+            <span
+              className="flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded"
+              style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}
+            >
+              {STATUTS.find(s => s.value === filterStatut)?.label}
+              <X size={10} className="cursor-pointer" onClick={() => setFilterStatut("hors_sortis")} />
+            </span>
+          )}
+          {nbFiltresActifs > 0 && (
+            <span
+              className="flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded"
+              style={{ background: "hsl(var(--accent) / 0.15)", color: "hsl(var(--accent))" }}
+            >
+              {nbFiltresActifs} filtre(s)
+              <X size={10} className="cursor-pointer" onClick={() => setFiltresAvances(EMPTY_FILTRES)} />
+            </span>
+          )}
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher…"
+            className="flex-1 min-w-[80px] text-[13px] outline-none bg-transparent"
+            style={{ color: "hsl(var(--foreground))" }}
+          />
+        </div>
+
+        {/* Filtres / Regrouper par (menu déroulant Odoo) */}
+        <div className="relative">
           <button
-            onClick={() => setViewMode("card")}
-            title="Mode étiquettes"
-            className="p-2 transition-colors"
-            style={{
-              background: viewMode === "card" ? "hsl(var(--accent))" : "hsl(var(--card))",
-              color: viewMode === "card" ? "white" : "hsl(var(--muted-foreground))",
-            }}
+            onClick={() => setShowFilters(true)}
+            className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors"
+            style={{ color: nbFiltresActifs > 0 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}
+            type="button"
           >
-            <LayoutGrid size={15} />
+            <Filter size={13} /> Filtres <ChevronDown size={12} />
           </button>
+        </div>
+
+        {/* Sélecteur de statut, en chips discrètes (repris du menu Filtres pour accès rapide) */}
+        <div className="hidden lg:flex items-center gap-1">
+          {STATUTS.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setFilterStatut(s.value)}
+              className="px-2 py-1 text-[12px] font-medium transition-colors"
+              style={{
+                color: filterStatut === s.value ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                borderBottom: filterStatut === s.value ? "2px solid hsl(var(--primary))" : "2px solid transparent",
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Compteur façon pagination Odoo */}
+        <span className="text-[12px] whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {showLoadingSpinner ? "…" : `1-${filtered.length}/${filtered.length}`}
+        </span>
+
+        {/* Bascule vue liste / kanban (étiquettes) */}
+        <div className="flex items-center" style={{ borderLeft: "1px solid hsl(var(--border))", paddingLeft: 6, marginLeft: 4 }}>
           <button
             onClick={() => setViewMode("list")}
-            title="Mode liste"
-            className="p-2 transition-colors"
-            style={{
-              background: viewMode === "list" ? "hsl(var(--accent))" : "hsl(var(--card))",
-              color: viewMode === "list" ? "white" : "hsl(var(--muted-foreground))",
-            }}
+            title="Vue liste"
+            className="p-1.5 rounded transition-colors"
+            style={{ color: viewMode === "list" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))", background: viewMode === "list" ? "hsl(var(--primary) / 0.1)" : "transparent" }}
           >
             <List size={15} />
           </button>
+          <button
+            onClick={() => setViewMode("card")}
+            title="Vue kanban"
+            className="p-1.5 rounded transition-colors"
+            style={{ color: viewMode === "card" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))", background: viewMode === "card" ? "hsl(var(--primary) / 0.1)" : "transparent" }}
+          >
+            <LayoutGrid size={15} />
+          </button>
         </div>
       </div>
+
+      {/* Sélecteur de modèle d'affichage des colonnes (uniquement vue liste) */}
+      {viewMode === "list" && (
+        <div className="flex flex-wrap items-center gap-1 px-6 py-2" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
+          <span className="text-[11px] font-medium mr-1" style={{ color: "hsl(var(--muted-foreground))" }}>Modèle :</span>
+          {([
+            { value: "standard", label: "Standard" },
+            { value: "identite", label: "Identité" },
+            { value: "contrats", label: "Contrats" },
+            { value: "paie", label: "Paie" },
+            { value: "affectation", label: "Affectation" },
+          ] as { value: ModeleAffichage; label: string }[]).map(m => (
+            <button
+              key={m.value}
+              onClick={() => setModele(m.value)}
+              className="px-2 py-1 text-[11px] font-medium transition-colors"
+              style={{
+                color: modele === m.value ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                background: modele === m.value ? "hsl(var(--primary) / 0.08)" : "transparent",
+                borderRadius: "var(--radius)",
+              }}
+              type="button"
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="p-6">
+
 
       {/* Contenu */}
       {showLoadingSpinner ? (
@@ -790,15 +812,31 @@ const CollaborateursPage: React.FC = () => {
           })}
         </div>
       ) : (
-        /* ── Mode liste (tableau) ── */
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
-          <table className="w-full text-sm">
+        /* ── Mode liste (tableau, densité et codes visuels façon Odoo) ── */
+        <div style={{ border: "1px solid hsl(var(--border))" }}>
+          {selectedIds.size > 0 && (
+            <div
+              className="flex items-center gap-3 px-4 py-1.5 text-[12px] font-medium"
+              style={{ background: "hsl(var(--primary) / 0.08)", borderBottom: "1px solid hsl(var(--border))", color: "hsl(var(--primary))" }}
+            >
+              {selectedIds.size} sélectionné(s)
+              <button onClick={() => setSelectedIds(new Set())} className="underline">Tout désélectionner</button>
+            </div>
+          )}
+          <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: "hsl(var(--muted))", borderBottom: "1px solid hsl(var(--border))" }}>
+              <tr style={{ background: "hsl(var(--muted) / 0.6)", borderBottom: "1px solid hsl(var(--border))" }}>
+                <th className="w-9 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size > 0 && selectedIds.size === filtered.length}
+                    onChange={() => setSelectedIds(selectedIds.size === filtered.length ? new Set() : new Set(filtered.map(c => c.id)))}
+                  />
+                </th>
                 {colonnes.map((col, i) => (
                   <th
                     key={i}
-                    className={`text-left px-4 py-3 font-medium text-xs ${col.hideOnMobile ? "hidden md:table-cell" : ""} ${col.hideOnTablet ? "hidden lg:table-cell" : ""}`}
+                    className={`text-left px-3 py-2 font-semibold text-[11px] uppercase tracking-wide ${col.hideOnMobile ? "hidden md:table-cell" : ""} ${col.hideOnTablet ? "hidden lg:table-cell" : ""}`}
                     style={{ color: "hsl(var(--muted-foreground))" }}
                   >
                     {col.label}
@@ -808,8 +846,9 @@ const CollaborateursPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c, idx) => {
+              {filtered.map((c) => {
                 const info = listeInfoMap[c.id] || {};
+                const checked = selectedIds.has(c.id);
                 return (
                   <tr
                     key={c.id}
@@ -820,23 +859,26 @@ const CollaborateursPage: React.FC = () => {
                 }}
                     className="cursor-pointer transition-colors group"
                     style={{
-                      background: idx % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)",
+                      background: checked ? "hsl(var(--primary) / 0.06)" : "hsl(var(--card))",
                       borderBottom: "1px solid hsl(var(--border))",
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--accent) / 0.05)")}
-                    onMouseLeave={e => (e.currentTarget.style.background = idx % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)")}
+                    onMouseEnter={e => { if (!checked) e.currentTarget.style.background = "hsl(var(--muted) / 0.4)"; }}
+                    onMouseLeave={e => { if (!checked) e.currentTarget.style.background = "hsl(var(--card))"; }}
                   >
+                    <td className="px-3 py-2" onClick={e => { e.stopPropagation(); toggleSelect(c.id); }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleSelect(c.id)} />
+                    </td>
                     {colonnes.map((col, i) => (
                       <td
                         key={i}
-                        className={`px-4 py-3 text-xs ${col.hideOnMobile ? "hidden md:table-cell" : ""} ${col.hideOnTablet ? "hidden lg:table-cell" : ""}`}
+                        className={`px-3 py-2 ${col.hideOnMobile ? "hidden md:table-cell" : ""} ${col.hideOnTablet ? "hidden lg:table-cell" : ""}`}
                         style={{ color: "hsl(var(--foreground))" }}
                       >
                         {col.render(c, info) || <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
                       </td>
                     ))}
-                    <td className="px-4 py-3">
-                      <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "hsl(var(--accent))" }} />
+                    <td className="px-3 py-2">
+                      <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "hsl(var(--primary))" }} />
                     </td>
                   </tr>
                 );
@@ -859,6 +901,7 @@ const CollaborateursPage: React.FC = () => {
         optGenres={optGenres}
         optNationalites={optNationalites}
       />
+      </div>
     </div>
   );
 };

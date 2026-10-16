@@ -337,7 +337,7 @@ const TemplatesNotificationPage: React.FC = () => {
                 Corps du message *
               </label>
               <textarea className="px-3 py-2 rounded-lg border text-sm outline-none w-full font-mono"
-                style={{ ...inpStyle, minHeight: editing.type_canal === "SMS" || editing.type_canal === "WHATSAPP" ? 80 : 200, fontSize: 12, lineHeight: 1.6 }}
+                style={{ ...inpStyle, minHeight: editing.type_canal === "SMS" || editing.type_canal === "WHATSAPP" ? 80 : 200, fontSize: "calc(12px * var(--font-scale))", lineHeight: 1.6 }}
                 data-field="corps"
                 value={editing.corps}
                 onChange={e => setEditing({ ...editing, corps: e.target.value })}
@@ -374,7 +374,7 @@ const TemplatesNotificationPage: React.FC = () => {
               <span className="text-xs font-semibold">Variables disponibles</span>
             </div>
             <div className="p-2 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-              <select className={inp} style={{ ...inpStyle, fontSize: 11 }}
+              <select className={inp} style={{ ...inpStyle, fontSize: "calc(11px * var(--font-scale))" }}
                 value={filterTypeObjet}
                 onChange={e => setFilterTypeObjet(e.target.value)}>
                 <option value="ALL">Tous les contextes</option>
@@ -416,39 +416,41 @@ const TemplatesNotificationPage: React.FC = () => {
 
   // ── Render liste ────────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-medium" style={{ color: "hsl(var(--foreground))" }}>Modèles de notifications</h1>
-          <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Gabarits Email, SMS, WhatsApp et notifications utilisés dans les workflows • {templates.length} template(s)
-          </p>
-        </div>
-        <button onClick={openNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "hsl(var(--accent))", color: "white" }}>
-          <Plus size={13} /> Nouveau template
-        </button>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Modèles de notifications</span>
       </div>
 
-      {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button onClick={() => setFilterCanal("ALL")}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium border"
-          style={{
-            background: filterCanal === "ALL" ? "hsl(var(--accent))" : "transparent",
-            color: filterCanal === "ALL" ? "white" : "hsl(var(--foreground))",
-            borderColor: filterCanal === "ALL" ? "hsl(var(--accent))" : "hsl(var(--border))",
-          }}>
-          Tous ({templates.length})
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={openNew}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouveau
         </button>
-        {CANAUX.map(c => {
-          const count = templates.filter(t => t.type_canal === c.code).length;
-          const active = filterCanal === c.code;
-          return (
-            <button key={c.code} onClick={() => setFilterCanal(c.code)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
-              style={{
+
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+
+        {/* Canal — chips façon facette Odoo */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <button onClick={() => setFilterCanal("ALL")}
+            className="px-2 py-1 text-[12px] font-medium transition-colors"
+            style={{
+              color: filterCanal === "ALL" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+              borderBottom: filterCanal === "ALL" ? "2px solid hsl(var(--primary))" : "2px solid transparent",
+            }}>
+            Tous ({templates.length})
+          </button>
+          {CANAUX.map(c => {
+            const count = templates.filter(t => t.type_canal === c.code).length;
+            const active = filterCanal === c.code;
+            return (
+              <button key={c.code} onClick={() => setFilterCanal(c.code)}
+                className="flex items-center gap-1.5 px-2 py-1 text-[12px] font-medium transition-colors"
+                style={{
                 background: active ? c.couleur + "15" : "transparent",
                 color: active ? c.couleur : "hsl(var(--foreground))",
                 borderColor: active ? c.couleur : "hsl(var(--border))",
@@ -468,6 +470,7 @@ const TemplatesNotificationPage: React.FC = () => {
         </div>
       </div>
 
+      <div className="p-6">
       {/* Liste */}
       {loading ? (
         <div className="flex justify-center py-16">
@@ -523,6 +526,7 @@ const TemplatesNotificationPage: React.FC = () => {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 };

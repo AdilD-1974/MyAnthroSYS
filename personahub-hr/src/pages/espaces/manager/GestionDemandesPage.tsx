@@ -18,12 +18,15 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import SuiviDemandeWorkflow from "@/pages/espaces/SuiviDemandeWorkflow";
+import DeleguerButton from "@/components/DeleguerButton";
+import CollaborateurPicker from "@/components/CollaborateurPicker";
 import {
   ClipboardList, Check, X, Clock, Search, CalendarDays, Inbox,
   XCircle, MessageSquare, Loader2, CalendarRange, AlertCircle,
   Hourglass, ChevronDown, Workflow, CornerUpLeft, RotateCcw, Filter,
+  Share2, CheckCheck, Eye, DoorOpen, Calculator, Shield, FileText,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 
 const STATUT_LABEL: Record<string, string> = {
@@ -67,6 +70,180 @@ interface InboxTask {
   demandeur_matricule: string | null;
   workflow_code: string;
   workflow_libelle: string;
+  table_source: string | null;
+}
+
+// ─── Modal : visualisation de la DEMANDE MÉTIER (objet réel, pas le processus) ──
+const VAL_LABELS: Record<string, Record<string, string>> = {
+  mode_traitement:  { PROCESSUS: "Processus (workflow)", SAISIE_DIRECTE: "Saisie directe", SAISIE: "Saisie directe" },
+  statut:           { EN_COURS: "En cours", PLANIFIE: "Planifié", TRAITE: "Traité", ENREGISTRE: "Enregistré", ANNULE: "Annulé", SORTI: "Sorti" },
+  decision_finale:  { ACCEPTE: "Accepté", REFUSE: "Refusé", EN_ATTENTE: "En attente" },
+  preavis_categorie:{ EXECUTION: "Exécution", MAITRISE: "Maîtrise", CADRE: "Cadre" },
+};
+
+function DemandeMetierModal({ tableObjet, idObjet, titre, onClose }: {
+  tableObjet: string; idObjet: string; titre: string; onClose: () => void;
+}) {
+  const { data, isLoading } = useQuery<any[]>({
+    queryKey: ["demande-metier", tableObjet, idObjet],
+    enabled: !!tableObjet && !!idObjet,
+    queryFn: async () => (await api.get(`/db/${tableObjet}?id=eq.${idObjet}`)) || [],
+  });
+  const estDepart = tableObjet === "collaborateur_departs";
+  const { data: motifs = [] } = useQuery<any[]>({
+    queryKey: ["ref-motif-depart-modal"],
+    enabled: estDepart,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => (await api.get(`/db/ref_motif_depart?select=code,libelle`)) || [],
+  });
+  const row = data?.[0];
+
+  const isDateStr = (v: any) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v);
+  const val = (k: string, v: any): string | null => {
+    if (v === null || v === undefined || v === "") return null;
+    if (typeof v === "boolean") return v ? "Oui" : "Non";
+    if (VAL_LABELS[k] && VAL_LABELS[k][String(v)]) return VAL_LABELS[k][String(v)];
+    if (k === "motif_depart") return (motifs as any[]).find(m => m.code === v)?.libelle || String(v);
+    if ((k.startsWith("indemnite") || k === "base_calcul_salaire" || k === "preavis_dispense_indemnite") && !isNaN(Number(v))) return `${Number(v).toLocaleString("fr-MA")} MAD`;
+    if (isDateStr(v)) { try { return format(parseISO(String(v)), "dd/MM/yyyy", { locale: fr }); } catch { return String(v); } }
+    return String(v);
+  };
+
+  // Sections métier (mêmes libellés et découpage que DepartForm)
+  const GROUPES: { titre: string; icon: React.ReactNode; masquerZero?: boolean; champs: { k: string; label: string }[] }[] = [
+    { titre: "Départ", icon: <DoorOpen size={14} />, champs: [
+      { k: "date_depart", label: "Date de départ" },
+      { k: "motif_depart", label: "Motif de départ" },
+      { k: "mode_traitement", label: "Mode de traitement" },
+      { k: "statut", label: "Statut" },
+      { k: "decision_finale", label: "Décision finale" },
+      { k: "date_notification", label: "Date de notification" },
+      { k: "date_entretien_prealable", label: "Date entretien préalable" },
+      { k: "reference_decision", label: "Référence de la décision" },
+      { k: "commentaire", label: "Commentaire" },
+    ]},
+    { titre: "Préavis", icon: <Clock size={14} />, champs: [
+      { k: "preavis_categorie", label: "Catégorie professionnelle" },
+      { k: "preavis_duree_jours", label: "Durée préavis (jours)" },
+      { k: "preavis_date_debut", label: "Date début préavis" },
+      { k: "preavis_date_fin", label: "Date fin préavis" },
+      { k: "preavis_dispense", label: "Dispense de préavis" },
+      { k: "preavis_effectue", label: "Préavis effectué intégralement" },
+      { k: "preavis_dispense_indemnite", label: "Indemnité compensatrice de préavis (MAD)" },
+    ]},
+    { titre: "Indemnités", icon: <Calculator size={14} />, masquerZero: true, champs: [
+      { k: "base_calcul_salaire", label: "Salaire mensuel brut (MAD)" },
+      { k: "anciennete_retenue_ans", label: "Ancienneté retenue (ans)" },
+      { k: "indemnite_perte_emploi", label: "Indemnité de perte d'emploi (MAD)" },
+      { k: "indemnite_depart_retraite", label: "Indemnité de départ retraite (MAD)" },
+      { k: "indemnite_conges_payes", label: "Indemnité de congés payés (MAD)" },
+      { k: "solde_conges_jours", label: "Solde congés (jours)" },
+      { k: "indemnite_compensatrice", label: "Indemnité compensatrice (MAD)" },
+      { k: "indemnite_transactionnelle", label: "Indemnité transactionnelle (MAD)" },
+      { k: "indemnite_anciennete", label: "Prime ancienneté proratisée (MAD)" },
+      { k: "indemnite_13eme_mois", label: "Prorata 13ème mois (MAD)" },
+    ]},
+    { titre: "Administratif", icon: <Shield size={14} />, champs: [
+      { k: "cnss_radiation_date", label: "Date radiation CNSS" },
+      { k: "cnss_derniere_declaration", label: "Dernière déclaration CNSS" },
+      { k: "amo_cloture_date", label: "Date clôture AMO" },
+      { k: "amo_attestation_delivree", label: "Attestation AMO délivrée" },
+      { k: "materiel_badge_restitue", label: "Badge / accès restitué" },
+      { k: "materiel_ordinateur_restitue", label: "Ordinateur restitué" },
+      { k: "materiel_vehicule_restitue", label: "Véhicule de fonction restitué" },
+      { k: "materiel_telephone_restitue", label: "Téléphone professionnel restitué" },
+      { k: "acces_si_desactive", label: "Accès SI désactivé" },
+      { k: "acces_email_desactive", label: "Messagerie désactivée" },
+    ]},
+    { titre: "Documents", icon: <FileText size={14} />, champs: [
+      { k: "doc_attestation_travail", label: "Attestation de travail" },
+      { k: "doc_recu_stc", label: "Reçu solde de tout compte (STC)" },
+      { k: "doc_radiation_cnss", label: "Attestation radiation CNSS" },
+      { k: "doc_attestation_amo", label: "Clôture couverture AMO" },
+      { k: "doc_certificat_conges", label: "Certificat solde de congés" },
+      { k: "doc_lettre_notification", label: "Lettre de notification" },
+      { k: "doc_accord_amiable", label: "Accord amiable / protocole transactionnel" },
+      { k: "doc_pv_entretien", label: "PV entretien préalable (licenciement CDI)" },
+      { k: "doc_recu_materiel", label: "Reçu restitution matériel" },
+    ]},
+  ];
+
+  // Générique (autres types) : tout sauf technique
+  const SKIP = new Set(["id", "created_at", "updated_at", "archive", "wf_instance_id", "created_by", "updated_by"]);
+  const humanize = (k: string) => k.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+  const genericEntries = row
+    ? Object.entries(row).filter(([k, v]) => !SKIP.has(k) && !k.endsWith("_id") && !k.endsWith("_by") && val(k, v) !== null)
+    : [];
+
+  const renderValeur = (v: string | null) => {
+    if (v === "Oui") return <span style={{ color: "hsl(142 55% 38%)", fontWeight: 600 }}>Oui</span>;
+    if (v === "Non") return <span style={{ color: "hsl(var(--muted-foreground))" }}>Non</span>;
+    return v;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "hsl(0 0% 0% / 0.5)" }} onClick={onClose}>
+      <div className="w-full max-w-3xl max-h-[88vh] overflow-hidden flex flex-col rounded-2xl shadow-2xl"
+        style={{ background: "hsl(var(--background))" }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0" style={{ borderColor: "hsl(var(--border))" }}>
+          <div className="flex items-center gap-2.5">
+            <DoorOpen size={18} style={{ color: "hsl(var(--accent))" }} />
+            <div>
+              <h3 className="text-sm font-bold leading-tight" style={{ color: "hsl(var(--foreground))" }}>Demande métier</h3>
+              <p className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{titre}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:opacity-70" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ background: "hsl(var(--muted) / 0.08)" }}>
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+              <Loader2 size={14} className="animate-spin" /> Chargement…
+            </div>
+          ) : !row ? (
+            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Aucun détail trouvé pour cette demande.</p>
+          ) : estDepart ? (
+            GROUPES.map(g => {
+              const items = g.champs
+                .filter(c => (c.k in row) && row[c.k] !== null && row[c.k] !== "")
+                .filter(c => !(g.masquerZero && Number(row[c.k]) === 0))
+                .map(c => ({ label: c.label, value: val(c.k, row[c.k]) }))
+                .filter(it => it.value !== null);
+              if (items.length === 0) return null;
+              return (
+                <div key={g.titre} className="p-4 rounded-xl border space-y-3" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
+                  <p className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: "hsl(var(--accent))" }}>
+                    {g.icon} {g.titre}
+                  </p>
+                  <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                    {items.map((it, i) => (
+                      <div key={i}>
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>{it.label}</dt>
+                        <dd className="text-sm mt-0.5" style={{ color: "hsl(var(--foreground))" }}>{renderValeur(it.value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-4 rounded-xl border" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+                {genericEntries.map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>{humanize(k)}</dt>
+                    <dd className="text-sm mt-0.5" style={{ color: "hsl(var(--foreground))" }}>{renderValeur(val(k, v))}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function GestionDemandesPage() {
@@ -84,17 +261,39 @@ export default function GestionDemandesPage() {
 
   // Détails des demandes liées (id_objet → cong_demande)
   const objetIds = useMemo(() => [...new Set(tasks.map(t => t.id_objet).filter(Boolean))], [tasks]);
+
+  // Regroupe les objets par table source (cong_demandes, cong_operation, …)
+  const parTable = useMemo(() => {
+    const m: Record<string, Set<string>> = {};
+    tasks.forEach(t => {
+      const tbl = t.table_source || "cong_demandes";
+      if (!t.id_objet) return;
+      (m[tbl] = m[tbl] || new Set()).add(t.id_objet);
+    });
+    return Object.entries(m).map(([tbl, ids]) => [tbl, [...ids]] as [string, string[]]);
+  }, [tasks]);
+
   const { data: demandesMap = {}, isLoading: loadingDemandes } = useQuery<Record<string, any>>({
-    queryKey: ["wf-inbox-demandes", objetIds.join(",")], enabled: objetIds.length > 0, staleTime: 30 * 1000,
+    queryKey: ["wf-inbox-demandes", parTable.map(([t, ids]) => `${t}:${ids.join(",")}`).join("|")],
+    enabled: parTable.length > 0, staleTime: 30 * 1000,
     queryFn: async () => {
       const typeMap = await loadTypesConge();
       const m: Record<string, any> = {};
-      try {
-        const rows: any[] = await api.get(`/db/cong_demandes?id=in.(${objetIds.join(",")})&archive=eq.false`) || [];
-        rows.forEach((r: any) => {
-          m[r.id] = { ...r, statut: (r.statut ?? "").toLowerCase(), libelle_type_conge: typeMap[r.code_type_conge] || r.code_type_conge };
-        });
-      } catch { /* */ }
+      for (const [tbl, ids] of parTable) {
+        if (ids.length === 0) continue;
+        // Le filtre archive n'existe que sur cong_demandes
+        const archive = tbl === "cong_demandes" ? "&archive=eq.false" : "";
+        try {
+          const rows: any[] = await api.get(`/db/${tbl}?id=in.(${ids.join(",")})${archive}`) || [];
+          rows.forEach((r: any) => {
+            m[r.id] = {
+              ...r,
+              statut: (r.statut ?? "").toLowerCase(),
+              libelle_type_conge: r.code_type_conge ? (typeMap[r.code_type_conge] || r.code_type_conge) : undefined,
+            };
+          });
+        } catch { /* table sans ces colonnes : on garde l'affichage générique */ }
+      }
       return m;
     },
   });
@@ -102,13 +301,20 @@ export default function GestionDemandesPage() {
   const [recherche, setRecherche] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [refusModal, setRefusModal] = useState<InboxTask | null>(null);
+  const [detailMetier, setDetailMetier] = useState<{ tableObjet: string; idObjet: string; titre: string } | null>(null);
   const [motifRefus, setMotifRefus] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [vue, setVue] = useState<"inbox" | "perimetre">("inbox");
   const [filtreStatut, setFiltreStatut] = useState("TOUS");
   const [expandedPerimId, setExpandedPerimId] = useState<string | null>(null);
   const [retourModal, setRetourModal] = useState<any | null>(null);
   const [motifRetour, setMotifRetour] = useState("");
+
+  // ── Traitement par lot ──
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<null | "REJETER" | "DELEGUER">(null);
+  const [bulkMotif, setBulkMotif] = useState("");
+  const [bulkCible, setBulkCible] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [retourBusy, setRetourBusy] = useState(false);
   // Filtres avancés (communs aux deux vues, appliqués selon les champs de chacune)
   const [showFiltres, setShowFiltres] = useState(false);
@@ -151,7 +357,7 @@ export default function GestionDemandesPage() {
 
   // Tout mon périmètre : toutes les demandes (tous statuts) que je suis habilité à voir
   const { data: perimetre = [], isLoading: loadingPerim } = useQuery<any[]>({
-    queryKey: ["wf-perimetre", authUserId], enabled: !!authUserId && vue === "perimetre", staleTime: 60 * 1000,
+    queryKey: ["wf-perimetre", authUserId], enabled: !!authUserId, staleTime: 60 * 1000,
     queryFn: async () => await api.get(`/demandes/perimetre/${authUserId}`) || [],
   });
   // Chevauchement entre [dDebut,dFin] et la période filtre [fDebut,fFin] (bornes optionnelles)
@@ -183,27 +389,25 @@ export default function GestionDemandesPage() {
     const types = new Map<string, string>();   // valeur → libellé
     const demandeurs = new Map<string, { nom: string; matricule: string }>();
     const etapes = new Set<string>();
-    if (vue === "inbox") {
-      tasks.forEach(t => {
-        const dem = demandesMap[t.id_objet] || {};
-        if (dem.code_type_conge) types.set(dem.code_type_conge, dem.libelle_type_conge || dem.code_type_conge);
-        if (t.demandeur_id) demandeurs.set(t.demandeur_id, { nom: `${t.demandeur_prenom || ""} ${t.demandeur_nom || ""}`.trim() || "—", matricule: t.demandeur_matricule || "" });
-        if (t.etape_libelle) etapes.add(t.etape_libelle);
-      });
-    } else {
-      perimetre.forEach((d: any) => {
-        if (d.type_demande) types.set(d.type_demande, d.type_libelle || d.type_demande);
-        if (d.demandeur_id) demandeurs.set(d.demandeur_id, { nom: `${d.demandeur_prenom || ""} ${d.demandeur_nom || ""}`.trim() || "—", matricule: d.demandeur_matricule || "" });
-        const et = d.resume?.etape_courante_libelle || d.etape_libelle;
-        if (et) etapes.add(et);
-      });
-    }
+    // Vue fusionnée : on agrège les deux sources (tâches à traiter + périmètre)
+    tasks.forEach(t => {
+      const dem = demandesMap[t.id_objet] || {};
+      if (dem.code_type_conge) types.set(dem.code_type_conge, dem.libelle_type_conge || dem.code_type_conge);
+      if (t.demandeur_id) demandeurs.set(t.demandeur_id, { nom: `${t.demandeur_prenom || ""} ${t.demandeur_nom || ""}`.trim() || "—", matricule: t.demandeur_matricule || "" });
+      if (t.etape_libelle) etapes.add(t.etape_libelle);
+    });
+    perimetre.forEach((d: any) => {
+      if (d.type_demande) types.set(d.type_demande, d.type_libelle || d.type_demande);
+      if (d.demandeur_id) demandeurs.set(d.demandeur_id, { nom: `${d.demandeur_prenom || ""} ${d.demandeur_nom || ""}`.trim() || "—", matricule: d.demandeur_matricule || "" });
+      const et = d.resume?.etape_courante_libelle || d.etape_libelle;
+      if (et) etapes.add(et);
+    });
     return {
       types: [...types.entries()].sort((a, b) => a[1].localeCompare(b[1], "fr")),
       demandeurs: [...demandeurs.entries()].map(([id, v]) => ({ id, ...v })).sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
       etapes: [...etapes].sort((a, b) => a.localeCompare(b, "fr")),
     };
-  }, [vue, tasks, demandesMap, perimetre]);
+  }, [tasks, demandesMap, perimetre]);
 
   // Demandeurs filtrés par la recherche textuelle (nom ou matricule)
   const demandeursAffiches = useMemo(() => {
@@ -248,6 +452,94 @@ export default function GestionDemandesPage() {
     return Object.entries(by).sort((a, b) => a[0].localeCompare(b[0], "fr"));
   }, [filtrees]);
 
+  // ── VUE FUSIONNÉE : pavés repliables par étape (À traiter + Tout mon périmètre) ──
+  // État de repli des pavés (par libellé d'étape)
+  const [collapsedEtapes, setCollapsedEtapes] = useState<Set<string>>(new Set());
+  const toggleEtape = (e: string) => setCollapsedEtapes(prev => {
+    const n = new Set(prev); n.has(e) ? n.delete(e) : n.add(e); return n;
+  });
+
+  // id_objet des demandes pour lesquelles JE suis acteur (déjà affichées en « à traiter »)
+  const inboxObjetIds = useMemo(() => new Set(filtrees.map(t => t.id_objet).filter(Boolean)), [filtrees]);
+
+  // Statuts terminaux (demande clôturée) — pas d'étape courante
+  const STATUTS_TERMINAUX = ["approuvee", "refusee", "annulee", "traite", "enregistre"];
+
+  // Pavés : pour chaque étape courante, mes tâches actionnables + le suivi (lecture seule)
+  const pavesFusion = useMemo(() => {
+    const map = new Map<string, { actions: InboxTask[]; suivi: any[] }>();
+    const ensure = (etape: string) => {
+      if (!map.has(etape)) map.set(etape, { actions: [], suivi: [] });
+      return map.get(etape)!;
+    };
+    // Mes tâches actionnables (déjà groupées et filtrées)
+    groupes.forEach(([etape, items]) => { ensure(etape).actions.push(...items); });
+    // Suivi (périmètre filtré) : hors terminales et hors demandes déjà dans mon inbox
+    const terminaux: any[] = [];
+    perimFiltre.forEach((d: any) => {
+      const st = (d.statut || "").toLowerCase();
+      if (STATUTS_TERMINAUX.includes(st)) { terminaux.push(d); return; }
+      if (inboxObjetIds.has(d.id_objet)) return; // déjà présent en « à traiter »
+      const etape = d.resume?.etape_courante_libelle || d.etape_libelle || "En cours";
+      ensure(etape).suivi.push(d);
+    });
+    const paves = [...map.entries()]
+      .map(([etape, v]) => ({ etape, actions: v.actions, suivi: v.suivi, total: v.actions.length + v.suivi.length }))
+      .filter(p => p.total > 0)
+      .sort((a, b) => a.etape.localeCompare(b.etape, "fr"));
+    return { paves, terminaux };
+  }, [groupes, perimFiltre, inboxObjetIds]);
+
+  // Rendu d'une demande en SUIVI (lecture seule) — réutilisé dans les pavés et « Clôturées »
+  const renderSuivi = (d: any) => {
+    const r = d.resume || {};
+    const stcol = STATUT_COLOR[d.statut] || { c: "hsl(var(--muted-foreground))", b: "hsl(var(--muted))" };
+    return (
+      <div key={d.id} className="rounded-xl overflow-hidden" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+        <div className="flex items-start gap-3 p-3 cursor-pointer transition-colors hover:bg-[hsl(var(--muted)/0.4)]"
+             onClick={() => setExpandedPerimId(id => id === d.id ? null : d.id)}>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>{`${d.demandeur_prenom || ""} ${d.demandeur_nom || ""}`.trim() || "—"}</span>
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: stcol.b, color: stcol.c }}>{STATUT_LABEL[d.statut] ?? d.statut}</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{d.reference}</span>
+            </div>
+            <p className="text-[11px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+              {d.type_libelle || d.type_demande}
+              {r.date_debut ? ` · ${format(new Date(r.date_debut), "dd MMM yyyy", { locale: fr })} → ${r.date_fin_absence ? format(new Date(r.date_fin_absence), "dd MMM yyyy", { locale: fr }) : ""}` : ""}
+              {r.nbr_jours_decomptes != null ? ` · ${r.nbr_jours_decomptes}j` : ""}
+            </p>
+          </div>
+          <ChevronDown size={16} style={{ color: "hsl(var(--muted-foreground))", transform: expandedPerimId === d.id ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }} />
+        </div>
+        {expandedPerimId === d.id && (
+          <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.2)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Suivi du processus</span>
+              <Button size="sm" variant="outline" className="gap-1.5 text-[12px]"
+                onClick={() => setDetailMetier({ tableObjet: d.table_objet, idObjet: d.id_objet, titre: `${d.type_libelle || d.type_demande || "Demande"}${d.reference ? " · " + d.reference : ""}` })}>
+                <Eye size={13} /> Visualiser la demande métier
+              </Button>
+            </div>
+            <SuiviDemandeWorkflow tableSource={d.table_objet} demandeId={d.id_objet} statutDemande={d.statut} />
+            {estAdmin && d.wf_instance_id && d.statut === "en_attente" && (
+              <div className="mt-3 pt-3 border-t flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: "hsl(var(--border))" }}>
+                <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  Action d'administration : ramener le workflow à l'étape précédemment franchie.
+                </span>
+                <button onClick={() => { setRetourModal(d); setMotifRetour(""); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+                  style={{ color: "hsl(var(--warning))", borderColor: "hsl(var(--warning) / 0.4)" }}>
+                  <RotateCcw size={13} /> Retour à l'étape précédente
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const decider = async (task: InboxTask, type_decision: "VALIDER" | "REJETER" | "RENVOYER", commentaire?: string) => {
     if (!collaborateurId) {
       toast({ title: "Compte non rattaché", description: "Votre compte n'est pas lié à une fiche collaborateur.", variant: "destructive" as any });
@@ -279,6 +571,56 @@ export default function GestionDemandesPage() {
   // On n'empêche donc PLUS l'affichage des demandes : on désactive seulement les actions.
   const notAttached = !collabLoading && !collaborateurId;
 
+  // ── Sélection multiple ──
+  const toggleSel = (ie: string) =>
+    setSelection(prev => { const n = new Set(prev); n.has(ie) ? n.delete(ie) : n.add(ie); return n; });
+
+  const groupAllSelected = (items: InboxTask[]) => items.length > 0 && items.every(t => selection.has(t.ie_id));
+
+  const toggleGroup = (items: InboxTask[]) =>
+    setSelection(prev => {
+      const n = new Set(prev);
+      const all = items.every(t => n.has(t.ie_id));
+      items.forEach(t => all ? n.delete(t.ie_id) : n.add(t.ie_id));
+      return n;
+    });
+
+  const clearSel = () => setSelection(new Set());
+
+  const runBatch = async (type: "VALIDER" | "REJETER" | "RENVOYER" | "DELEGUER",
+                          commentaire?: string, cible_id?: string) => {
+    if (!collaborateurId) {
+      toast({ title: "Compte non rattaché", description: "Votre compte n'est pas lié à une fiche collaborateur.", variant: "destructive" as any });
+      return;
+    }
+    const ids = [...selection];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res: any = await api.post(`/workflow/decide-batch`, {
+        instance_etape_ids: ids,
+        acteur_id: collaborateurId,
+        type_decision: type,
+        commentaire: commentaire || null,
+        cible_id: cible_id || null,
+      });
+      const ok = res?.traitees ?? 0, ko = res?.echecs ?? 0;
+      toast({
+        title: `${ok} demande(s) traitée(s)`,
+        description: ko > 0 ? `${ko} échec(s) — vérifiez les tâches restantes.` : undefined,
+        variant: ko > 0 ? ("destructive" as any) : undefined,
+      });
+      setBulkAction(null); setBulkMotif(""); setBulkCible("");
+      clearSel();
+      await refetch();
+      qc.invalidateQueries({ queryKey: ["wf-inbox"] });
+      qc.invalidateQueries({ queryKey: ["wf-instance-full"] });
+      qc.invalidateQueries({ queryKey: ["mes-demandes"] });
+    } catch (e: any) {
+      toast({ title: "Erreur", description: e?.message || "Le traitement par lot a échoué.", variant: "destructive" as any });
+    } finally { setBulkBusy(false); }
+  };
+
   const loading = collabLoading || loadingInbox || (objetIds.length > 0 && loadingDemandes);
 
   const renderTask = (t: InboxTask) => {
@@ -288,11 +630,21 @@ export default function GestionDemandesPage() {
     const busy = busyId === t.ie_id;
     const expanded = expandedId === t.ie_id;
     const enRetard = t.date_echeance && new Date(t.date_echeance) < new Date();
+    const sel = selection.has(t.ie_id);
 
     return (
-      <div key={t.ie_id} className="rounded-2xl overflow-hidden transition-all" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+      <div key={t.ie_id} className="rounded-2xl overflow-hidden transition-all" style={{ background: sel ? "hsl(var(--primary) / 0.05)" : "hsl(var(--card))", border: sel ? "1px solid hsl(var(--primary))" : "1px solid hsl(var(--border))" }}>
         <div className="p-4 cursor-pointer hover:bg-[hsl(var(--muted)/0.3)] transition-colors" onClick={() => setExpandedId(id => id === t.ie_id ? null : t.ie_id)}>
           <div className="flex items-start gap-3 flex-wrap">
+            <input
+              type="checkbox"
+              checked={sel}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => toggleSel(t.ie_id)}
+              className="mt-3.5 h-4 w-4 cursor-pointer flex-shrink-0"
+              style={{ accentColor: "hsl(var(--primary))" }}
+              title="Sélectionner pour un traitement groupé"
+            />
             <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: "hsl(var(--primary) / 0.1)", color: "hsl(var(--primary))" }}>
               {initials(t.demandeur_prenom || undefined, t.demandeur_nom || undefined) || "?"}
             </div>
@@ -305,9 +657,11 @@ export default function GestionDemandesPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3 mt-1.5 text-[13px] flex-wrap" style={{ color: "hsl(var(--muted-foreground))" }}>
-                <span className="inline-flex items-center gap-1"><CalendarRange size={13} />{fmt(dem.date_debut, "dd/MM/yyyy")} → {fmt(fin, "dd/MM/yyyy")}</span>
+                {(dem.date_debut || fin) && <span className="inline-flex items-center gap-1"><CalendarRange size={13} />{fmt(dem.date_debut, "dd/MM/yyyy")} → {fmt(fin, "dd/MM/yyyy")}</span>}
                 {jours != null && <span className="inline-flex items-center gap-1"><Clock size={13} />{jours} j</span>}
-                {dem.libelle_type_conge && <span className="inline-flex items-center gap-1"><CalendarDays size={13} />{dem.libelle_type_conge}</span>}
+                {dem.libelle_type_conge
+                  ? <span className="inline-flex items-center gap-1"><CalendarDays size={13} />{dem.libelle_type_conge}</span>
+                  : <span className="inline-flex items-center gap-1"><Workflow size={13} />{t.workflow_libelle}</span>}
               </div>
               {dem.commentaire_collaborateur && (
                 <p className="text-[13px] mt-2 flex items-start gap-1.5 p-2 rounded-lg" style={{ background: "hsl(var(--muted) / 0.4)", color: "hsl(var(--foreground))" }}>
@@ -327,6 +681,15 @@ export default function GestionDemandesPage() {
               <Button size="sm" variant="outline" disabled={busy || notAttached} title={notAttached ? "Compte non rattaché à une fiche collaborateur" : undefined} onClick={(e) => { e.stopPropagation(); setRefusModal(t); setMotifRefus(""); }} className="gap-1.5" style={{ color: "hsl(var(--destructive))", borderColor: "hsl(var(--destructive) / 0.4)" }}>
                 <X size={14} /> Refuser
               </Button>
+              {collaborateurId && (
+                <span onClick={(e) => e.stopPropagation()}>
+                  <DeleguerButton
+                    instanceEtapeId={t.ie_id}
+                    acteurId={collaborateurId}
+                    onDone={() => { refetch(); qc.invalidateQueries({ queryKey: ["wf-inbox"] }); }}
+                  />
+                </span>
+              )}
               <ChevronDown size={16} style={{ color: "hsl(var(--muted-foreground))", transform: expanded ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
             </div>
           </div>
@@ -334,7 +697,14 @@ export default function GestionDemandesPage() {
 
         {expanded && (
           <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.15)" }}>
-            <SuiviDemandeWorkflow tableSource="cong_demandes" demandeId={t.id_objet} statutDemande={dem.statut} />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Suivi du processus</span>
+              <Button size="sm" variant="outline" className="gap-1.5 text-[12px]"
+                onClick={(e) => { e.stopPropagation(); setDetailMetier({ tableObjet: t.table_source || "cong_demandes", idObjet: t.id_objet, titre: `${dem.type_libelle || dem.type_demande || "Demande"}${dem.reference ? " · " + dem.reference : ""}` }); }}>
+                <Eye size={13} /> Visualiser la demande métier
+              </Button>
+            </div>
+            <SuiviDemandeWorkflow tableSource={t.table_source || "cong_demandes"} demandeId={t.id_objet} statutDemande={dem.statut} />
             <div className="flex justify-end mt-2">
               <Button size="sm" variant="ghost" disabled={busy || notAttached} title={notAttached ? "Compte non rattaché à une fiche collaborateur" : undefined} onClick={(e) => { e.stopPropagation(); decider(t, "RENVOYER", "Renvoyée pour modification"); }} className="gap-1.5 text-[12px]" style={{ color: "hsl(var(--warning))" }}>
                 <CornerUpLeft size={13} /> Renvoyer au collaborateur
@@ -347,46 +717,41 @@ export default function GestionDemandesPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}>
-            <span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}><ClipboardList size={18} /></span>
-            Gestion des demandes
-          </h1>
-          <p className="text-sm mt-1 flex items-center gap-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-            <Workflow size={13} /> {tasks.length} tâche{tasks.length > 1 ? "s" : ""} en attente de votre décision
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5">
-          <Loader2 size={14} className={loadingInbox ? "animate-spin" : "hidden"} /> Actualiser
-        </Button>
+    <div className="max-w-5xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-4 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Mon équipe</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Gestion des demandes</span>
+        {tasks.length > 0 && (
+          <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "hsl(var(--warning) / 0.12)", color: "hsl(var(--warning))" }}>
+            {tasks.length} en attente
+          </span>
+        )}
       </div>
 
-      {/* Onglets : À traiter (inbox) / Tout mon périmètre (registre) */}
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "hsl(var(--muted))" }}>
-        {([["inbox", "À traiter"], ["perimetre", "Tout mon périmètre"]] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setVue(v)} className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
-            style={{ background: vue === v ? "hsl(var(--card))" : "transparent", color: vue === v ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))", boxShadow: vue === v ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
-            {label} {v === "inbox" && tasks.length > 0 ? `(${tasks.length})` : ""}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
-          <Input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder="Rechercher un collaborateur, une étape, un type de congé…" className="pl-9" />
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <div className="flex items-center flex-1 min-w-[220px] h-8 px-2.5" style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))" }}>
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0 mr-1.5" />
+          <input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder="Rechercher un collaborateur, une étape, un type de congé…"
+            className="flex-1 text-[13px] outline-none bg-transparent" style={{ color: "hsl(var(--foreground))" }} />
         </div>
         <button onClick={() => setShowFiltres(true)}
-          className="flex items-center gap-2 px-3 h-10 rounded-xl text-sm font-medium border transition-colors flex-shrink-0"
-          style={{ background: nbFiltresActifs > 0 ? "hsl(var(--primary) / 0.1)" : "hsl(var(--card))", borderColor: nbFiltresActifs > 0 ? "hsl(var(--primary))" : "hsl(var(--border))", color: nbFiltresActifs > 0 ? "hsl(var(--primary))" : "hsl(var(--foreground))" }}>
-          <Filter size={15} /> Filtres avancés
+          className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors"
+          style={{ color: nbFiltresActifs > 0 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}>
+          <Filter size={14} /> Filtres avancés
           {nbFiltresActifs > 0 && (
-            <span className="ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: "hsl(var(--primary))" }}>{nbFiltresActifs}</span>
+            <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded" style={{ background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))" }}>{nbFiltresActifs}</span>
           )}
         </button>
+        <div className="flex-1" />
+        <button onClick={() => refetch()} className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors" style={{ color: "hsl(var(--muted-foreground))" }}>
+          <Loader2 size={14} className={loadingInbox ? "animate-spin" : "hidden"} /> Actualiser
+        </button>
       </div>
+
+      <div className="px-4 py-6 space-y-6">
 
       {notAttached && (
         estAdmin ? (
@@ -402,111 +767,99 @@ export default function GestionDemandesPage() {
         )
       )}
 
-      {vue === "inbox" ? (
-      <>
-      {loading ? (
+      {/* Filtre par statut (s'applique au suivi et aux demandes clôturées) */}
+      <div className="flex gap-1.5 flex-wrap">
+        {["TOUS", "en_attente", "approuvee", "refusee", "annulee"].map(s => {
+          const actif = filtreStatut === s;
+          const sc = STATUT_COLOR[s];
+          const col = s === "TOUS" ? "hsl(var(--primary))" : (sc?.c ?? "hsl(var(--primary))");
+          const bgInactif = s === "TOUS" ? "transparent" : (sc?.b ?? "transparent");
+          return (
+            <button key={s} onClick={() => setFiltreStatut(s)} className="px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all"
+              style={{
+                background: actif ? col : bgInactif,
+                borderColor: actif ? col : (s === "TOUS" ? "hsl(var(--border))" : col),
+                color: actif ? "white" : col,
+              }}>
+              {s === "TOUS" ? "Toutes" : (STATUT_LABEL[s] ?? s)} {s !== "TOUS" && `(${perimetre.filter((d: any) => d.statut === s).length})`}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading || loadingPerim ? (
         <div className="flex items-center justify-center py-16" style={{ color: "hsl(var(--muted-foreground))" }}>
-          <Loader2 size={22} className="animate-spin mr-2" /> Chargement de vos tâches…
+          <Loader2 size={22} className="animate-spin mr-2" /> Chargement des demandes…
         </div>
-      ) : filtrees.length === 0 ? (
+      ) : pavesFusion.paves.length === 0 && pavesFusion.terminaux.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Inbox size={36} style={{ color: "hsl(var(--muted-foreground))" }} />
-          <p className="mt-3 font-medium" style={{ color: "hsl(var(--foreground))" }}>Aucune tâche en attente</p>
-          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Vous n'avez aucune demande à valider pour le moment.</p>
+          <p className="mt-3 font-medium" style={{ color: "hsl(var(--foreground))" }}>Aucune demande</p>
+          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Aucune demande dans votre périmètre pour ce filtre.</p>
         </div>
       ) : (
-        <div className="space-y-7">
-          {groupes.map(([etapeLabel, items]) => (
-            <div key={etapeLabel} className="space-y-3">
-              <div className="flex items-center gap-2 pb-1.5 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-                <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "hsl(var(--info) / 0.12)", color: "hsl(var(--info))" }}><Workflow size={15} /></span>
-                <h2 className="font-bold text-[15px]" style={{ color: "hsl(var(--foreground))" }}>{etapeLabel}</h2>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{items.length}</span>
-              </div>
-              <div className="space-y-2">{items.map(renderTask)}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      </>
-      ) : (
-        /* ─── Vue « Tout mon périmètre » ─── */
-        <>
-          <div className="flex gap-1.5 flex-wrap">
-            {["TOUS", "en_attente", "approuvee", "refusee", "annulee"].map(s => {
-              const actif = filtreStatut === s;
-              const sc = STATUT_COLOR[s];
-              const col = s === "TOUS" ? "hsl(var(--primary))" : (sc?.c ?? "hsl(var(--primary))");
-              const bgInactif = s === "TOUS" ? "transparent" : (sc?.b ?? "transparent");
-              return (
-                <button key={s} onClick={() => setFiltreStatut(s)} className="px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all"
-                  style={{
-                    background: actif ? col : bgInactif,
-                    borderColor: actif ? col : (s === "TOUS" ? "hsl(var(--border))" : col),
-                    color: actif ? "white" : col,
-                  }}>
-                  {s === "TOUS" ? "Toutes" : (STATUT_LABEL[s] ?? s)} {s !== "TOUS" && `(${perimetre.filter((d: any) => d.statut === s).length})`}
-                </button>
-              );
-            })}
-          </div>
-
-          {loadingPerim ? (
-            <div className="flex items-center justify-center py-16" style={{ color: "hsl(var(--muted-foreground))" }}>
-              <Loader2 size={22} className="animate-spin mr-2" /> Chargement des demandes…
-            </div>
-          ) : perimFiltre.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Inbox size={36} style={{ color: "hsl(var(--muted-foreground))" }} />
-              <p className="mt-3 font-medium" style={{ color: "hsl(var(--foreground))" }}>Aucune demande</p>
-              <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Aucune demande dans votre périmètre pour ce filtre.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {perimFiltre.map((d: any) => {
-                const r = d.resume || {};
-                const stcol = STATUT_COLOR[d.statut] || { c: "hsl(var(--muted-foreground))", b: "hsl(var(--muted))" };
-                return (
-                  <div key={d.id} className="rounded-xl overflow-hidden" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
-                    <div className="flex items-start gap-3 p-3 cursor-pointer transition-colors hover:bg-[hsl(var(--muted)/0.4)]"
-                         onClick={() => setExpandedPerimId(id => id === d.id ? null : d.id)}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>{`${d.demandeur_prenom || ""} ${d.demandeur_nom || ""}`.trim() || "—"}</span>
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: stcol.b, color: stcol.c }}>{STATUT_LABEL[d.statut] ?? d.statut}</span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{d.reference}</span>
-                        </div>
-                        <p className="text-[11px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-                          {d.type_libelle || d.type_demande}
-                          {r.date_debut ? ` · ${format(new Date(r.date_debut), "dd MMM yyyy", { locale: fr })} → ${r.date_fin_absence ? format(new Date(r.date_fin_absence), "dd MMM yyyy", { locale: fr }) : ""}` : ""}
-                          {r.nbr_jours_decomptes != null ? ` · ${r.nbr_jours_decomptes}j` : ""}
-                        </p>
-                      </div>
-                      <ChevronDown size={16} style={{ color: "hsl(var(--muted-foreground))", transform: expandedPerimId === d.id ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }} />
-                    </div>
-                    {expandedPerimId === d.id && (
-                      <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.2)" }}>
-                        <SuiviDemandeWorkflow tableSource={d.table_objet} demandeId={d.id_objet} statutDemande={d.statut} />
-                        {estAdmin && d.wf_instance_id && d.statut === "en_attente" && (
-                          <div className="mt-3 pt-3 border-t flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: "hsl(var(--border))" }}>
-                            <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>
-                              Action d'administration : ramener le workflow à l'étape précédemment franchie.
-                            </span>
-                            <button onClick={() => { setRetourModal(d); setMotifRetour(""); }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
-                              style={{ color: "hsl(var(--warning))", borderColor: "hsl(var(--warning) / 0.4)" }}>
-                              <RotateCcw size={13} /> Retour à l'étape précédente
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+        <div className="space-y-4">
+          {pavesFusion.paves.map(({ etape, actions, suivi, total }) => {
+            const collapsed = collapsedEtapes.has(etape);
+            return (
+              <div key={etape} className="rounded-2xl overflow-hidden" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                {/* En-tête de pavé (repliable) */}
+                <div className="flex items-center gap-2 p-3 cursor-pointer hover:bg-[hsl(var(--muted)/0.3)] transition-colors"
+                     onClick={() => toggleEtape(etape)} style={{ borderBottom: collapsed ? "none" : "1px solid hsl(var(--border))" }}>
+                  {actions.length > 0 && (
+                    <input
+                      type="checkbox"
+                      checked={groupAllSelected(actions)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleGroup(actions)}
+                      className="h-4 w-4 cursor-pointer flex-shrink-0"
+                      style={{ accentColor: "hsl(var(--primary))" }}
+                      title="Tout sélectionner dans ce groupe"
+                    />
+                  )}
+                  <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "hsl(var(--info) / 0.12)", color: "hsl(var(--info))" }}><Workflow size={15} /></span>
+                  <h2 className="font-bold text-[15px] flex-1" style={{ color: "hsl(var(--foreground))" }}>{etape}</h2>
+                  {actions.length > 0 && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: "hsl(var(--primary))" }} title="Tâches à traiter">{actions.length} à traiter</span>
+                  )}
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{total}</span>
+                  <ChevronDown size={18} style={{ color: "hsl(var(--muted-foreground))", transform: collapsed ? "none" : "rotate(180deg)", transition: "transform .2s", flexShrink: 0 }} />
+                </div>
+                {!collapsed && (
+                  <div className="p-3 space-y-2">
+                    {actions.map(renderTask)}
+                    {suivi.map(renderSuivi)}
                   </div>
-                );
-              })}
+                )}
+              </div>
+            );
+          })}
+
+          {/* Pavé des demandes clôturées (approuvées / refusées / annulées) */}
+          {pavesFusion.terminaux.length > 0 && (
+            <div className="rounded-2xl overflow-hidden" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+              <div className="flex items-center gap-2 p-3 cursor-pointer hover:bg-[hsl(var(--muted)/0.3)] transition-colors"
+                   onClick={() => toggleEtape("__cloturees__")} style={{ borderBottom: collapsedEtapes.has("__cloturees__") ? "none" : "1px solid hsl(var(--border))" }}>
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}><ClipboardList size={15} /></span>
+                <h2 className="font-bold text-[15px] flex-1" style={{ color: "hsl(var(--foreground))" }}>Clôturées</h2>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{pavesFusion.terminaux.length}</span>
+                <ChevronDown size={18} style={{ color: "hsl(var(--muted-foreground))", transform: collapsedEtapes.has("__cloturees__") ? "none" : "rotate(180deg)", transition: "transform .2s", flexShrink: 0 }} />
+              </div>
+              {!collapsedEtapes.has("__cloturees__") && (
+                <div className="p-3 space-y-2">{pavesFusion.terminaux.map(renderSuivi)}</div>
+              )}
             </div>
           )}
-        </>
+        </div>
+      )}
+
+      {detailMetier && (
+        <DemandeMetierModal
+          tableObjet={detailMetier.tableObjet}
+          idObjet={detailMetier.idObjet}
+          titre={detailMetier.titre}
+          onClose={() => setDetailMetier(null)}
+        />
       )}
 
       {refusModal && (
@@ -526,6 +879,75 @@ export default function GestionDemandesPage() {
               <Button size="sm" disabled={busyId === refusModal.ie_id} onClick={() => decider(refusModal, "REJETER", motifRefus.trim() || undefined)}
                 className="gap-1.5 text-white" style={{ background: "hsl(var(--destructive))" }}>
                 {busyId === refusModal.ie_id ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />} Confirmer le refus
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ Traitement par lot ════ */}
+      {selection.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl"
+          style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+          <span className="text-sm font-semibold pr-1" style={{ color: "hsl(var(--foreground))" }}>
+            {selection.size} sélectionnée(s)
+          </span>
+          <Button size="sm" disabled={bulkBusy || notAttached} onClick={() => runBatch("VALIDER")}
+            className="gap-1.5 text-white" style={{ background: "hsl(var(--success))" }}>
+            {bulkBusy ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Approuver
+          </Button>
+          <Button size="sm" variant="outline" disabled={bulkBusy || notAttached} onClick={() => { setBulkMotif(""); setBulkAction("REJETER"); }}
+            className="gap-1.5" style={{ color: "hsl(var(--destructive))", borderColor: "hsl(var(--destructive) / 0.4)" }}>
+            <X size={14} /> Refuser
+          </Button>
+          <Button size="sm" variant="outline" disabled={bulkBusy || notAttached} onClick={() => { setBulkCible(""); setBulkAction("DELEGUER"); }}
+            className="gap-1.5">
+            <Share2 size={14} /> Déléguer
+          </Button>
+          <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={clearSel} className="gap-1.5 text-[12px]"
+            style={{ color: "hsl(var(--muted-foreground))" }}>
+            Désélectionner
+          </Button>
+        </div>
+      )}
+
+      {/* Modale : refus par lot */}
+      {bulkAction === "REJETER" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setBulkAction(null)}>
+          <div className="w-full max-w-md rounded-2xl p-5" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}><XCircle size={18} style={{ color: "hsl(var(--destructive))" }} /> Refuser {selection.size} demande(s)</h3>
+            <p className="text-sm mt-1 mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>Le même motif sera appliqué à toutes les demandes sélectionnées.</p>
+            <label className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Motif du refus</label>
+            <textarea value={bulkMotif} onChange={e => setBulkMotif(e.target.value)} rows={3}
+              placeholder="Expliquez la raison du refus (visible par les collaborateurs)…"
+              className="w-full mt-1.5 p-2.5 rounded-xl text-sm resize-none outline-none"
+              style={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" size="sm" onClick={() => setBulkAction(null)}>Annuler</Button>
+              <Button size="sm" disabled={bulkBusy} onClick={() => runBatch("REJETER", bulkMotif.trim() || undefined)}
+                className="gap-1.5 text-white" style={{ background: "hsl(var(--destructive))" }}>
+                {bulkBusy ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />} Confirmer le refus
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale : délégation par lot */}
+      {bulkAction === "DELEGUER" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setBulkAction(null)}>
+          <div className="w-full max-w-md rounded-2xl p-5" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}><Share2 size={18} style={{ color: "hsl(var(--primary))" }} /> Déléguer {selection.size} demande(s)</h3>
+            <p className="text-sm mt-1 mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>Le collaborateur choisi recevra toutes les tâches sélectionnées.</p>
+            <label className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Déléguer à</label>
+            <div className="mt-1.5">
+              <CollaborateurPicker value={bulkCible} onChange={setBulkCible} excludeId={collaborateurId || undefined} />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" size="sm" onClick={() => setBulkAction(null)}>Annuler</Button>
+              <Button size="sm" disabled={bulkBusy || !bulkCible} onClick={() => runBatch("DELEGUER", undefined, bulkCible)}
+                className="gap-1.5">
+                {bulkBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />} Déléguer
               </Button>
             </div>
           </div>
@@ -689,9 +1111,6 @@ export default function GestionDemandesPage() {
                 <input value={fRef} onChange={e => setFRef(e.target.value)} placeholder="DEM-2026-…"
                   className="w-full h-9 px-2.5 rounded-xl text-sm outline-none"
                   style={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
-                {vue === "inbox" && (
-                  <p className="text-[10px] mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Disponible dans « Tout mon périmètre ».</p>
-                )}
               </div>
             </div>
 
@@ -706,6 +1125,7 @@ export default function GestionDemandesPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

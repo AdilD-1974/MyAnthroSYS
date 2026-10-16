@@ -3,7 +3,11 @@
  */
 
 export type TypeCle = "NUMERIQUE" | "TEXTE" | "DATE" | "BOOLEEN";
-export type ModeCle = "EXACT" | "PLAGE";
+// EXACT/PLAGE + comparaison simple à une valeur seuil (<, ≤, >, ≥) — sigles
+// LT/LTE/GT/GTE alignés sur schemas/bareme.py (RG-BAR-MODE-01). Auparavant
+// seuls EXACT/PLAGE figuraient ici ; BaremeForm.tsx compensait via un type
+// local `ModeCleExt` désormais inutile, le backend interprète ces 4 modes.
+export type ModeCle = "EXACT" | "PLAGE" | "LT" | "LTE" | "GT" | "GTE";
 export type TypeSortie = "TAUX" | "MONTANT" | "NUMERIQUE" | "TEXTE" | "BOOLEEN";
 
 export interface BaremeCle {
@@ -84,6 +88,10 @@ export const TYPE_CLE_OPTIONS: { value: TypeCle; label: string }[] = [
 export const MODE_CLE_OPTIONS: { value: ModeCle; label: string }[] = [
   { value: "EXACT", label: "Exact" },
   { value: "PLAGE", label: "Plage (min ≤ x ≤ max)" },
+  { value: "LT",    label: "< strictement (x < valeur)" },
+  { value: "LTE",   label: "≤ (x ≤ valeur)" },
+  { value: "GT",    label: "> strictement (x > valeur)" },
+  { value: "GTE",   label: "≥ (x ≥ valeur)" },
 ];
 
 export const TYPE_SORTIE_OPTIONS: { value: TypeSortie; label: string }[] = [

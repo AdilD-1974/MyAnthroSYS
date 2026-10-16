@@ -52,6 +52,20 @@ import {
   type TypeSortie,
 } from "@/types/bareme";
 
+// ---------------------------------------------------------------------------
+// RG-BAR-MODE-01 (Adil DAIA) : les modes de comparaison étendus (LT/LTE/GT/GTE)
+// sont désormais portés nativement par le type partagé ModeCle/MODE_CLE_OPTIONS
+// (@/types/bareme) et interprétés par le backend — plus besoin du workaround
+// local qui existait ici auparavant (anciens noms : ModeCleExt/MODE_CLE_OPTIONS_EXT).
+// Toutes ces valeurs, comme PLAGE, ne sont proposées que pour les clés de
+// type NUMERIQUE ou DATE (valeurs ordonnables) — cf. `disabled` du Select.
+// ---------------------------------------------------------------------------
+// Badge court affiché en en-tête des colonnes de la table Lignes,
+// pour repérer visuellement le mode d'une clé sans survoler le select.
+const MODE_BADGE: Partial<Record<ModeCle, string>> = {
+  PLAGE: "PLAGE", LT: "< x", LTE: "≤ x", GT: "> x", GTE: "≥ x",
+};
+
 interface Props {
   baremeId?: string; // si fourni → mode édition
 }
@@ -296,7 +310,16 @@ export function BaremeForm({ baremeId }: Props) {
   // Rendu
   // ---------------------------------------------------------------------
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-5 p-6 text-sm
+      [&_table_th]:h-8 [&_table_th]:py-1.5 [&_table_th]:text-xs
+      [&_table_td]:py-1 [&_table_td]:align-middle
+      [&_tbody_tr]:border-b [&_tbody_tr:last-child]:border-0
+      [&_tbody_tr:hover]:bg-muted/40
+      [&_tbody_tr:nth-child(even)]:bg-muted/15
+      [&_input]:h-8 [&_input]:text-sm
+      [&_textarea]:text-sm
+      [&_[role=combobox]]:h-8 [&_[role=combobox]]:text-sm
+    ">
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => navigate(-1)}>
@@ -315,8 +338,9 @@ export function BaremeForm({ baremeId }: Props) {
         </h1>
         <p className="text-sm text-muted-foreground">
           Définissez l'en-tête, les <strong>clés d'entrée</strong> (mode{" "}
-          <code className="text-xs bg-muted px-1 rounded">EXACT</code> ou{" "}
-          <code className="text-xs bg-muted px-1 rounded">PLAGE</code>), les{" "}
+          <code className="text-xs bg-muted px-1 rounded">EXACT</code>,{" "}
+          <code className="text-xs bg-muted px-1 rounded">PLAGE</code> ou comparaison{" "}
+          <code className="text-xs bg-muted px-1 rounded">&lt; ≤ &gt; ≥</code>), les{" "}
           <strong>sorties</strong> (une sortie par défaut, accessible par{" "}
           <code className="text-xs bg-muted px-1 rounded">@TAB CODE</code>), puis les lignes.
         </p>
@@ -335,13 +359,13 @@ export function BaremeForm({ baremeId }: Props) {
       {/* ───────────────────────────── EN-TÊTE ───────────────────────────── */}
       <section className="rounded-lg border bg-card overflow-hidden">
         <button type="button" onClick={() => toggleSection("entete")}
-          className="w-full flex items-center gap-2 px-5 py-3 hover:bg-muted/30 transition-colors">
+          className="w-full flex items-center gap-2 px-4 py-2 hover:bg-muted/30 transition-colors">
           {openSections.entete ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <h2 className="font-semibold">En-tête</h2>
         </button>
         {openSections.entete && (
-        <div className="px-5 pb-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="px-4 pb-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label htmlFor="code">Code *</Label>
             <Input
@@ -370,7 +394,7 @@ export function BaremeForm({ baremeId }: Props) {
             onChange={(e) => updateHeader("description", e.target.value || null)}
           />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <Label htmlFor="date_debut">Date début validité *</Label>
             <Input
@@ -412,14 +436,15 @@ export function BaremeForm({ baremeId }: Props) {
 
       {/* ───────────────────────────── CLÉS ───────────────────────────── */}
       <section className="rounded-lg border bg-card overflow-hidden">
-        <div className="w-full flex items-center justify-between gap-2 px-5 py-3 hover:bg-muted/30 transition-colors">
+        <div className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/30 transition-colors">
           <button type="button" onClick={() => toggleSection("cles")} className="flex items-center gap-2 flex-1 text-left">
             {openSections.cles ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             <div>
               <h2 className="font-semibold">Clés d'entrée ({form.cles.length})</h2>
               <p className="text-xs text-muted-foreground">
                 Critères utilisés pour rechercher la ligne correspondante. Mode{" "}
-                <strong>EXACT</strong> = égalité ; mode <strong>PLAGE</strong> = entre min et max (inclusif).
+                <strong>EXACT</strong> = égalité ; <strong>PLAGE</strong> = entre min et max ;{" "}
+                <strong>&lt;</strong>, <strong>≤</strong>, <strong>&gt;</strong>, <strong>≥</strong> = comparaison stricte ou non à une valeur unique.
               </p>
             </div>
           </button>
@@ -428,7 +453,7 @@ export function BaremeForm({ baremeId }: Props) {
           </Button>
         </div>
         {openSections.cles && (
-        <div className="px-5 pb-5 space-y-3">
+        <div className="px-4 pb-4 space-y-3">
         <Table>
           <TableHeader>
             <TableRow>
@@ -468,7 +493,7 @@ export function BaremeForm({ baremeId }: Props) {
                       updateCle(i, patch);
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -486,7 +511,7 @@ export function BaremeForm({ baremeId }: Props) {
                     onValueChange={(v) => updateCle(i, { mode: v as ModeCle })}
                     disabled={c.type !== "NUMERIQUE" && c.type !== "DATE"}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -501,7 +526,7 @@ export function BaremeForm({ baremeId }: Props) {
                 <TableCell>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" className="h-7 w-7"
                     onClick={() => removeCle(i)}
                     disabled={form.cles.length === 1}
                   >
@@ -518,7 +543,7 @@ export function BaremeForm({ baremeId }: Props) {
 
       {/* ───────────────────────────── SORTIES ───────────────────────────── */}
       <section className="rounded-lg border bg-card overflow-hidden">
-        <div className="w-full flex items-center justify-between gap-2 px-5 py-3 hover:bg-muted/30 transition-colors">
+        <div className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/30 transition-colors">
           <button type="button" onClick={() => toggleSection("sorties")} className="flex items-center gap-2 flex-1 text-left">
             {openSections.sorties ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <div>
@@ -535,7 +560,7 @@ export function BaremeForm({ baremeId }: Props) {
           </Button>
         </div>
         {openSections.sorties && (
-        <div className="px-5 pb-5 space-y-3">
+        <div className="px-4 pb-4 space-y-3">
         <Table>
           <TableHeader>
             <TableRow>
@@ -572,7 +597,7 @@ export function BaremeForm({ baremeId }: Props) {
                     value={s.type}
                     onValueChange={(v) => updateSortie(i, { type: v as TypeSortie })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -587,7 +612,7 @@ export function BaremeForm({ baremeId }: Props) {
                 <TableCell className="text-center">
                   <Button
                     variant={s.par_defaut ? "default" : "ghost"}
-                    size="icon"
+                    size="icon" className="h-7 w-7"
                     onClick={() => updateSortie(i, { par_defaut: true })}
                     title="Marquer comme sortie par défaut"
                   >
@@ -597,7 +622,7 @@ export function BaremeForm({ baremeId }: Props) {
                 <TableCell>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" className="h-7 w-7"
                     onClick={() => removeSortie(i)}
                     disabled={form.sorties.length === 1}
                   >
@@ -614,7 +639,7 @@ export function BaremeForm({ baremeId }: Props) {
 
       {/* ───────────────────────────── LIGNES ───────────────────────────── */}
       <section className="rounded-lg border bg-card overflow-hidden">
-        <div className="w-full flex items-center justify-between gap-2 px-5 py-3 hover:bg-muted/30 transition-colors">
+        <div className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/30 transition-colors">
           <button type="button" onClick={() => toggleSection("lignes")} className="flex items-center gap-2 flex-1 text-left">
             {openSections.lignes ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             <div>
@@ -629,7 +654,7 @@ export function BaremeForm({ baremeId }: Props) {
           </Button>
         </div>
         {openSections.lignes && (
-        <div className="px-5 pb-5 space-y-3">
+        <div className="px-4 pb-4 space-y-3">
 
         <div className="overflow-x-auto">
           <Table>
@@ -643,7 +668,12 @@ export function BaremeForm({ baremeId }: Props) {
                       <Badge variant="secondary" className="ml-2 text-[10px]">PLAGE</Badge>
                     </TableHead>
                   ) : (
-                    <TableHead key={c.nom_technique}>{c.libelle.toUpperCase()}</TableHead>
+                    <TableHead key={c.nom_technique}>
+                      {c.libelle.toUpperCase()}
+                      {MODE_BADGE[c.mode as ModeCle] && (
+                        <Badge variant="secondary" className="ml-2 text-[10px]">{MODE_BADGE[c.mode as ModeCle]}</Badge>
+                      )}
+                    </TableHead>
                   ),
                 )}
                 {form.sorties.map((s) => (
@@ -765,7 +795,7 @@ export function BaremeForm({ baremeId }: Props) {
                       />
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => removeLigne(rowIdx)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLigne(rowIdx)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </TableCell>

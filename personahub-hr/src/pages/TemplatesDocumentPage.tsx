@@ -337,7 +337,7 @@ const TemplatesDocumentPage: React.FC = () => {
                 </label>
                 <textarea
                   className="px-3 py-2 rounded-lg border text-sm outline-none w-full font-mono"
-                  style={{ ...inpStyle, minHeight: 280, fontSize: 12, lineHeight: 1.6 }}
+                  style={{ ...inpStyle, minHeight: 280, fontSize: "calc(12px * var(--font-scale))", lineHeight: 1.6 }}
                   data-field="contenu"
                   value={editing.contenu || ""}
                   onChange={e => setEditing({ ...editing, contenu: e.target.value })}

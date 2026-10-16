@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { Bell, Plus, Pencil, Save, Loader2, X, Power, Trash2, Eye } from "lucide-react";
+import { Bell, Plus, Pencil, Save, Loader2, X, Power, Trash2, Eye, Copy } from "lucide-react";
 import { useNotifTemplates, useVariables, WfTemplate, renderApercu, extractTokens, CANAUX } from "@/hooks/useWorkflowContent";
 import { VariablePalette, CANAL_META, useInsert } from "@/components/workflow/WorkflowContentShared";
 
@@ -35,6 +35,18 @@ export default function NotificationTemplatesPage() {
     try { await (api as any).delete(`/db/ref_workflow_template?id=eq.${t.id}`); invalidate(); await refetch(); toast({ title: "Modèle supprimé" }); }
     catch { toast({ title: "Échec", variant: "destructive" }); }
     finally { setBusy(null); }
+  };
+
+  const duplicate = (t: WfTemplate) => {
+    // Ouvre l'éditeur en CRÉATION (id vide) avec une copie du modèle.
+    setDraft({
+      ...t,
+      id: "",
+      code: `${t.code}_copie`,
+      libelle: `${t.libelle} (copie)`,
+      sujet: t.sujet || "",
+      corps: t.corps || "",
+    });
   };
 
   const save = async () => {
@@ -92,6 +104,7 @@ export default function NotificationTemplatesPage() {
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     <button onClick={() => toggle(t)} disabled={busy === t.id} className="p-1.5 rounded-lg hover:bg-muted/50" title={t.actif ? "Désactiver" : "Activer"} style={{ color: t.actif ? "hsl(142 64% 35%)" : "hsl(var(--muted-foreground))" }}>{busy === t.id ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}</button>
                     <button onClick={() => setDraft({ ...t, sujet: t.sujet || "", corps: t.corps || "" })} className="p-1.5 rounded-lg hover:bg-muted/50" title="Modifier" style={{ color: "hsl(var(--muted-foreground))" }}><Pencil size={14} /></button>
+                    <button onClick={() => duplicate(t)} className="p-1.5 rounded-lg hover:bg-muted/50" title="Dupliquer" style={{ color: "hsl(var(--muted-foreground))" }}><Copy size={14} /></button>
                     <button onClick={() => remove(t)} disabled={busy === t.id} className="p-1.5 rounded-lg hover:bg-destructive/10" title="Supprimer" style={{ color: "hsl(var(--destructive))" }}><Trash2 size={14} /></button>
                   </div>
                 </div>

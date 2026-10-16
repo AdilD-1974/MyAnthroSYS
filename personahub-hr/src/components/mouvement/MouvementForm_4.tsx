@@ -552,7 +552,7 @@ const MouvementForm: React.FC<Props> = ({ collaborateurId, dateDebutContrat }) =
 
   // ── Styles communs ────────────────────────────────────────────────────────
   const labelStyle: React.CSSProperties = {
-    fontSize: 11,
+    fontSize: "calc(11px * var(--font-scale))",
     fontWeight: 600,
     color: "hsl(var(--muted-foreground))",
     marginBottom: 2,
@@ -561,7 +561,7 @@ const MouvementForm: React.FC<Props> = ({ collaborateurId, dateDebutContrat }) =
     width: "100%",
     padding: "6px 10px",
     borderRadius: 8,
-    fontSize: 13,
+    fontSize: "calc(13px * var(--font-scale))",
     border: "1px solid hsl(var(--border))",
     background: "hsl(var(--background))",
     color: "hsl(var(--foreground))",

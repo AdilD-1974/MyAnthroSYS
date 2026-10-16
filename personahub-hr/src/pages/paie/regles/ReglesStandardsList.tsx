@@ -3,7 +3,7 @@
  * Groupé par variable cible (DATE / NOMBRE / MONTANT / TAUX / SPÉCIAUX).
  */
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Lock, Search, Calendar, Hash, DollarSign, Percent, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -36,12 +36,10 @@ const ReglesStandardsList: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      const { data, error } = await supabase
-        .from("ref_regle_calcul_standard")
-        .select("*")
-        .eq("actif", true)
-        .order("ordre_affichage");
-      if (!error && data) setRegles(data as any);
+      try {
+        const data = await db.list<any>("ref_regle_calcul_standard", { actif: true, select: "*", order: "ordre_affichage" });
+        setRegles(data as any);
+      } catch { /* ignore */ }
       setLoading(false);
     };
     load();

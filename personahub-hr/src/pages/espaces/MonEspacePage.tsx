@@ -23,6 +23,7 @@
 import React, { useState, useMemo, useCallback, useEffect, createContext, useContext } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import OperationsCongeActions from "@/pages/absences/OperationsCongeActions";   // ✅ Opérations workflow (annulation / report / reprise)
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
@@ -1162,9 +1163,13 @@ export default function MonEspacePage() {
   return (
     <DensityCtx.Provider value={density}>
       <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
+        {/* Fil d'Ariane (discret, sur fond héros) */}
+        <div className="px-6 pt-3 text-[12px] font-medium print:hidden" style={{ color: "rgba(255,255,255,0.6)" }}>
+          Mon espace
+        </div>
 
         {/* ── Header ── */}
-        <div className="relative overflow-hidden print:hidden" style={{ background: "linear-gradient(135deg, hsl(220 60% 18%) 0%, hsl(220 50% 28%) 60%, hsl(200 55% 32%) 100%)" }}>
+        <div className="relative overflow-hidden print:hidden" style={{ background: "linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 60%, hsl(var(--secondary)) 100%)" }}>
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, white 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
           <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-10" style={{ background: "hsl(200 80% 60%)", transform: "translate(30%, -30%)", filter: "blur(40px)" }} />
 
@@ -1186,9 +1191,9 @@ export default function MonEspacePage() {
               {/* KPIs + densité */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 {[
-                  { label: "Solde congés", value: `${soldeTotal}j`, color: "hsl(142 55% 65%)", tab: "conges" },
-                  { label: "En attente",   value: demandesEnAttente, color: "hsl(38 92% 65%)", tab: "conges" },
-                  { label: "Notifs",       value: nonLues, color: nonLues > 0 ? "hsl(0 70% 65%)" : "hsl(200 60% 65%)", tab: "notifications" },
+                  { label: "Solde congés", value: `${soldeTotal}j`, token: "success", tab: "conges" },
+                  { label: "En attente",   value: demandesEnAttente, token: "warning", tab: "conges" },
+                  { label: "Notifs",       value: nonLues, token: nonLues > 0 ? "destructive" : "info", tab: "notifications" },
                 ].map(k => (
                   <button key={k.label} onClick={() => setActiveTab(k.tab)} className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all hover:scale-105" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)" }}>
                     <span className="text-base font-bold text-white leading-none">{k.value}</span>
@@ -1284,10 +1289,10 @@ export default function MonEspacePage() {
 
               <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: "Demandes", value: statsAnnee.total, icon: <FileText size={14} />, color: "hsl(210 70% 45%)" },
-                  { label: "Approuvées", value: statsAnnee.approuvees, icon: <CheckCircle2 size={14} />, color: "hsl(142 55% 38%)" },
-                  { label: "Refusées", value: statsAnnee.refusees, icon: <XCircle size={14} />, color: "hsl(0 70% 45%)" },
-                  { label: "Jours pris", value: `${statsAnnee.joursApprouves}j`, icon: <CalendarDays size={14} />, color: "hsl(38 92% 40%)" },
+                  { label: "Demandes", value: statsAnnee.total, icon: <FileText size={14} />, color: "hsl(var(--info))" },
+                  { label: "Approuvées", value: statsAnnee.approuvees, icon: <CheckCircle2 size={14} />, color: "hsl(var(--success))" },
+                  { label: "Refusées", value: statsAnnee.refusees, icon: <XCircle size={14} />, color: "hsl(var(--destructive))" },
+                  { label: "Jours pris", value: `${statsAnnee.joursApprouves}j`, icon: <CalendarDays size={14} />, color: "hsl(var(--warning))" },
                 ].map(k => (
                   <div key={k.label} className="p-3.5 rounded-xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
                     <div style={{ color: k.color }}>{k.icon}</div>
@@ -1761,6 +1766,20 @@ export default function MonEspacePage() {
                           {expandedDemandeId === d.id && (
                             <div className="px-4 pb-4 pt-3 border-t" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
                               <ConsultationConge demande={d} />
+                              {["en_attente", "approuvee"].includes((d.statut || "").toLowerCase()) && (
+                                <div className="mt-3 pt-3 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                                  <p className="text-[11px] mb-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                                    Opérations (soumises à validation) :
+                                  </p>
+                                  <OperationsCongeActions
+                                    demande={d}
+                                    onDone={() => {
+                                      refetchDemandes(); refetchRegistre();
+                                      qc.invalidateQueries({ queryKey: ["mes-soldes"] });
+                                    }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2027,13 +2046,13 @@ export default function MonEspacePage() {
               <Section title="Statistiques annuelles" icon={<Activity size={14} />}>
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { label: "Total demandes", value: statsAnnee.total, icon: <FileText size={13} />, color: "hsl(210 70% 45%)" },
-                    { label: "Taux approbation", value: statsAnnee.total > 0 ? `${Math.round((statsAnnee.approuvees / statsAnnee.total) * 100)}%` : "—", icon: <Activity size={13} />, color: "hsl(142 55% 38%)" },
-                    { label: "Jours approuvés", value: `${statsAnnee.joursApprouves}j`, icon: <CheckCircle2 size={13} />, color: "hsl(142 55% 38%)" },
-                    { label: "Solde total restant", value: `${soldeTotal}j`, icon: <CalendarDays size={13} />, color: "hsl(var(--primary))" },
+                    { label: "Total demandes", value: statsAnnee.total, icon: <FileText size={13} />, token: "info" },
+                    { label: "Taux approbation", value: statsAnnee.total > 0 ? `${Math.round((statsAnnee.approuvees / statsAnnee.total) * 100)}%` : "—", icon: <Activity size={13} />, token: "success" },
+                    { label: "Jours approuvés", value: `${statsAnnee.joursApprouves}j`, icon: <CheckCircle2 size={13} />, token: "success" },
+                    { label: "Solde total restant", value: `${soldeTotal}j`, icon: <CalendarDays size={13} />, token: "primary" },
                   ].map(k => (
                     <div key={k.label} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "hsl(var(--muted) / 0.3)", border: "1px solid hsl(var(--border))" }}>
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${k.color}15`, color: k.color }}>{k.icon}</div>
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `hsl(var(--${k.token}) / 0.13)`, color: `hsl(var(--${k.token}))` }}>{k.icon}</div>
                       <div><p className="text-base font-bold">{k.value}</p><p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p></div>
                     </div>
                   ))}

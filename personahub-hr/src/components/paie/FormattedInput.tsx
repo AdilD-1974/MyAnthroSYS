@@ -58,7 +58,7 @@ const FormattedInput: React.FC<Props> = ({
   max,
   alwaysFormat,
 }) => {
-  const { formatNumber, formatDate, formatCurrency, formatPercent } = useFormatMasks();
+  const { formatNumber, formatDate, formatMoney, formatPercent } = useFormatMasks();
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,12 +118,12 @@ const FormattedInput: React.FC<Props> = ({
     if (focused) return draft;
     if (value === null || value === undefined || value === "") return "";
     if (alwaysFormat) {
-      if (type === "currency") return formatCurrency(value as number);
+      if (type === "currency") return formatMoney(value as number);
       if (type === "percent")  return formatPercent(value as number);
       return formatNumber(value as number, decimales);
     }
     // Au blur : affichage formaté
-    if (type === "currency") return formatCurrency(value as number);
+    if (type === "currency") return formatMoney(value as number);
     if (type === "percent")  return formatPercent(value as number);
     return formatNumber(value as number, decimales);
   })();

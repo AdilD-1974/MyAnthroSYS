@@ -17,44 +17,8 @@ import { format, isPast, isToday, parseISO, addDays, differenceInYears } from "d
 import { fr } from "date-fns/locale";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-const MOTIFS_DEPART = [
-  "Démission",
-  "Fin de contrat (CDD)",
-  "Licenciement pour faute grave",
-  "Licenciement pour faute lourde",
-  "Licenciement économique",
-  "Retraite",
-  "Retraite anticipée",
-  "Rupture conventionnelle",
-  "Décès",
-  "Invalidité",
-  "Abandon de poste",
-  "Mobilité externe",
-  "Fin de mission",
-  "Révocation",
-  "Autre",
-];
-
-// Motifs avec droit préavis selon CT Maroc
-const MOTIFS_AVEC_PREAVIS = [
-  "Démission",
-  "Licenciement pour faute grave",
-  "Licenciement pour faute lourde",
-  "Licenciement économique",
-  "Retraite",
-  "Rupture conventionnelle",
-];
-
-// Motifs avec indemnité légale (Art.52-53 CT Maroc)
-const MOTIFS_AVEC_INDEMNITE = [
-  "Licenciement pour faute grave",
-  "Licenciement pour faute lourde",
-  "Licenciement économique",
-  "Retraite",
-  "Retraite anticipée",
-  "Rupture conventionnelle",
-  "Invalidité",
-];
+// Les motifs de départ et leurs règles (préavis / indemnité / entretien) viennent
+// désormais du référentiel ref_motif_depart — voir le useQuery dans le composant.
 
 const DOCS_LIST = [
   { key: "doc_attestation_travail",       label: "Attestation de travail" },
@@ -91,8 +55,8 @@ function calcPreavisLegal(codeTypeContrat: string, ancienneteAns: number, catego
 }
 
 // ─── Calcul indemnité légale marocaine (Art.53 CT) ────────────────────────────
-function calcIndemniteLegale(salaireMensuel: number, ancienneteAns: number, motif: string): number {
-  if (!MOTIFS_AVEC_INDEMNITE.includes(motif)) return 0;
+// L'éligibilité (avec_indemnite) est testée en amont via le référentiel.
+function calcIndemniteLegale(salaireMensuel: number, ancienneteAns: number): number {
   if (ancienneteAns < 1) return 0;
   // 96h de salaire par année d'ancienneté (Art.53)
   const tauxHoraire = salaireMensuel / 191; // 191h/mois légal Maroc
@@ -101,8 +65,7 @@ function calcIndemniteLegale(salaireMensuel: number, ancienneteAns: number, moti
 
 // ─── Stepper ──────────────────────────────────────────────────────────────────
 const STEPS = [
-  { id: 0, label: "Départ",        icon: <DoorOpen size={14} /> },
-  { id: 1, label: "Préavis",       icon: <Clock size={14} /> },
+  { id: 0, label: "Départ & Préavis", icon: <DoorOpen size={14} /> },
   { id: 2, label: "Indemnités",    icon: <Calculator size={14} /> },
   { id: 3, label: "Administratif", icon: <Shield size={14} /> },
   { id: 4, label: "Documents",     icon: <FileText size={14} /> },
@@ -112,13 +75,38 @@ const STEPS = [
 // ─── Composant principal ──────────────────────────────────────────────────────
 interface Props {
   collaborateurId?: string;
+  departExistant?: any;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) => {
+const DepartForm: React.FC<Props> = ({ collaborateurId, departExistant, onClose, onSuccess }) => {
   const { user } = useAuth();
+  const isEdit = !!(departExistant && departExistant.id);
+  const effectiveCollabId = collaborateurId ?? (isEdit ? departExistant.collaborateur_id : undefined);
   const [step, setStep] = useState(0);
+  // Onglet 1 (Départ & Préavis) : deux pavés accordéon
+  const [pavesOuverts, setPavesOuverts] = useState<Set<string>>(new Set(["depart", "preavis"]));
+  const togglePave = (k: string) => setPavesOuverts(prev => {
+    const s = new Set(prev); s.has(k) ? s.delete(k) : s.add(k); return s;
+  });
+  const renderPaveHeader = (k: string, label: string, icon: React.ReactNode) => {
+    const ouvert = pavesOuverts.has(k);
+    return (
+      <button type="button" onClick={() => togglePave(k)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors hover:opacity-90"
+        style={{ background: "hsl(var(--muted) / 0.5)", color: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))" }}>
+        <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0" style={{ background: "hsl(var(--accent) / 0.12)", color: "hsl(var(--accent))" }}>{icon}</span>
+        <span className="flex-1 text-left">{label}</span>
+        <ChevronRight size={16} style={{ transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .2s", color: "hsl(var(--muted-foreground))" }} />
+      </button>
+    );
+  };
+  // Navigation : l'étape Préavis (id 1) est fusionnée dans l'onglet Départ → on
+  // navigue selon l'ordre réel des onglets restants, pas par step ± 1.
+  const stepOrder = STEPS.map(s => s.id);          // [0, 2, 3, 4, 5]
+  const stepIdx = stepOrder.indexOf(step);
+  const isLastStep = stepIdx === stepOrder.length - 1;
   const [submitting, setSubmitting] = useState(false);
   const [searchCollab, setSearchCollab] = useState("");
   const [selectedCollabData, setSelectedCollabData] = useState<any>(null);
@@ -139,6 +127,10 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
     date_notification: "",
     date_entretien_prealable: "",
     decision_finale: "ACCEPTE",
+
+    // Mode de traitement du départ
+    mode_traitement: "SAISIE_DIRECTE" as "SAISIE_DIRECTE" | "PROCESSUS",
+    workflow_code: "",
 
     // Préavis
     preavis_duree_jours: "" as string | number,
@@ -201,15 +193,51 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
 
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
+  // Pré-remplissage en mode édition (compléter / traiter un départ existant)
+  useEffect(() => {
+    if (!isEdit) return;
+    const d = departExistant;
+    setForm(prev => {
+      const next: any = { ...prev };
+      Object.keys(prev).forEach(k => {
+        const v = (d as any)[k];
+        if (v === undefined || v === null) return;
+        next[k] = (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v)) ? v.slice(0, 10) : v;
+      });
+      next.collaborateur_id = d.collaborateur_id || prev.collaborateur_id;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit]);
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   const isImmediate = form.date_depart
     ? isPast(parseISO(form.date_depart)) || isToday(parseISO(form.date_depart))
     : false;
 
-  const avecPreavis = MOTIFS_AVEC_PREAVIS.includes(form.motif_depart) && contrat?.code_type_contrat !== "CDD";
-  const avecIndemnite = MOTIFS_AVEC_INDEMNITE.includes(form.motif_depart);
+  // Motifs de départ : référentiel ref_motif_depart (plus de liste en dur).
+  const { data: motifsDepartRaw = [] } = useQuery<any[]>({
+    queryKey: ["ref-motif-depart"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () =>
+      (await api.get(`/db/ref_motif_depart?actif=eq.true&select=code,libelle,avec_preavis,avec_indemnite,requiert_entretien,statut_cible,ordre`)) || [],
+  });
+  // Tri par ordre en JS (proxy : pas de order= dans l'URL)
+  const motifsDepart = useMemo(
+    () => [...(motifsDepartRaw as any[])].sort((a, b) => (a.ordre ?? 999) - (b.ordre ?? 999)),
+    [motifsDepartRaw]
+  );
+  // Motif sélectionné : on stocke le CODE dans motif_depart ; le libellé n'est
+  // qu'affiché, les règles métier viennent des flags de la ligne du référentiel.
+  const motifSel = useMemo(
+    () => motifsDepart.find((m: any) => m.code === form.motif_depart) || null,
+    [motifsDepart, form.motif_depart]
+  );
+
+  const avecPreavis = !!motifSel?.avec_preavis && contrat?.code_type_contrat !== "CDD";
+  const avecIndemnite = !!motifSel?.avec_indemnite;
   const isCDI = contrat?.code_type_contrat === "CDI" || (!contrat?.code_type_contrat);
-  const needsEntretien = isCDI && ["Licenciement pour faute grave","Licenciement pour faute lourde","Licenciement économique"].includes(form.motif_depart);
+  const needsEntretien = isCDI && !!motifSel?.requiert_entretien;
 
   const anciennete = collabInfo?.date_naissance && contrat?.date_debut
     ? differenceInYears(new Date(), parseISO(contrat.date_debut))
@@ -231,7 +259,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
   // Même pattern que DepartsProvisoiresPage qui fonctionne
   const { data: tousCollabs = [] } = useQuery<any[]>({
     queryKey: ["collabs-depart-form-all"],
-    enabled: !collaborateurId,
+    enabled: !effectiveCollabId,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -245,6 +273,39 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
     },
   });
 
+  // RG-DEP-ELIG-01 : collaborateurs ayant un CONTRAT EN COURS
+  //   (même définition que le chargement du contrat : archive=false + date_sortie nulle).
+  //   Le proxy /db ne joint pas → on charge l'ensemble et on filtre en JS.
+  const { data: contratsActifsRaw = [] } = useQuery<any[]>({
+    queryKey: ["contrats-actifs-depart-form"],
+    enabled: !isEdit,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () =>
+      (await api.get(
+        `/db/collaborateur_contrats?select=collaborateur_id&archive=eq.false&date_sortie=is.null&limit=5000`
+      )) || [],
+  });
+  const collabsAvecContrat = useMemo(
+    () => new Set((contratsActifsRaw || []).map((c: any) => c.collaborateur_id).filter(Boolean)),
+    [contratsActifsRaw]
+  );
+
+  // RG-DEP-ELIG-01 : collaborateurs ayant DÉJÀ un départ EN COURS
+  //   (tout statut sauf ANNULE : un départ annulé n'empêche pas d'en saisir un nouveau).
+  const { data: departsEnCoursRaw = [] } = useQuery<any[]>({
+    queryKey: ["departs-en-cours-depart-form"],
+    enabled: !isEdit,
+    staleTime: 30 * 1000,
+    queryFn: async () =>
+      (await api.get(
+        `/db/collaborateur_departs?select=collaborateur_id,statut&statut=in.(PLANIFIE,EN_COURS,TRAITE,ENREGISTRE)&limit=5000`
+      )) || [],
+  });
+  const collabsAvecDepart = useMemo(
+    () => new Set((departsEnCoursRaw || []).map((d: any) => d.collaborateur_id).filter(Boolean)),
+    [departsEnCoursRaw]
+  );
+
   // Filtre JS insensible à la casse et aux accents (multi-tokens)
   const normTxt = (s: string) =>
     (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -254,10 +315,14 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
     if (!q || q.length < 2) return [];
     const tokens = q.split(/\s+/).filter(Boolean);
     return tousCollabs.filter((c: any) => {
+      // RG-DEP-ELIG-01 : ne proposer qu'un collaborateur avec un CONTRAT EN COURS
+      //                  et SANS départ déjà en cours.
+      if (!collabsAvecContrat.has(c.id)) return false;
+      if (collabsAvecDepart.has(c.id)) return false;
       const hay = normTxt(`${c.matricule || ""} ${c.nom || ""} ${c.prenom || ""}`);
       return tokens.every(t => hay.includes(t));
     }).slice(0, 50);
-  }, [tousCollabs, searchCollab]);
+  }, [tousCollabs, searchCollab, collabsAvecContrat, collabsAvecDepart]);
 
   const selectedCollab = selectedCollabData ?? collaborateurs.find((c: any) => c.id === form.collaborateur_id) ?? collabInfo;
 
@@ -270,6 +335,13 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
   const { data: statutsContrat = [] } = useQuery<any[]>({
     queryKey: ["ref_statut_contrat-depart-form"],
     queryFn: async () => { try { return await api.get("/db/ref_statut_contrat"); } catch { return []; } },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Workflows disponibles pour le MODULE Départs (type_objet = collaborateur_departs)
+  const { data: workflowsDispo = [] } = useQuery<any[]>({
+    queryKey: ["ref_workflow-depart-form"],
+    queryFn: async () => { try { return await api.get("/db/ref_workflow?actif=eq.true&type_objet=eq.collaborateur_departs&select=id,code,libelle&order=libelle.asc"); } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -432,25 +504,94 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
     }
   }, [collabContext]);
 
-  // ── Auto-calcul préavis ────────────────────────────────────────────────────
+  // ── Catégorie de RÉFÉRENCE dérivée de la CP du collaborateur (Reste à faire #3) ──
+  // Référentiel CP → catégorie de référence (mapping paramétrable en base)
+  const { data: refCategories = [] } = useQuery<any[]>({
+    queryKey: ["ref-categorie-professionnelle"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () =>
+      (await api.get(`/db/ref_categorie_professionnelle?select=code,categorie_reference`)) || [],
+  });
+  // Qualification(s) du collaborateur concerné → sa CP.
+  // IMPORTANT : on utilise form.collaborateur_id (le même id que la carte Situation
+  // actuelle), pas effectiveCollabId qui peut être vide en création.
+  const { data: qualifsCollab = [] } = useQuery<any[]>({
+    queryKey: ["collab-qualif", form.collaborateur_id],
+    enabled: !!form.collaborateur_id,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () =>
+      (await api.get(`/db/collaborateur_qualifications?collaborateur_id=eq.${form.collaborateur_id}&select=code_categorie_professionnelle,date_evolution,archive`)) || [],
+  });
+  // CP courante : qualification non archivée la plus récente ayant une CP (tri en JS)
+  const cpCollaborateur = useMemo(() => {
+    const valides = (qualifsCollab as any[])
+      .filter(q => q.code_categorie_professionnelle && q.archive !== true)
+      .sort((a, b) => String(b.date_evolution || "").localeCompare(String(a.date_evolution || "")));
+    return valides[0]?.code_categorie_professionnelle || null;
+  }, [qualifsCollab]);
+  // Catégorie de référence (EXECUTION / MAITRISE / CADRE) via le mapping
+  const categorieReference = useMemo(() => {
+    if (!cpCollaborateur) return null;
+    return refCategories.find((r: any) => r.code === cpCollaborateur)?.categorie_reference || null;
+  }, [cpCollaborateur, refCategories]);
+
+  // Durées de préavis réglementaires (Art.43 CT) par catégorie de référence
+  const { data: refCatReference = [] } = useQuery<any[]>({
+    queryKey: ["ref-categorie-reference"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () =>
+      (await api.get(`/db/ref_categorie_reference?select=code,preavis_jours_moins_1an,preavis_jours_1_a_5ans,preavis_jours_plus_5ans`)) || [],
+  });
+  // Préavis légal = durées du référentiel pour la catégorie courante ; repli sur les
+  // valeurs par défaut (calcPreavisLegal) si la table n'est pas encore chargée.
+  const calcPreavisLegalDyn = (ancienneteAns: number): number => {
+    if (contrat?.code_type_contrat === "CDD") return 0;
+    const row = (refCatReference as any[]).find(r => r.code === form.preavis_categorie);
+    if (!row) return calcPreavisLegal(contrat?.code_type_contrat || "CDI", ancienneteAns, form.preavis_categorie);
+    if (ancienneteAns < 1) return Number(row.preavis_jours_moins_1an) || 0;
+    if (ancienneteAns < 5) return Number(row.preavis_jours_1_a_5ans) || 0;
+    return Number(row.preavis_jours_plus_5ans) || 0;
+  };
+
+  // Catégorie de référence IMPOSÉE : dès qu'elle est dérivée, elle s'applique
+  // (création comme édition) et le select est verrouillé. On ne re-set que si différent.
   useEffect(() => {
-    if (!avecPreavis || !form.date_depart || !contrat) return;
-    const jours = calcPreavisLegal(contrat.code_type_contrat || "CDI", anciennete, form.preavis_categorie);
-    const debut = parseISO(form.date_depart);
-    set("preavis_duree_jours", jours);
-    set("preavis_date_debut", format(debut, "yyyy-MM-dd"));
-    set("preavis_date_fin", format(addDays(debut, jours), "yyyy-MM-dd"));
-  }, [form.motif_depart, form.date_depart, form.preavis_categorie, contrat]);
+    if (categorieReference && categorieReference !== form.preavis_categorie) {
+      set("preavis_categorie", categorieReference);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categorieReference]);
+
+  // ── Préavis : durée légale (catégorie + ancienneté) — alimentée et MODIFIABLE ──
+  // Indépendante du motif ; ne se recalcule que si catégorie/ancienneté changent,
+  // donc une saisie manuelle ultérieure est préservée.
+  useEffect(() => {
+    if (!contrat) return;
+    set("preavis_duree_jours", calcPreavisLegalDyn(anciennete));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.preavis_categorie, anciennete, contrat]);
+
+  // ── Préavis : dates début/fin calculées depuis la durée (auto ou modifiée) ──
+  useEffect(() => {
+    const jours = parseInt(String(form.preavis_duree_jours), 10) || 0;
+    const base = form.date_notification
+      ? addDays(parseISO(form.date_notification), 1)
+      : form.date_depart ? parseISO(form.date_depart) : null;
+    if (base && jours > 0) {
+      set("preavis_date_debut", format(base, "yyyy-MM-dd"));
+      set("preavis_date_fin", format(addDays(base, jours), "yyyy-MM-dd"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.preavis_duree_jours, form.date_notification, form.date_depart]);
 
   // ── Auto-calcul indemnité légale ──────────────────────────────────────────
   useEffect(() => {
     if (!avecIndemnite) return;
     const sal = parseFloat(String(form.base_calcul_salaire)) || 0;
     const ans = parseFloat(String(form.anciennete_retenue_ans)) || 0;
-    const motif = form.motif_depart;
     if (sal > 0 && ans > 0) {
-      const montant = calcIndemniteLegale(sal, ans, motif);
-      if (motif.includes("Retraite")) set("indemnite_depart_retraite", montant);
+      const montant = calcIndemniteLegale(sal, ans);
+      if (motifSel?.statut_cible === "RETRAITE") set("indemnite_depart_retraite", montant);
       else set("indemnite_perte_emploi", montant);
     }
   }, [form.base_calcul_salaire, form.anciennete_retenue_ans, form.motif_depart]);
@@ -489,11 +630,20 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
     if (contrat?.date_debut && form.date_depart < contrat.date_debut) {
       toast({ title: "Date invalide", description: `La date de départ doit être postérieure au début du contrat (${format(parseISO(contrat.date_debut), "dd/MM/yyyy", { locale: fr })}).`, variant: "destructive" }); return;
     }
+    // RG-DEP-ELIG-01 : à la CRÉATION, interdire un 2e départ si un est déjà en cours
+    if (!isEdit && collabsAvecDepart.has(form.collaborateur_id)) {
+      toast({
+        title: "Départ déjà en cours",
+        description: "Ce collaborateur a déjà un départ en cours. Annulez-le avant d'en saisir un nouveau.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setSubmitting(true);
     try {
-      // 1. Créer le départ
-      await api.post("/db/collaborateur_departs", {
+      // Construire le payload (création ou édition)
+      const payload: any = {
         collaborateur_id: form.collaborateur_id,
         date_depart: form.date_depart,
         motif_depart: form.motif_depart,
@@ -538,16 +688,41 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
         acces_si_desactive: form.acces_si_desactive,
         acces_email_desactive: form.acces_email_desactive,
         acces_desactivation_date: form.acces_desactivation_date || null,
-        created_by: user?.id,
+        mode_traitement: form.mode_traitement,
+        workflow_code: form.mode_traitement === "PROCESSUS" ? (form.workflow_code || null) : null,
         updated_by: user?.id,
-      });
+      };
 
-      // 2. Mettre à jour date_fin du contrat le plus récent (RG-DEP-CONTRAT-01)
-      if (contrat?.id) {
-        await api.patch(`/db/collaborateur_contrats?id=eq.${contrat.id}`, {
-          date_fin: form.date_depart,
-          updated_at: new Date().toISOString(),
-        });
+      if (isEdit) {
+        // Édition : compléter / traiter le dossier (sans re-déclencher le workflow)
+        await api.patch(`/db/collaborateur_departs?id=eq.${departExistant.id}`, payload);
+      } else {
+        payload.created_by = user?.id;
+        // RG #6 : un départ soumis au processus reste EN_COURS jusqu'à validation + complétion
+        if (form.mode_traitement === "PROCESSUS") payload.statut = "EN_COURS";
+        const created: any = await api.post("/db/collaborateur_departs", payload);
+        const newId = Array.isArray(created) ? created[0]?.id : created?.id;
+
+        // Déclenchement du workflow si mode Processus
+        if (form.mode_traitement === "PROCESSUS" && newId) {
+          try {
+            await api.post("/workflow/trigger", {
+              table_source: "collaborateur_departs",
+              id: newId,
+              evenement: "CREATION",
+            });
+          } catch (e) {
+            console.warn("Déclenchement workflow échoué", e);
+          }
+        }
+
+        // Mettre à jour date_fin du contrat le plus récent (RG-DEP-CONTRAT-01)
+        if (contrat?.id) {
+          await api.patch(`/db/collaborateur_contrats?id=eq.${contrat.id}`, {
+            date_fin: form.date_depart,
+            updated_at: new Date().toISOString(),
+          });
+        }
       }
 
       toast({
@@ -592,7 +767,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "hsl(var(--background) / 0.85)", backdropFilter: "blur(4px)" }}>
-      <div className="w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+      <div className="w-full max-w-6xl rounded-2xl shadow-2xl overflow-hidden flex flex-col"
         style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", maxHeight: "92vh" }}>
 
         {/* ── Header ── */}
@@ -600,7 +775,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
           style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.3)" }}>
           <div className="flex items-center gap-2">
             <DoorOpen size={18} style={{ color: "hsl(var(--accent))" }} />
-            <h2 className="text-base font-bold" style={{ color: "hsl(var(--foreground))" }}>Enregistrer un départ</h2>
+            <h2 className="text-base font-bold" style={{ color: "hsl(var(--foreground))" }}>{isEdit ? "Compléter le dossier de départ" : "Enregistrer un départ"}</h2>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:opacity-70"
             style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
@@ -608,39 +783,11 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
           </button>
         </div>
 
-        {/* ── Stepper ── */}
-        <div className="flex items-center px-6 py-3 border-b flex-shrink-0 gap-1"
-          style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.15)" }}>
-          {STEPS.map((s, idx) => (
-            <React.Fragment key={s.id}>
-              <button onClick={() => step > s.id && setStep(s.id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
-                style={{
-                  background: step === s.id ? "hsl(var(--accent))" : step > s.id ? "hsl(var(--accent) / 0.12)" : "transparent",
-                  color: step === s.id ? "white" : step > s.id ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))",
-                  cursor: step > s.id ? "pointer" : "default",
-                }}>
-                {s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
-                {step > s.id && <Check size={10} />}
-              </button>
-              {idx < STEPS.length - 1 && (
-                <ChevronRight size={12} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* ── Contenu ── */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-
-          {/* ═══════════════════════════════════════════════════
-              ÉTAPE 0 — DÉPART
-          ═══════════════════════════════════════════════════ */}
-          {step === 0 && (
-            <>
+        {/* ── Collaborateur concerné — épinglé, toujours visible ── */}
+        <div className="px-6 py-3 border-b flex-shrink-0 space-y-3"
+          style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
               {/* Sélection collaborateur */}
-              {collaborateurId ? (
+              {effectiveCollabId ? (
                 <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
                   style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
@@ -838,7 +985,43 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                   </div>
                 );
               })()}
+        </div>
 
+        {/* ── Stepper ── */}
+        <div className="flex items-center px-6 py-3 border-b flex-shrink-0 gap-1"
+          style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.15)" }}>
+          {STEPS.map((s, idx) => (
+            <React.Fragment key={s.id}>
+              <button onClick={() => step > s.id && setStep(s.id)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: step === s.id ? "hsl(var(--accent))" : step > s.id ? "hsl(var(--accent) / 0.12)" : "transparent",
+                  color: step === s.id ? "white" : step > s.id ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))",
+                  cursor: step > s.id ? "pointer" : "default",
+                }}>
+                {s.icon}
+                <span className="hidden sm:inline">{s.label}</span>
+                {step > s.id && <Check size={10} />}
+              </button>
+              {idx < STEPS.length - 1 && (
+                <ChevronRight size={12} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* ── Contenu ── */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* ═══════════════════════════════════════════════════
+              ÉTAPE 0 — DÉPART
+          ═══════════════════════════════════════════════════ */}
+          {step === 0 && (
+            <>
+              {renderPaveHeader("depart", "Départ", <DoorOpen size={14} />)}
+              {pavesOuverts.has("depart") && (
+              <>
+              <div className="grid grid-cols-3 gap-4">
               {/* Date de départ */}
               <Fld label="Date de départ" required>
                 <Input
@@ -890,12 +1073,11 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                   className="w-full h-9 text-sm rounded-lg border px-3"
                   style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
                   <option value="">— Sélectionner —</option>
-                  {MOTIFS_DEPART.map(m => <option key={m} value={m}>{m}</option>)}
+                  {motifsDepart.map((m: any) => <option key={m.code} value={m.code}>{m.libelle}</option>)}
                 </select>
               </Fld>
 
-              {/* Date notification + Entretien préalable (CDI licenciement) */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Date de notification + entretien préalable (CDI licenciement) */}
                 <Fld label="Date de notification"
                   hint={form.date_depart
                     ? `Doit être ≤ date de départ (${format(parseISO(form.date_depart), "dd/MM/yyyy", { locale: fr })})`
@@ -922,7 +1104,6 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                     <Input type="date" value={form.date_entretien_prealable} onChange={e => set("date_entretien_prealable", e.target.value)} className="h-9 text-sm" />
                   </Fld>
                 )}
-              </div>
 
               {/* Référence + Commentaire */}
               <Fld label="Référence de la décision">
@@ -931,40 +1112,85 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
               <Fld label="Commentaire">
                 <Textarea value={form.commentaire} onChange={e => set("commentaire", e.target.value)} placeholder="Observations, circonstances…" rows={3} className="text-sm resize-none" />
               </Fld>
-            </>
-          )}
+              </div>
 
-          {/* ═══════════════════════════════════════════════════
-              ÉTAPE 1 — PRÉAVIS
-          ═══════════════════════════════════════════════════ */}
-          {step === 1 && (
-            <>
-              {!avecPreavis && (
+              {/* Mode de traitement : Saisie directe / Processus (workflow) */}
+              <div className="p-4 rounded-xl border" style={{ borderColor: "hsl(var(--border))" }}>
+                <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "hsl(var(--foreground))" }}>Mode de traitement</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { v: "SAISIE_DIRECTE", t: "Saisie directe", d: "Le RH renseigne tout le dossier." },
+                    { v: "PROCESSUS", t: "Processus (workflow)", d: "Déclenche un circuit de validation." },
+                  ] as const).map(opt => (
+                    <button key={opt.v} type="button" onClick={() => set("mode_traitement", opt.v)}
+                      className="text-left p-3 rounded-lg border transition-all"
+                      style={{
+                        borderColor: form.mode_traitement === opt.v ? "hsl(var(--accent))" : "hsl(var(--border))",
+                        background: form.mode_traitement === opt.v ? "hsl(var(--accent) / 0.08)" : "transparent",
+                      }}>
+                      <p className="text-xs font-semibold" style={{ color: form.mode_traitement === opt.v ? "hsl(var(--accent))" : "hsl(var(--foreground))" }}>{opt.t}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{opt.d}</p>
+                    </button>
+                  ))}
+                </div>
+                {form.mode_traitement === "PROCESSUS" && (
+                  <div className="mt-3">
+                    <label className="block text-[11px] font-medium mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Workflow de validation</label>
+                    <select value={form.workflow_code} onChange={e => set("workflow_code", e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}>
+                      <option value="">Auto (selon la catégorie du collaborateur)</option>
+                      {workflowsDispo.map((w: any) => (
+                        <option key={w.id} value={w.code}>{w.libelle}</option>
+                      ))}
+                    </select>
+                    {!form.workflow_code && (
+                      <p className="text-[10px] mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Le workflow sera choisi automatiquement selon la catégorie du collaborateur. Sélectionnez-en un ci-dessus pour forcer.</p>
+                    )}
+                    {workflowsDispo.length === 0 && (
+                      <p className="text-[10px] mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Aucun workflow actif. Créez-en un dans le WorkflowDesigner.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              </>
+              )}
+              {renderPaveHeader("preavis", "Préavis", <Clock size={14} />)}
+              {pavesOuverts.has("preavis") && (
+              <>
+              {!avecPreavis && (contrat?.code_type_contrat === "CDD" || form.motif_depart) && (
                 <div className="flex items-center gap-2 px-4 py-3 rounded-xl"
                   style={{ background: "hsl(142 55% 45% / 0.1)", border: "1px solid hsl(142 55% 45% / 0.25)", color: "hsl(142 55% 28%)" }}>
                   <Info size={14} />
                   <p className="text-xs font-medium">
                     {contrat?.code_type_contrat === "CDD"
                       ? "CDD : pas de préavis légal selon le Code du Travail marocain (sauf clause contractuelle)."
-                      : `Le motif "${form.motif_depart}" ne génère pas de préavis légal.`}
+                      : `Le motif "${motifSel?.libelle || form.motif_depart}" ne génère pas de préavis légal.`}
                   </p>
                 </div>
               )}
 
-              {/* Catégorie pour calcul préavis */}
-              <Fld label="Catégorie professionnelle" hint="Détermine la durée légale du préavis (Art.43 CT)">
-                <select value={form.preavis_categorie} onChange={e => set("preavis_categorie", e.target.value)}
-                  className="w-full h-9 text-sm rounded-lg border px-3"
-                  style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
-                  <option value="EXECUTION">Exécution</option>
-                  <option value="MAITRISE">Maîtrise</option>
-                  <option value="CADRE">Cadre</option>
-                </select>
-              </Fld>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Fld label="Durée préavis (jours)" hint="Calculé automatiquement selon ancienneté et catégorie">
-                  <Input type="number" value={form.preavis_duree_jours} onChange={e => set("preavis_duree_jours", e.target.value)} className="h-9 text-sm" />
+              {/* Catégorie + durées préavis : grille 2 colonnes */}
+              <div className="grid grid-cols-3 gap-4">
+                <Fld label="Catégorie professionnelle" hint="Détermine la durée légale du préavis (Art.43 CT)">
+                  <select value={form.preavis_categorie} onChange={e => set("preavis_categorie", e.target.value)}
+                    disabled={!!categorieReference}
+                    className={`w-full h-9 text-sm rounded-lg border px-3 ${categorieReference ? "opacity-70 cursor-not-allowed" : ""}`}
+                    style={{ background: categorieReference ? "hsl(var(--muted) / 0.4)" : "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                    <option value="EXECUTION">Exécution</option>
+                    <option value="MAITRISE">Maîtrise</option>
+                    <option value="CADRE">Cadre</option>
+                  </select>
+                  {categorieReference ? (
+                    <p className="text-[11px] mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      Déterminée par la catégorie du collaborateur{cpCollaborateur ? ` (${cpCollaborateur})` : ""} → {categorieReference === "CADRE" ? "Cadre" : categorieReference === "MAITRISE" ? "Maîtrise" : "Exécution"}. Non modifiable.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] mt-1" style={{ color: "hsl(var(--warning))" }}>
+                      Aucune catégorie de référence dérivée (CP du collaborateur absente ou non mappée) — sélection manuelle.
+                    </p>
+                  )}
                 </Fld>
                 <div className="flex flex-col justify-end">
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -972,14 +1198,14 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                   </p>
                   <div className="px-3 py-2 rounded-lg text-sm font-bold"
                     style={{ background: "hsl(var(--accent) / 0.1)", color: "hsl(var(--accent))" }}>
-                    {avecPreavis && contrat
-                      ? `${calcPreavisLegal(contrat.code_type_contrat || "CDI", anciennete, form.preavis_categorie)} jours`
+                    {contrat && contrat.code_type_contrat !== "CDD" && form.preavis_categorie
+                      ? `${calcPreavisLegalDyn(anciennete)} jours`
                       : "—"}
                   </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+                <Fld label="Durée préavis (jours)" hint="Calculé automatiquement selon ancienneté et catégorie">
+                  <Input type="number" value={form.preavis_duree_jours} onChange={e => set("preavis_duree_jours", e.target.value)} className="h-9 text-sm" />
+                </Fld>
                 <Fld label="Date début préavis">
                   <Input type="date" value={form.preavis_date_debut} onChange={e => set("preavis_date_debut", e.target.value)} className="h-9 text-sm" />
                 </Fld>
@@ -999,6 +1225,8 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                   k="preavis_dispense_indemnite"
                   hint="Versée si dispense de préavis à l'initiative de l'employeur" />
               )}
+              </>
+              )}
             </>
           )}
 
@@ -1010,7 +1238,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
               {/* Base de calcul */}
               <div className="p-4 rounded-xl border space-y-4" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.15)" }}>
                 <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "hsl(var(--foreground))" }}>Base de calcul</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FldNum label="Salaire mensuel brut (MAD)"
                     k="base_calcul_salaire"
                     hint="Moyenne 3 derniers mois (base Art.53 CT)" />
@@ -1029,7 +1257,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                     Art.52-53 CT Maroc
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FldNum label="Indemnité de perte d'emploi (MAD)" k="indemnite_perte_emploi" hint="96h de salaire / année ancienneté (licenciement)" />
                   <FldNum label="Indemnité de départ retraite (MAD)" k="indemnite_depart_retraite" hint="96h de salaire / année ancienneté (retraite)" />
                   <FldNum label="Indemnité de congés payés (MAD)" k="indemnite_conges_payes" hint="Solde congés non pris" />
@@ -1042,7 +1270,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
               {/* Autres indemnités */}
               <div className="p-4 rounded-xl border space-y-4" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.15)" }}>
                 <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "hsl(var(--foreground))" }}>Autres indemnités</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FldNum label="Indemnité compensatrice (MAD)" k="indemnite_compensatrice" />
                   <FldNum label="Indemnité transactionnelle (MAD)" k="indemnite_transactionnelle" hint="Accord amiable / rupture conventionnelle" />
                   <FldNum label="Prime ancienneté proratisée (MAD)" k="indemnite_anciennete" />
@@ -1069,7 +1297,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
               {/* CNSS / AMO */}
               <div className="p-4 rounded-xl border space-y-4" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.15)" }}>
                 <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "hsl(var(--foreground))" }}>CNSS / AMO</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <Fld label="Date radiation CNSS">
                     <Input type="date" value={form.cnss_radiation_date} onChange={e => set("cnss_radiation_date", e.target.value)} className="h-9 text-sm" />
                   </Fld>
@@ -1165,7 +1393,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                   {[
                     { label: "Collaborateur", value: `${selectedCollab?.prenom || collabInfo?.prenom || ""} ${selectedCollab?.nom || collabInfo?.nom || ""}` },
                     { label: "Date de départ", value: form.date_depart ? format(parseISO(form.date_depart), "dd MMMM yyyy", { locale: fr }) : "—" },
-                    { label: "Motif", value: form.motif_depart || "—" },
+                    { label: "Motif", value: motifSel?.libelle || form.motif_depart || "—" },
                     { label: "Statut", value: isImmediate ? "Départ immédiat" : "Départ planifié" },
                     { label: "Référence", value: form.reference_decision || "—" },
                     { label: "Décision finale", value: form.decision_finale || "—" },
@@ -1268,10 +1496,10 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
         {/* ── Footer navigation ── */}
         <div className="flex items-center justify-between px-6 py-4 border-t flex-shrink-0"
           style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.2)" }}>
-          <Button type="button" variant="outline" onClick={() => step > 0 ? setStep(s => s - 1) : onClose()}
+          <Button type="button" variant="outline" onClick={() => stepIdx > 0 ? setStep(stepOrder[stepIdx - 1]) : onClose()}
             className="flex items-center gap-2">
             <ChevronLeft size={14} />
-            {step === 0 ? "Annuler" : "Précédent"}
+            {stepIdx === 0 ? "Annuler" : "Précédent"}
           </Button>
           <div className="flex items-center gap-1">
             {STEPS.map(s => (
@@ -1279,7 +1507,22 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
                 style={{ background: step === s.id ? "hsl(var(--accent))" : step > s.id ? "hsl(var(--accent) / 0.4)" : "hsl(var(--muted-foreground) / 0.3)" }} />
             ))}
           </div>
-          {step < STEPS.length - 1 ? (
+          {form.mode_traitement === "PROCESSUS" && !isEdit ? (
+            <Button type="button" disabled={submitting}
+              onClick={() => {
+                if (!form.collaborateur_id || !form.date_depart || !form.motif_depart) {
+                  toast({ title: "Veuillez remplir les champs obligatoires", variant: "destructive" }); return;
+                }
+                if (dateDepartErreur) {
+                  toast({ title: "Date de départ invalide", description: dateDepartErreur, variant: "destructive" }); return;
+                }
+                onSubmit();
+              }}
+              className="flex items-center gap-2"
+              style={{ background: "hsl(var(--accent))", color: "white" }}>
+              {submitting ? "Soumission…" : "Soumettre au processus"} <ChevronRight size={14} />
+            </Button>
+          ) : !isLastStep ? (
             <Button type="button" onClick={() => {
               if (step === 0 && (!form.collaborateur_id || !form.date_depart || !form.motif_depart)) {
                 toast({ title: "Veuillez remplir les champs obligatoires", variant: "destructive" }); return;
@@ -1287,7 +1530,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
               if (step === 0 && dateDepartErreur) {
                 toast({ title: "Date de départ invalide", description: dateDepartErreur, variant: "destructive" }); return;
               }
-              setStep(s => s + 1);
+              setStep(stepOrder[stepIdx + 1]);
             }} className="flex items-center gap-2"
               style={{ background: "hsl(var(--accent))", color: "white" }}>
               Suivant <ChevronRight size={14} />
@@ -1295,7 +1538,7 @@ const DepartForm: React.FC<Props> = ({ collaborateurId, onClose, onSuccess }) =>
           ) : (
             <Button type="button" onClick={onSubmit} disabled={submitting}
               style={{ background: isImmediate ? "hsl(0 70% 45%)" : "hsl(var(--accent))", color: "white" }}>
-              {submitting ? "Enregistrement…" : isImmediate ? "Confirmer le départ" : "Planifier le départ"}
+              {submitting ? "Enregistrement…" : isEdit ? "Enregistrer les modifications" : isImmediate ? "Confirmer le départ" : "Planifier le départ"}
             </Button>
           )}
         </div>

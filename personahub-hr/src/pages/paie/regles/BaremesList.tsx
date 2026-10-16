@@ -2,7 +2,7 @@
  * BaremesList – Liste des barèmes de correspondance avec CRUD complet.
  */
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,12 +56,12 @@ const BaremesList: React.FC = () => {
 
   const handleDelete = async (b: Bareme) => {
     if (!confirm(`Supprimer le barème "${b.libelle}" et ses ${b.nb_lignes} lignes ?`)) return;
-    const { error } = await supabase.from("bareme").update({ archive: true }).eq("id", b.id);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await db.update("bareme", { id: b.id }, { archive: true });
       toast({ title: "Barème supprimé" });
       load();
+    } catch (e: any) {
+      toast({ title: "Erreur", description: e.message, variant: "destructive" });
     }
   };
 

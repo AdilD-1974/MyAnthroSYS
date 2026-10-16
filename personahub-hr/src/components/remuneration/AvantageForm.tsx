@@ -48,27 +48,43 @@ const AvantageForm: React.FC<Props> = ({ collaborateurId, readOnly = false }) =>
   const [rubriques, setRubriques] = useState<RubriqueOption[]>([]);
 
   // Charger les rubriques de famille "Avantages"
+  // RG-AVT-04 (Adil DAIA) : source corrigée — ref_rubrique/ref_famille_rubrique
+  // sont des tables déconnectées de rubrique_paie (jamais alimentées par le
+  // moteur de paie réel). On lit désormais rubrique_paie/
+  // ref_famille_rubrique_paie, et on exclut les rubriques déjà liées à la
+  // table des salaires fixes (rubrique_paie_alimentation, table_source=
+  // collaborateur_salaires_fixes) : une rubrique saisie via une zone fixe
+  // des Éléments fixes du salaire n'a pas à réapparaître ici, pour éviter
+  // une double saisie possible pour la même rubrique.
   useEffect(() => {
     (async () => {
-      // Trouver le code famille pour "Avantages"
       const { data: familles } = await supabase
-        .from("ref_famille_rubrique" as any)
+        .from("ref_famille_rubrique_paie" as any)
         .select("code, libelle")
         .eq("actif", true);
 
       const familleAvantages = (familles || []).find(
         (f: any) => f.libelle?.toLowerCase().includes("avantage")
       );
+      if (!familleAvantages) { setRubriques([]); return; }
 
-      if (familleAvantages) {
-        const { data } = await supabase
-          .from("ref_rubrique" as any)
+      const [{ data: rubData }, { data: alimData }] = await Promise.all([
+        supabase
+          .from("rubrique_paie" as any)
           .select("code, libelle")
-          .eq("code_famille", familleAvantages.code)
-          .eq("actif", true)
-          .order("libelle");
-        setRubriques((data as RubriqueOption[] | null) || []);
-      }
+          .eq("code_famille", (familleAvantages as any).code)
+          .eq("traiter", true)
+          .eq("archive", false)
+          .order("libelle"),
+        supabase
+          .from("rubrique_paie_alimentation" as any)
+          .select("code_rubrique")
+          .eq("table_source", "collaborateur_salaires_fixes"),
+      ]);
+
+      const dejaLiees = new Set(((alimData as any[]) || []).map(a => a.code_rubrique));
+      const disponibles = ((rubData as RubriqueOption[] | null) || []).filter(r => !dejaLiees.has(r.code));
+      setRubriques(disponibles);
     })();
   }, []);
 

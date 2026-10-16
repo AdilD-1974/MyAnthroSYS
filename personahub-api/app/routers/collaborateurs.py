@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import date
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.core.security import require_roles
+from app.core.security import require_roles, get_societe_active_id
 from app.models.collaborateur import Collaborateur, Contrat
 from app.schemas.collaborateur import (
     CollaborateurCreate, CollaborateurUpdate, CollaborateurRead,
@@ -85,9 +85,20 @@ def list_collaborateurs(
     statut: str = Query("", description="Filtrer par statut (actif, inactif...)"),
     payload: dict = Depends(require_roles(*RH_ROLES)),
     db: Session = Depends(get_db),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    """Liste paginée des collaborateurs avec recherche et filtres."""
-    query = db.query(Collaborateur).filter(Collaborateur.archive == False)
+    """Liste paginée des collaborateurs avec recherche et filtres.
+
+    RG-MULTISOCIETE-08 (correctif 24/08) : bornée à la société active --
+    sans ce filtre, un utilisateur SOLGES voyait aussi les fiches AD2S
+    (table `collaborateurs`, RÉELLE et vivante, confirmée le 24/08 --
+    contrairement à Contrat/Affectation dans ce même fichier, qui pointent
+    vers des tables jamais alimentées).
+    """
+    query = db.query(Collaborateur).filter(
+        Collaborateur.archive == False,
+        Collaborateur.societe_id == societe_id,
+    )
 
     if search:
         term = f"%{search.lower()}%"
@@ -111,12 +122,24 @@ def create_collaborateur(
     data: CollaborateurCreate,
     payload: dict = Depends(require_roles("administrateur", "gestionnaire_rh")),
     db: Session = Depends(get_db),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    """Crée un nouveau collaborateur. (RG-MGR-COLLAB-01 : managers exclus)"""
-    if db.query(Collaborateur).filter(Collaborateur.matricule == data.matricule).first():
-        raise HTTPException(status_code=400, detail=f"Le matricule '{data.matricule}' est déjà utilisé")
+    """Crée un nouveau collaborateur. (RG-MGR-COLLAB-01 : managers exclus)
 
-    collab = Collaborateur(**data.model_dump())
+    RG-MULTISOCIETE-08 (correctif 24/08) : la vérification de doublon de
+    matricule était GLOBALE -- bloquait la création légitime d'un 2e
+    collaborateur portant le même matricule dans une AUTRE société
+    (exactement le modèle qu'on vient d'adopter, migration 066). Scopée à la
+    société active, et societe_id forcé sur la fiche créée (jamais confié au
+    client) -- toujours la société de la session, jamais une autre.
+    """
+    if db.query(Collaborateur).filter(
+        Collaborateur.matricule == data.matricule,
+        Collaborateur.societe_id == societe_id,
+    ).first():
+        raise HTTPException(status_code=400, detail=f"Le matricule '{data.matricule}' est déjà utilisé pour cette société")
+
+    collab = Collaborateur(**data.model_dump(), societe_id=societe_id)
     db.add(collab)
     db.commit()
     db.refresh(collab)
@@ -128,11 +151,17 @@ def get_collaborateur(
     collab_id: UUID,
     payload: dict = Depends(require_roles(*RH_ROLES)),
     db: Session = Depends(get_db),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    """Récupère la fiche d'un collaborateur par son ID."""
+    """Récupère la fiche d'un collaborateur par son ID.
+
+    RG-MULTISOCIETE-08 : 404 (pas 403) si la fiche appartient à une autre
+    société -- ne jamais confirmer son existence à qui n'y a pas accès.
+    """
     collab = db.query(Collaborateur).filter(
         Collaborateur.id == collab_id,
-        Collaborateur.archive == False
+        Collaborateur.archive == False,
+        Collaborateur.societe_id == societe_id,
     ).first()
     if not collab:
         raise HTTPException(status_code=404, detail="Collaborateur introuvable")
@@ -145,13 +174,23 @@ def update_collaborateur(
     data: CollaborateurUpdate,
     payload: dict = Depends(require_roles("administrateur", "gestionnaire_rh")),
     db: Session = Depends(get_db),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    """Mise à jour partielle d'un collaborateur (PATCH)."""
-    collab = db.query(Collaborateur).filter(Collaborateur.id == collab_id).first()
+    """Mise à jour partielle d'un collaborateur (PATCH).
+
+    RG-MULTISOCIETE-08 : bornée à la société active. `societe_id` n'est
+    jamais modifiable via ce endpoint même si présent dans `data` -- une
+    fiche ne change pas de société après coup (elle se scinde, comme fait
+    manuellement pour DAIA/EL KHALLADI le 24/08).
+    """
+    collab = db.query(Collaborateur).filter(
+        Collaborateur.id == collab_id,
+        Collaborateur.societe_id == societe_id,
+    ).first()
     if not collab:
         raise HTTPException(status_code=404, detail="Collaborateur introuvable")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    for field, value in data.model_dump(exclude_unset=True, exclude={"societe_id"}).items():
         setattr(collab, field, value)
 
     db.commit()
@@ -164,9 +203,16 @@ def archive_collaborateur(
     collab_id: UUID,
     payload: dict = Depends(require_roles("administrateur", "gestionnaire_rh")),
     db: Session = Depends(get_db),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    """Archive un collaborateur (suppression logique, non physique)."""
-    collab = db.query(Collaborateur).filter(Collaborateur.id == collab_id).first()
+    """Archive un collaborateur (suppression logique, non physique).
+
+    RG-MULTISOCIETE-08 : bornée à la société active.
+    """
+    collab = db.query(Collaborateur).filter(
+        Collaborateur.id == collab_id,
+        Collaborateur.societe_id == societe_id,
+    ).first()
     if not collab:
         raise HTTPException(status_code=404, detail="Collaborateur introuvable")
     collab.archive = True
@@ -175,6 +221,14 @@ def archive_collaborateur(
 
 
 # ── Contrats ──────────────────────────────────────────────────────────────────
+# ⚠️ RG-MULTISOCIETE-08 (découverte 24/08) : les deux endpoints ci-dessous
+# opèrent sur le modèle `Contrat` (table "contrats", 0 ligne en production
+# confirmé le 24/08) -- DISTINCTE de `collaborateur_contrats`, la vraie table
+# utilisée par tout le reste de l'application (paie, congés, prêts...).
+# Ces deux endpoints sont donc INERTES en pratique : aucune donnée réelle n'y
+# transite. Non corrigés pour le multi-société (inutile de patcher du code
+# mort) -- à supprimer ou à rebrancher sur collaborateur_contrats si un jour
+# on veut vraiment les utiliser.
 
 @router.get("/{collab_id}/contrats", response_model=list[ContratRead])
 def get_contrats(
@@ -215,7 +269,16 @@ def check_duplicates(
     body: CheckDuplicatesRequest,
     payload: dict = Depends(require_roles(*RH_ROLES)),
     db: Session = Depends(get_db),
+    societe_id: str = Depends(get_societe_active_id),
 ):
+    """
+    RG-MULTISOCIETE-08 (correctif 24/08) : bornée à la société active --
+    deux fiches de sociétés différentes ne se signalent jamais entre elles
+    comme doublons. Nécessaire depuis la scission DAIA/EL KHALLADI
+    (migration 066) : un même CIN existe désormais légitimement sur deux
+    fiches distinctes (une par société), ce qui aurait été un faux positif
+    permanent sans ce filtre.
+    """
     duplicates: list[DuplicateEntry] = []
 
     def _search(column_name: str, label: str, value: str):
@@ -225,6 +288,7 @@ def check_duplicates(
         query = db.query(Collaborateur).filter(
             getattr(Collaborateur, column_name) == value.strip(),
             Collaborateur.archive == False,
+            Collaborateur.societe_id == societe_id,
         )
         if body.exclude_id:
             query = query.filter(Collaborateur.id != body.exclude_id)

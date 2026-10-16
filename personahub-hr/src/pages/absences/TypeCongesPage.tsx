@@ -106,6 +106,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { db } from "@/lib/api";
 import { useReferentiels } from "@/hooks/useReferentiels";
 import CongeWorkflowPanel from "@/pages/configuration/temps/CongeWorkflowPanel";
+import OperationsWorkflowPanel from "@/pages/absences/OperationsWorkflowPanel";   // ✅ Workflows des opérations (annulation / report / reprise)
 import FamilleWorkflowSelect from "@/pages/configuration/temps/FamilleWorkflowSelect";
 import {
   Clock, Plus, Pencil, Trash2, Check, X, Loader2,
@@ -1292,7 +1293,7 @@ const TypeCongesPage: React.FC = () => {
                     }}>{m}</button>
                 ))}
                 {typeForm.mode_calcul_droit_legal === "BAREME" && (
-                  <select className={inputCls} style={{ ...inputStyle, fontSize: 12, padding: "2px 8px" }}
+                  <select className={inputCls} style={{ ...inputStyle, fontSize: "calc(12px * var(--font-scale))", padding: "2px 8px" }}
                     value={typeForm.code_bareme_legal || ""}
                     onChange={e => setTypeForm(f => ({ ...f, code_bareme_legal: e.target.value || null }))}>
                     <option value="">— Choisir un barème —</option>
@@ -1789,7 +1790,12 @@ const TypeCongesPage: React.FC = () => {
         {activeTab === "workflow" && (
           <div className="p-3 rounded-lg" style={{ background: "hsl(var(--muted) / 0.3)" }}>
             {typeForm.code ? (
-              <CongeWorkflowPanel codeType={typeForm.code} codeFamille={typeForm.code_famille} />
+              <div className="space-y-5">
+                <CongeWorkflowPanel codeType={typeForm.code} codeFamille={typeForm.code_famille} />
+                <div className="pt-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                  <OperationsWorkflowPanel codeType={typeForm.code} />
+                </div>
+              </div>
             ) : (
               <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
                 Enregistrez d'abord le type de congé pour configurer son circuit de validation.
@@ -2345,7 +2351,7 @@ const TypeCongesPage: React.FC = () => {
             {/* Bandeau info */}
             <div className="flex items-start gap-3 rounded-xl p-4"
               style={{ background: "hsl(210 80% 97%)", border: "0.5px solid hsl(210 70% 80%)" }}>
-              <span style={{ fontSize: 20 }}>🌍</span>
+              <span style={{ fontSize: "calc(20px * var(--font-scale))" }}>🌍</span>
               <div>
                 <p className="text-sm font-semibold" style={{ color: "hsl(210 70% 30%)" }}>
                   Paramétrage International

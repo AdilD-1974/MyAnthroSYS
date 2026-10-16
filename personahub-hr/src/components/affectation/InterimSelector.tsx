@@ -256,7 +256,7 @@ const InterimSelector: React.FC<Props> = ({ uoId, uoLibelle, hasTitulaire }) => 
 
   // ── Styles ───────────────────────────────────────────────────────────
   const labelStyle: React.CSSProperties = {
-    fontSize: 11,
+    fontSize: "calc(11px * var(--font-scale))",
     fontWeight: 600,
     color: "hsl(var(--muted-foreground))",
     marginBottom: 2,
@@ -265,7 +265,7 @@ const InterimSelector: React.FC<Props> = ({ uoId, uoLibelle, hasTitulaire }) => 
     width: "100%",
     padding: "6px 10px",
     borderRadius: 8,
-    fontSize: 13,
+    fontSize: "calc(13px * var(--font-scale))",
     border: "1px solid hsl(var(--border))",
     background: "hsl(var(--background))",
     color: "hsl(var(--foreground))",

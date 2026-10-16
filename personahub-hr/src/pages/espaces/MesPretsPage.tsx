@@ -1,15 +1,12 @@
-// MesPretsPage.tsx — Espace collaborateur : Mes Prêts & Avances
+// MesPretsPage.tsx v2 — Espace collaborateur : Mes Prêts (enrichi)
 // src/pages/espaces/MesPretsPage.tsx
-//
-// Affiche : liste des prêts du collaborateur connecté, détail de chaque prêt,
-// tableau d'amortissement avec barre de progression, possibilité d'annuler
-// une demande en brouillon/en attente, et bouton de nouvelle demande.
 
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  Banknote, Building2, Plus, ChevronDown, ChevronUp,
-  Clock, CheckCircle2, XCircle, PauseCircle, TrendingDown,
+  Plus, ChevronDown, ChevronUp, Clock, CheckCircle2,
+  XCircle, PauseCircle, TrendingDown, Info,
 } from "lucide-react";
+import * as LucideIcons from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -21,20 +18,29 @@ import SimulateurPret from "@/components/prets/SimulateurPret";
 import NouvelleDemandeDialog from "@/components/prets/NouvelleDemandeDialog";
 
 // ──────────────────────────────────────────────────────────────
-// COMPOSANTS LOCAUX
+// ICÔNE DYNAMIQUE
 // ──────────────────────────────────────────────────────────────
+const DynIcon: React.FC<{ name?: string; size?: number; color?: string }> = ({
+  name = "Banknote", size = 18, color,
+}) => {
+  const Icon = (LucideIcons as Record<string, any>)[name];
+  return Icon ? <Icon size={size} color={color} /> : <LucideIcons.Banknote size={size} color={color} />;
+};
 
+// ──────────────────────────────────────────────────────────────
+// BADGE STATUT
+// ──────────────────────────────────────────────────────────────
 const StatutPill: React.FC<{ statut: Pret["statut"] }> = ({ statut }) => {
   const c = PRET_STATUT_COLORS[statut] ?? { bg: "bg-gray-100", text: "text-gray-600" };
   const icons: Partial<Record<Pret["statut"], React.ReactNode>> = {
-    en_attente_validation: <Clock size={11} />,
-    valide: <CheckCircle2 size={11} />,
-    debloque: <TrendingDown size={11} />,
-    en_cours: <TrendingDown size={11} />,
-    suspendu: <PauseCircle size={11} />,
-    solde: <CheckCircle2 size={11} />,
-    refuse: <XCircle size={11} />,
-    annule: <XCircle size={11} />,
+    en_attente_validation: <Clock size={10} />,
+    valide: <CheckCircle2 size={10} />,
+    debloque: <TrendingDown size={10} />,
+    en_cours: <TrendingDown size={10} />,
+    suspendu: <PauseCircle size={10} />,
+    solde: <CheckCircle2 size={10} />,
+    refuse: <XCircle size={10} />,
+    annule: <XCircle size={10} />,
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${c.bg} ${c.text}`}>
@@ -47,11 +53,9 @@ const StatutPill: React.FC<{ statut: Pret["statut"] }> = ({ statut }) => {
 // ──────────────────────────────────────────────────────────────
 // CARTE PRÊT
 // ──────────────────────────────────────────────────────────────
-
-const CartePret: React.FC<{
-  pret: Pret;
-  onAnnuler: (id: string) => void;
-}> = ({ pret, onAnnuler }) => {
+const CartePret: React.FC<{ pret: Pret; onAnnuler: (id: string) => void }> = ({
+  pret, onAnnuler,
+}) => {
   const [ouvert, setOuvert] = useState(false);
   const [echeances, setEcheances] = useState<Echeance[]>([]);
   const [chargement, setChargement] = useState(false);
@@ -59,67 +63,112 @@ const CartePret: React.FC<{
   const toggleEcheancier = async () => {
     if (!ouvert && echeances.length === 0) {
       setChargement(true);
-      try {
-        const data = await pretsApi.mesEcheances(pret.id);
-        setEcheances(data);
-      } finally {
-        setChargement(false);
-      }
+      try { setEcheances(await pretsApi.mesEcheances(pret.id)); }
+      finally { setChargement(false); }
     }
     setOuvert(v => !v);
   };
 
   const avancement = avancementPct(pret);
-  const peutAnnuler = ["brouillon", "en_attente_validation"].includes(pret.statut);
   const estActif = ["debloque", "en_cours"].includes(pret.statut);
+  const peutAnnuler = ["brouillon", "en_attente_validation"].includes(pret.statut);
+  const algoInfo = ALGO_LABELS[pret.algo_name];
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       {/* En-tête */}
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${pret.pret_interne ? "bg-sky-50" : "bg-amber-50"}`}>
-            {pret.pret_interne
-              ? <Banknote size={18} className="text-sky-500" />
-              : <Building2 size={18} className="text-amber-500" />
-            }
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: (pret.type_couleur ?? "#0ea5e9") + "20" }}
+          >
+            <DynIcon
+              name={pret.type_icone ?? "Banknote"}
+              size={19}
+              color={pret.type_couleur ?? "#0ea5e9"}
+            />
           </div>
           <div>
             <p className="text-sm font-semibold">
-              {pret.pret_interne ? "Prêt interne" : "Cession externe"}
-              {!pret.pret_interne && pret.organisme_credit && (
-                <span className="ml-1 text-xs font-normal text-muted-foreground">— {pret.organisme_credit}</span>
-              )}
+              {pret.type_libelle ?? (pret.pret_interne ? "Prêt interne" : "Prêt externe")}
             </p>
-            <p className="text-xs text-muted-foreground">{pret.ref_pret} · Soumis le {formatDate(pret.dt_demande)}</p>
+            {pret.objet && (
+              <p className="text-xs text-muted-foreground">{pret.objet}</p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              {pret.ref_pret} · {formatDate(pret.dt_demande)}
+            </p>
           </div>
         </div>
         <StatutPill statut={pret.statut} />
       </div>
 
       {/* Chiffres clés */}
-      <div className="grid grid-cols-4 divide-x border-t border-b bg-secondary/20 text-center">
-        <div className="py-2.5 px-2">
-          <p className="text-[10px] text-muted-foreground mb-0.5">Montant</p>
-          <p className="text-sm font-semibold">{formatMontant(pret.mt_pret)}</p>
-        </div>
-        <div className="py-2.5 px-2">
-          <p className="text-[10px] text-muted-foreground mb-0.5">Mensualité</p>
-          <p className="text-sm font-semibold">{pret.mt_echeance ? formatMontant(pret.mt_echeance) : "—"}</p>
-        </div>
-        <div className="py-2.5 px-2">
-          <p className="text-[10px] text-muted-foreground mb-0.5">Durée</p>
-          <p className="text-sm font-semibold">{pret.nb_echeance} mois</p>
-        </div>
-        <div className="py-2.5 px-2">
-          <p className="text-[10px] text-muted-foreground mb-0.5">Méthode</p>
-          <p className="text-xs font-medium truncate">{ALGO_LABELS[pret.algo_name]?.split(" ")[0]}</p>
-        </div>
+      <div className="grid grid-cols-4 divide-x border-t border-b bg-secondary/20">
+        {[
+          { label: "Montant", value: formatMontant(pret.mt_pret) },
+          { label: "Mensualité", value: pret.mt_echeance ? formatMontant(pret.mt_echeance) : "—" },
+          { label: "Durée", value: `${pret.nb_echeance} mois` },
+          { label: "Méthode", value: algoInfo?.court ?? pret.algo_name },
+        ].map(({ label, value }) => (
+          <div key={label} className="py-2.5 px-2 text-center">
+            <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
+            <p className="text-xs font-semibold truncate">{value}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Barre de progression (prêts actifs) */}
+      {/* Description algorithme (au survol via tooltip ou affiché si actif) */}
+      {algoInfo && pret.tx_interets > 0 && (
+        <div className="px-4 pt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+          <Info size={11} className="mt-0.5 flex-shrink-0" />
+          <span>{algoInfo.description}</span>
+        </div>
+      )}
+
+      {/* Rubrique de paie */}
+      {pret.rubrique_lib && (
+        <div className="px-4 pt-1 text-[11px] text-muted-foreground">
+          Rubrique de paie : <span className="font-medium">{pret.rubrique_lib}</span>
+          {pret.rubrique_paie_code && <span className="ml-1 text-muted-foreground/60">({pret.rubrique_paie_code})</span>}
+        </div>
+      )}
+
+      {/* Taux d'endettement avant/après */}
+      {(pret.tx_endettement_avant != null || pret.tx_endettement_apres != null) && (
+        <div className="px-4 pt-1.5 flex items-center gap-3 text-[11px]">
+          {pret.tx_endettement_avant != null && (
+            <span className="text-muted-foreground">
+              Endettement avant : <strong>{pret.tx_endettement_avant}%</strong>
+            </span>
+          )}
+          {pret.tx_endettement_apres != null && (
+            <span className={pret.tx_endettement_apres > 33 ? "text-red-600 font-semibold" : "text-muted-foreground"}>
+              → Après : <strong>{pret.tx_endettement_apres}%</strong>
+              {pret.tx_endettement_apres > 33 && " ⚠ Dépasse 33%"}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Première retenue prévue */}
+      {pret.dt_premiere_retenue && (
+        <div className="px-4 pt-1 text-[11px] text-muted-foreground">
+          Première retenue demandée : <strong>{formatDate(pret.dt_premiere_retenue)}</strong>
+        </div>
+      )}
+
+      {/* Avantage en nature */}
+      {pret.avantage_nature_mensuel > 0 && (
+        <div className="px-4 pt-1 text-[11px] text-orange-600">
+          Avantage en nature mensuel : {formatMontant(pret.avantage_nature_mensuel)} (à réintégrer au salaire imposable)
+        </div>
+      )}
+
+      {/* Barre de progression */}
       {estActif && pret.mt_debloque && (
-        <div className="px-4 py-3 space-y-1.5">
+        <div className="px-4 pt-3 pb-1 space-y-1.5">
           <div className="flex justify-between text-[11px] text-muted-foreground">
             <span>Remboursé : {formatMontant(pret.mt_rembourse)}</span>
             <span className="font-medium">{avancement}%</span>
@@ -139,7 +188,7 @@ const CartePret: React.FC<{
           )}
           {pret.mt_echeance_plus > 0 && (
             <p className="text-[11px] text-orange-600">
-              ⚠ Reliquat reporté sur prochaine paie : {formatMontant(pret.mt_echeance_plus)}
+              ⚠ Reliquat reporté : {formatMontant(pret.mt_echeance_plus)}
             </p>
           )}
         </div>
@@ -147,23 +196,22 @@ const CartePret: React.FC<{
 
       {/* Suspension */}
       {pret.pret_suspendu && (
-        <div className="mx-4 mb-3 rounded border border-orange-200 bg-orange-50/70 px-3 py-2 text-xs text-orange-700">
+        <div className="mx-4 my-2 rounded border border-orange-200 bg-orange-50/70 px-3 py-2 text-xs text-orange-700">
           <PauseCircle size={11} className="inline mr-1" />
-          Prêt suspendu — Les prélèvements sur paie sont arrêtés.
-          {pret.dt_fin_suspension && ` Reprise prévue le ${formatDate(pret.dt_fin_suspension)}.`}
+          Prêt suspendu. Reprise prévue le {formatDate(pret.dt_fin_suspension)}.
         </div>
       )}
 
-      {/* Décision RH */}
-      {pret.motif_decision && pret.statut === "refuse" && (
-        <div className="mx-4 mb-3 rounded border border-red-100 bg-red-50/50 px-3 py-2 text-xs text-red-700">
+      {/* Refus */}
+      {pret.statut === "refuse" && pret.motif_decision && (
+        <div className="mx-4 my-2 rounded border border-red-100 bg-red-50/50 px-3 py-2 text-xs text-red-700">
           <XCircle size={11} className="inline mr-1" />
           Refusé — {pret.motif_decision}
         </div>
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-3 px-4 pb-3 pt-1">
+      <div className="flex items-center gap-3 px-4 py-3">
         {(estActif || pret.statut === "valide") && (
           <button
             type="button"
@@ -185,7 +233,7 @@ const CartePret: React.FC<{
         )}
       </div>
 
-      {/* Tableau d'amortissement inline */}
+      {/* Tableau d'amortissement */}
       {ouvert && (
         <div className="border-t">
           {chargement ? (
@@ -197,28 +245,28 @@ const CartePret: React.FC<{
               <table className="w-full text-xs">
                 <thead className="bg-secondary/40 sticky top-0">
                   <tr>
-                    {["N°", "Date", "Capital", "Intérêts", "Total", "Restant", "Statut"].map(h => (
-                      <th key={h} className="px-3 py-1.5 text-left font-medium text-muted-foreground first:pl-4 last:pr-4">{h}</th>
+                    {["N°","Date","Capital","Intérêts","Total","Restant","Statut"].map(h => (
+                      <th key={h} className="px-3 py-1.5 text-left font-medium text-muted-foreground">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {echeances.map(e => (
-                    <tr key={e.numero} className={`border-t ${e.statut === "prelevee" ? "opacity-40" : ""} ${e.reliquat > 0 ? "bg-orange-50/40" : ""}`}>
-                      <td className="px-3 py-1 pl-4">{e.numero}</td>
+                    <tr key={e.numero}
+                      className={`border-t ${e.statut === "prelevee" ? "opacity-40" : ""} ${e.reliquat > 0 ? "bg-orange-50/40" : ""}`}
+                    >
+                      <td className="px-3 py-1">{e.numero}</td>
                       <td className="px-3 py-1">{formatDate(e.date_echeance)}</td>
                       <td className="px-3 py-1">{formatMontant(e.mt_capital)}</td>
                       <td className="px-3 py-1 text-muted-foreground">{formatMontant(e.mt_interet)}</td>
                       <td className="px-3 py-1 font-medium">{formatMontant(e.mt_total)}</td>
                       <td className="px-3 py-1 text-muted-foreground">{formatMontant(e.capital_restant)}</td>
-                      <td className="px-3 py-1 pr-4">
+                      <td className="px-3 py-1">
                         <span className={
                           e.statut === "prelevee" ? "text-green-600" :
                           e.statut === "reportee" ? "text-orange-500" :
                           e.statut === "forcee" ? "text-purple-600" : "text-blue-500"
-                        }>
-                          {e.statut}
-                        </span>
+                        }>{e.statut}</span>
                       </td>
                     </tr>
                   ))}
@@ -235,7 +283,6 @@ const CartePret: React.FC<{
 // ──────────────────────────────────────────────────────────────
 // PAGE PRINCIPALE
 // ──────────────────────────────────────────────────────────────
-
 const MesPretsPage: React.FC = () => {
   const [prets, setPrets] = useState<Pret[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,66 +291,55 @@ const MesPretsPage: React.FC = () => {
 
   const charger = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await pretsApi.mesPrets();
-      setPrets(data);
-    } finally {
-      setLoading(false);
-    }
+    try { setPrets(await pretsApi.mesPrets()); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { charger(); }, [charger]);
 
   const annuler = async (id: string) => {
     if (!confirm("Confirmer l'annulation de cette demande ?")) return;
-    // Suppression logique via l'endpoint de suppression (SL 0+ autorisé pour ses propres brouillons)
-    // On passe par le statut 'annule' via un endpoint dédié si disponible, sinon via DELETE
-    try {
-      await pretsApi.supprimer(id);
-      charger();
-    } catch (e: any) {
-      alert(e?.detail ?? "Impossible d'annuler ce prêt.");
-    }
+    try { await pretsApi.supprimer(id); charger(); }
+    catch (e: any) { alert(e?.detail ?? "Impossible d'annuler."); }
   };
 
-  // Regroupement par statut
-  const actifs = prets.filter(p => ["debloque", "en_cours", "suspendu"].includes(p.statut));
-  const enCours = prets.filter(p => ["brouillon", "en_attente_validation", "valide"].includes(p.statut));
-  const historique = prets.filter(p => ["solde", "refuse", "annule"].includes(p.statut));
+  const actifs = prets.filter(p => ["debloque","en_cours","suspendu"].includes(p.statut));
+  const enAttente = prets.filter(p => ["brouillon","en_attente_validation","valide"].includes(p.statut));
+  const historique = prets.filter(p => ["solde","refuse","annule"].includes(p.statut));
 
-  const ResumeStat: React.FC<{ label: string; value: string | number; color?: string }> = ({ label, value, color }) => (
-    <div className="rounded-lg border bg-card px-4 py-3 text-center">
-      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
-      <p className={`text-base font-semibold ${color ?? ""}`}>{value}</p>
-    </div>
-  );
-
-  const totalCapitalRestant = actifs.reduce((s, p) => s + (p.capital_restant ?? 0), 0);
-  const totalMensualites = actifs.reduce((s, p) => s + (p.mt_echeance ?? 0), 0);
+  const totalCapital = actifs.reduce((s, p) => s + (p.capital_restant ?? 0), 0);
+  const totalMens = actifs.reduce((s, p) => s + (p.mt_echeance ?? 0), 0);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-      {/* En-tête */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Mes Prêts</h1>
-          <p className="text-sm text-muted-foreground">Prêts internes et cessions externes sur salaire</p>
-        </div>
-        <Button size="sm" className="gap-1.5" onClick={() => setShowNouvelle(true)}>
-          <Plus size={13} /> Nouvelle demande
-        </Button>
+    <div className="max-w-3xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-4 pt-4 pb-2 text-[13px] text-muted-foreground">
+        <span className="font-semibold text-foreground">Mes Prêts</span>
+      </div>
+      <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap border-b border-border bg-card">
+        <button onClick={() => setShowNouvelle(true)}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouvelle demande
+        </button>
+        <div className="flex-1" />
+        <span className="text-[12px] text-muted-foreground">Prêts internes et cessions externes sur salaire</span>
       </div>
 
-      {/* Résumé chiffres clés */}
+      <div className="px-4 py-6 space-y-6">
       {actifs.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <ResumeStat label="Prêts actifs" value={actifs.length} />
-          <ResumeStat label="Capital restant total" value={formatMontant(totalCapitalRestant)} color="text-orange-600" />
-          <ResumeStat label="Mensualités mensuelles" value={formatMontant(totalMensualites)} />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="border border-border bg-card px-4 py-3 text-center rounded-[var(--radius)]">
+            <p className="text-xs text-muted-foreground mb-0.5">Capital restant total</p>
+            <p className="text-base font-semibold" style={{ color: "hsl(var(--warning))" }}>{formatMontant(totalCapital)}</p>
+          </div>
+          <div className="border border-border bg-card px-4 py-3 text-center rounded-[var(--radius)]">
+            <p className="text-xs text-muted-foreground mb-0.5">Mensualités totales / mois</p>
+            <p className="text-base font-semibold">{formatMontant(totalMens)}</p>
+          </div>
         </div>
       )}
 
-      {/* Onglets */}
       <Tabs value={tab} onValueChange={v => setTab(v as any)}>
         <TabsList>
           <TabsTrigger value="mes-prets">
@@ -312,14 +348,13 @@ const MesPretsPage: React.FC = () => {
           <TabsTrigger value="simuler">Simulateur</TabsTrigger>
         </TabsList>
 
-        {/* ── MES PRÊTS ──────────────────────────────────── */}
         <TabsContent value="mes-prets" className="mt-4 space-y-6">
           {loading ? (
             <p className="text-sm text-muted-foreground py-4">Chargement…</p>
           ) : prets.length === 0 ? (
             <div className="rounded-lg border border-dashed p-10 text-center">
-              <Banknote size={36} className="mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground mb-3">Vous n'avez aucun prêt en cours.</p>
+              <LucideIcons.Banknote size={36} className="mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground mb-3">Aucun prêt en cours.</p>
               <Button variant="outline" size="sm" onClick={() => setShowNouvelle(true)}>
                 Faire une demande
               </Button>
@@ -332,10 +367,10 @@ const MesPretsPage: React.FC = () => {
                   {actifs.map(p => <CartePret key={p.id} pret={p} onAnnuler={annuler} />)}
                 </section>
               )}
-              {enCours.length > 0 && (
+              {enAttente.length > 0 && (
                 <section className="space-y-3">
                   <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Demandes en attente</h2>
-                  {enCours.map(p => <CartePret key={p.id} pret={p} onAnnuler={annuler} />)}
+                  {enAttente.map(p => <CartePret key={p.id} pret={p} onAnnuler={annuler} />)}
                 </section>
               )}
               {historique.length > 0 && (
@@ -348,24 +383,20 @@ const MesPretsPage: React.FC = () => {
           )}
         </TabsContent>
 
-        {/* ── SIMULATEUR ──────────────────────────────────── */}
         <TabsContent value="simuler" className="mt-4">
           <div className="rounded-lg border bg-card p-5">
             <p className="text-sm font-medium mb-4">Simuler un prêt avant de faire une demande</p>
-            <SimulateurPret
-              showAdopter
-              onAdopter={() => setShowNouvelle(true)}
-            />
+            <SimulateurPret showAdopter onAdopter={() => setShowNouvelle(true)} />
           </div>
         </TabsContent>
       </Tabs>
 
-      {/* Modale nouvelle demande */}
       <NouvelleDemandeDialog
         open={showNouvelle}
         onClose={() => setShowNouvelle(false)}
         onSuccess={charger}
       />
+      </div>
     </div>
   );
 };

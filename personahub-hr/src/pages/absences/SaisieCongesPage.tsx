@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import OperationsCongeActions from "./OperationsCongeActions";   // ✅ Opérations workflow (annulation / report / reprise)
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
@@ -638,9 +639,10 @@ export default function SaisieCongesPage() {
       });
 
       // RG-CONGE-CONSO-01 (Adil DAIA) : Insertion dans cong_consommation
-      // Schéma vérifié (image pgAdmin) :
+      // Schéma vérifié (image pgAdmin) + date_fin_absence (migration du
+      // 30/07/2026, cf. RG-CONGE-PERIODE-FIN-ABSENCE-01) :
       //   id, collaborateur_id, code_type_conge, demande_id,
-      //   date_debut (date), date_retour (date),
+      //   date_debut (date), date_fin_absence (date), date_retour (date),
       //   nbr_jours_calendaires, nbr_jours_decomptes,
       //   debut_demi_journee, fin_demi_journee,
       //   est_annulee (boolean), exercice (integer),
@@ -650,6 +652,7 @@ export default function SaisieCongesPage() {
         code_type_conge:       d.code_type_conge,
         demande_id:            d.id,
         date_debut:            d.date_debut,
+        date_fin_absence:      d.date_fin_absence,
         date_retour:           d.date_retour,
         nbr_jours_calendaires: d.nbr_jours_calendaires || 0,
         nbr_jours_decomptes:   d.nbr_jours_decomptes || 0,
@@ -1121,7 +1124,7 @@ export default function SaisieCongesPage() {
                 {/* RG-CONGE-DATE-CONTRAT-01 : Alerte date antérieure au contrat */}
                 {erreurDateContrat && (
                   <div className="flex items-start gap-1.5 mt-1">
-                    <span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: 13 }}>⚠</span>
+                    <span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: "calc(13px * var(--font-scale))" }}>⚠</span>
                     <p className="text-xs leading-tight" style={{ color: "hsl(0 72% 45%)" }}>
                       {erreurDateContrat}
                     </p>
@@ -1130,7 +1133,7 @@ export default function SaisieCongesPage() {
                 {/* RG-CONGE-ANCIENNETE-01 : Alerte ancienneté insuffisante */}
                 {erreurAnciennete && !erreurDateContrat && (
                   <div className="flex items-start gap-1.5 mt-1">
-                    <span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: 13 }}>⚠</span>
+                    <span style={{ color: "hsl(0 72% 51%)", flexShrink: 0, fontSize: "calc(13px * var(--font-scale))" }}>⚠</span>
                     <p className="text-xs leading-tight" style={{ color: "hsl(0 72% 45%)" }}>
                       {erreurAnciennete}
                     </p>
@@ -1397,6 +1400,17 @@ export default function SaisieCongesPage() {
               <Button variant="outline" onClick={() => annuler.mutate(selected!)} disabled={annuler.isPending}>
                 <X size={14} /> Annuler le congé
               </Button>
+            )}
+            {selected && ["en_attente", "approuvee"].includes((selected.statut || "").toLowerCase()) && (
+              <div className="w-full border-t pt-2 mt-1">
+                <p className="text-xs mb-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  Opérations (soumises à validation) :
+                </p>
+                <OperationsCongeActions
+                  demande={selected as any}
+                  onDone={() => { qc.invalidateQueries({ queryKey: ["cong-demandes"] }); setOpenDetail(false); }}
+                />
+              </div>
             )}
             <Button variant="ghost" onClick={() => setOpenDetail(false)}>Fermer</Button>
           </DialogFooter>

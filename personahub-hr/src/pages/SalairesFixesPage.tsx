@@ -128,53 +128,53 @@ const SalairesFixesPage: React.FC = () => {
   };
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-accent/10">
-            <CreditCard size={20} className="text-accent" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Éléments fixes du salaire</h1>
-            <p className="text-xs text-muted-foreground">Vue globale de la masse salariale fixe</p>
-          </div>
-        </div>
+    <div className="max-w-[1400px] mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px] text-muted-foreground">
+        <span>Paie</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold text-foreground">Éléments fixes du salaire</span>
+      </div>
+
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap border-b border-border bg-card">
         <button onClick={exportExcel}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors">
+          className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium text-muted-foreground transition-colors">
           <Download size={14} /> Exporter
         </button>
-      </div>
 
-      {/* KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="rounded-xl border border-border p-4 bg-card">
-          <p className="text-xs text-muted-foreground mb-1">Total collaborateurs</p>
-          <p className="text-2xl font-bold text-foreground">{new Set(filtered.map(r => r.collaborateur_id)).size}</p>
-        </div>
-        <div className="rounded-xl border border-border p-4 bg-card">
-          <p className="text-xs text-muted-foreground mb-1">Lignes de salaire</p>
-          <p className="text-2xl font-bold text-foreground">{filtered.length}</p>
-        </div>
-        <div className="rounded-xl border border-border p-4 bg-card">
-          <p className="text-xs text-muted-foreground mb-1">Masse salariale de base</p>
-          <p className="text-2xl font-bold text-primary">{fmt(totalMasse)}</p>
-        </div>
-      </div>
+        <div className="w-px h-5 mx-1 bg-border" />
 
-      {/* Filtres */}
-      <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher par matricule, nom…"
-            className="pl-9 pr-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border w-64" />
+            className="pl-8 pr-3 h-8 rounded text-[13px] outline-none bg-background text-foreground border border-border w-64" />
         </div>
-        <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+        <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
           <input type="checkbox" checked={filterEnCours} onChange={e => setFilterEnCours(e.target.checked)}
             className="rounded border-border" />
           Salaires en cours uniquement
         </label>
-        <span className="self-center text-xs text-muted-foreground">{filtered.length} enregistrement(s)</span>
+
+        <div className="flex-1" />
+        <span className="text-[12px] whitespace-nowrap text-muted-foreground">{filtered.length} enregistrement(s)</span>
+      </div>
+
+      <div className="p-6">
+      {/* KPI */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="border border-border p-4 bg-card rounded-[var(--radius)]">
+          <p className="text-xs text-muted-foreground mb-1">Total collaborateurs</p>
+          <p className="text-2xl font-bold text-foreground">{new Set(filtered.map(r => r.collaborateur_id)).size}</p>
+        </div>
+        <div className="border border-border p-4 bg-card rounded-[var(--radius)]">
+          <p className="text-xs text-muted-foreground mb-1">Lignes de salaire</p>
+          <p className="text-2xl font-bold text-foreground">{filtered.length}</p>
+        </div>
+        <div className="border border-border p-4 bg-card rounded-[var(--radius)]">
+          <p className="text-xs text-muted-foreground mb-1">Masse salariale de base</p>
+          <p className="text-2xl font-bold text-primary">{fmt(totalMasse)}</p>
+        </div>
       </div>
 
       {/* Table */}
@@ -183,20 +183,20 @@ const SalairesFixesPage: React.FC = () => {
           <Loader2 className="animate-spin text-accent" />
         </div>
       ) : (
-        <div className="rounded-xl border border-border overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="border border-border overflow-x-auto">
+          <table className="w-full text-[13px]">
             <thead>
-              <tr className="bg-muted/40 border-b border-border">
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Matricule</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Collaborateur</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Période</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Salaire base</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Pr. ancienneté</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Pr. transport</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Ind. fonction</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Alloc. fam.</th>
+              <tr className="bg-muted/60 border-b border-border">
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Matricule</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Collaborateur</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Période</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Salaire base</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pr. ancienneté</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pr. transport</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ind. fonction</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Alloc. fam.</th>
                 {activeZones.map(k => (
-                  <th key={k} className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">
+                  <th key={k} className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {zfLabel(k)}
                   </th>
                 ))}
@@ -240,6 +240,7 @@ const SalairesFixesPage: React.FC = () => {
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 };

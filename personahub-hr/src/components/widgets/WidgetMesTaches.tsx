@@ -64,7 +64,7 @@ function MiniTacheRow({
 
       {/* Titre */}
       <span style={{
-        flex: 1, fontSize: 13,
+        flex: 1, fontSize: "calc(13px * var(--font-scale))",
         color: "var(--color-text-primary)",
         textDecoration: done ? "line-through" : "none",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -75,7 +75,7 @@ function MiniTacheRow({
       {/* Badge retard / urgence */}
       {overdue && (
         <span style={{
-          fontSize: 10, padding: "1px 5px", borderRadius: 4, flexShrink: 0,
+          fontSize: "calc(10px * var(--font-scale))", padding: "1px 5px", borderRadius: 4, flexShrink: 0,
           background: "var(--color-background-danger)",
           color: "var(--color-text-danger)", fontWeight: 600,
         }}>
@@ -87,7 +87,7 @@ function MiniTacheRow({
       )}
       {!overdue && tache.priorite === "haute" && !done && (
         <span style={{
-          fontSize: 10, padding: "1px 5px", borderRadius: 4, flexShrink: 0,
+          fontSize: "calc(10px * var(--font-scale))", padding: "1px 5px", borderRadius: 4, flexShrink: 0,
           background: "var(--color-background-warning)",
           color: "var(--color-text-warning)",
         }}>
@@ -135,14 +135,14 @@ export default function WidgetMesTaches() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
         <Clock size={16} style={{ color: "var(--color-text-secondary)" }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)", flex: 1 }}>
+        <span style={{ fontSize: "calc(14px * var(--font-scale))", fontWeight: 600, color: "var(--color-text-primary)", flex: 1 }}>
           Mes tâches
         </span>
 
         {/* Stats rapides */}
         {nbRetard > 0 && (
           <span style={{
-            fontSize: 11, padding: "2px 7px", borderRadius: 10,
+            fontSize: "calc(11px * var(--font-scale))", padding: "2px 7px", borderRadius: 10,
             background: "var(--color-background-danger)",
             color: "var(--color-text-danger)", fontWeight: 600,
           }}>
@@ -151,7 +151,7 @@ export default function WidgetMesTaches() {
         )}
         {nbAujourdhui > 0 && (
           <span style={{
-            fontSize: 11, padding: "2px 7px", borderRadius: 10,
+            fontSize: "calc(11px * var(--font-scale))", padding: "2px 7px", borderRadius: 10,
             background: "var(--color-background-info)",
             color: "var(--color-text-info)",
           }}>
@@ -162,7 +162,7 @@ export default function WidgetMesTaches() {
 
       {/* Liste */}
       {loading && (
-        <div style={{ padding: "16px 0", textAlign: "center", fontSize: 13, color: "var(--color-text-tertiary)" }}>
+        <div style={{ padding: "16px 0", textAlign: "center", fontSize: "calc(13px * var(--font-scale))", color: "var(--color-text-tertiary)" }}>
           Chargement…
         </div>
       )}
@@ -170,7 +170,7 @@ export default function WidgetMesTaches() {
       {!loading && pertinentes.length === 0 && (
         <div style={{
           padding: "20px 0", textAlign: "center",
-          fontSize: 13, color: "var(--color-text-tertiary)",
+          fontSize: "calc(13px * var(--font-scale))", color: "var(--color-text-tertiary)",
         }}>
           <CheckCircle2 size={22} style={{ marginBottom: 6, color: "var(--color-text-success)", display: "block", margin: "0 auto 8px" }} />
           Aucune tâche urgente pour aujourd'hui 🎉
@@ -189,7 +189,7 @@ export default function WidgetMesTaches() {
           onClick={() => navigate("/taches")}
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            padding: "6px 12px", fontSize: 12,
+            padding: "6px 12px", fontSize: "calc(12px * var(--font-scale))",
             background: "var(--color-background-secondary)",
             border: "1px solid var(--color-border-tertiary)",
             borderRadius: "var(--border-radius-md)", cursor: "pointer",
@@ -203,7 +203,7 @@ export default function WidgetMesTaches() {
           onClick={() => navigate("/taches?new=1")}
           style={{
             display: "flex", alignItems: "center", gap: 4,
-            padding: "6px 10px", fontSize: 12,
+            padding: "6px 10px", fontSize: "calc(12px * var(--font-scale))",
             background: "var(--color-text-primary)", color: "var(--color-background-primary)",
             border: "none", borderRadius: "var(--border-radius-md)", cursor: "pointer",
           }}

@@ -1,311 +1,171 @@
-// NouvelleDemandeDialog.tsx — Formulaire de demande de prêt (interne & externe)
 // src/components/prets/NouvelleDemandeDialog.tsx
 //
-// Routing selon le type :
-//   Interne → formulaire court (montant, durée, motif)
-//   Externe → formulaire étendu (+ organisme, compte bancaire, coordonnées cession)
-// Simulateur embarqué avec adoption des paramètres.
-
-import React, { useState, useEffect } from "react";
-import { Banknote, Building2, Info } from "lucide-react";
+// Dialogue de nouvelle demande, ouvert depuis MesPretsPage.tsx (bouton
+// "Nouvelle demande" et etat vide). Etapes : simulation -> adoption ->
+// eligibilite -> soumission (dossier fonctionnel para 4.1).
+import React, { useState } from "react";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from "@/components/ui/select";
-import {
-  pretsApi, PretConfig, PretAlgo, ALGO_LABELS, formatMontant,
+  pretsApi, VerificationEligibiliteResponse,
 } from "@/lib/pretsApi";
-import SimulateurPret from "./SimulateurPret";
+import SimulateurPret from "@/components/prets/SimulateurPret";
 
-interface Props {
+export interface NouvelleDemandeDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const NouvelleDemandeDialog: React.FC<Props> = ({ open, onClose, onSuccess }) => {
-  const [configs, setConfigs] = useState<PretConfig[]>([]);
-  const [tab, setTab] = useState<"formulaire" | "simulateur">("formulaire");
+interface ParametresAdoptes {
+  type_code: string;
+  montant: number;
+  nb_echeance: number;
+  date_premiere_echeance: string;
+}
 
-  // Type de prêt
-  const [pretInterne, setPretInterne] = useState(true);
-
-  // Paramètres financiers
-  const [montant, setMontant] = useState(10000);
-  const [nbEcheances, setNbEcheances] = useState(12);
-  const [taux, setTaux] = useState(0);
-  const [algo, setAlgo] = useState<PretAlgo>("french_amortissement");
-
-  // Champs communs
+const NouvelleDemandeDialog: React.FC<NouvelleDemandeDialogProps> = ({ open, onClose, onSuccess }) => {
+  const [parametres, setParametres] = useState<ParametresAdoptes | null>(null);
+  const [objet, setObjet] = useState("");
   const [motif, setMotif] = useState("");
+  const [eligibilite, setEligibilite] = useState<VerificationEligibiliteResponse | null>(null);
+  const [verification, setVerification] = useState(false);
+  const [soumission, setSoumission] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
 
-  // Champs externes
-  const [organismeCredit, setOrganismeCredit] = useState("");
-  const [etabCredit, setEtabCredit] = useState("");
-  const [codeBqe, setCodeBqe] = useState("");
-  const [noCompte, setNoCompte] = useState("");
-  const [clerib, setClerib] = useState("");
-
-  const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [globalError, setGlobalError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    pretsApi.getConfig().then(setConfigs).catch(() => {});
-    // Reset
-    setTab("formulaire");
+  const reinitialiser = () => {
+    setParametres(null);
+    setObjet("");
     setMotif("");
-    setGlobalError(null);
-    setErrors({});
-    setOrganismeCredit("");
-    setEtabCredit("");
-    setCodeBqe("");
-    setNoCompte("");
-    setClerib("");
-  }, [open]);
+    setEligibilite(null);
+    setErreur(null);
+  };
 
-  const configInterne = configs.find(c => c.code === "PLAFOND_INTERNE_ANNUEL");
-  const montantMax = configInterne?.valeur ?? 100000;
-  const dureeMax = 48;
+  const fermer = () => {
+    reinitialiser();
+    onClose();
+  };
 
-  // Validation
-  const valider = (): boolean => {
-    const e: Record<string, string> = {};
-    if (montant <= 0) e.montant = "Montant invalide.";
-    if (montant > montantMax) e.montant = `Montant supérieur au plafond (${formatMontant(montantMax)}).`;
-    if (nbEcheances < 1 || nbEcheances > dureeMax) e.nb = `Durée entre 1 et ${dureeMax} mois.`;
-    if (motif.trim().length < 10) e.motif = "Le motif doit comporter au moins 10 caractères.";
-    if (!pretInterne) {
-      if (!organismeCredit.trim()) e.org = "L'organisme de crédit est obligatoire.";
-      if (!noCompte.trim()) e.compte = "Le numéro de compte est obligatoire.";
+  const verifierEligibilite = async (p: ParametresAdoptes) => {
+    setVerification(true);
+    setErreur(null);
+    try {
+      const resultat = await pretsApi.verifierEligibilite({
+        type_code: p.type_code, montant: p.montant, nb_echeance: p.nb_echeance,
+        date_premiere_echeance: p.date_premiere_echeance,
+      });
+      setEligibilite(resultat);
+    } catch (e: any) {
+      setErreur(e?.message ?? "Erreur lors de la verification d'eligibilite.");
+    } finally {
+      setVerification(false);
     }
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  };
+
+  const adopter = (p: ParametresAdoptes) => {
+    setParametres(p);
+    verifierEligibilite(p);
   };
 
   const soumettre = async () => {
-    if (!valider()) return;
-    setSubmitting(true);
-    setGlobalError(null);
+    if (!parametres) return;
+    setSoumission(true);
+    setErreur(null);
     try {
       await pretsApi.soumettreDemande({
-        pret_interne: pretInterne,
-        montant,
-        nb_echeances: nbEcheances,
-        taux: pretInterne ? 0 : taux, // taux = 0 pour les internes (ou selon config)
-        algo,
-        inclure_interets: true,
-        organisme_credit: pretInterne ? undefined : organismeCredit,
-        etab_credit: pretInterne ? undefined : etabCredit,
-        code_bqe: pretInterne ? undefined : codeBqe,
-        no_compte: pretInterne ? undefined : noCompte,
-        clerib: pretInterne ? undefined : clerib,
+        type_code: parametres.type_code, montant: parametres.montant,
+        nb_echeance: parametres.nb_echeance, date_premiere_echeance: parametres.date_premiere_echeance,
+        objet: objet || undefined, motif: motif || undefined,
       });
       onSuccess();
-      onClose();
+      fermer();
     } catch (e: any) {
-      const detail = e?.detail;
-      if (Array.isArray(detail)) {
-        setGlobalError(detail.join(" — "));
-      } else {
-        setGlobalError(detail ?? "Erreur lors de la soumission.");
-      }
+      setErreur(e?.message ?? "Erreur lors de la soumission de la demande.");
     } finally {
-      setSubmitting(false);
+      setSoumission(false);
     }
   };
 
-  const Field: React.FC<{ label: string; error?: string; required?: boolean; children: React.ReactNode }> = ({
-    label, error, required, children,
-  }) => (
-    <div>
-      <Label className="text-xs mb-1.5 block">
-        {label} {required && <span className="text-destructive">*</span>}
-      </Label>
-      {children}
-      {error && <p className="text-[11px] text-destructive mt-0.5">{error}</p>}
-    </div>
-  );
+  const bloque = eligibilite !== null && !eligibilite.eligible;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) fermer(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nouvelle demande de prêt</DialogTitle>
+          <DialogTitle className="text-base">Nouvelle demande de pret</DialogTitle>
         </DialogHeader>
 
-        {/* Sélecteur de type */}
-        <div className="grid grid-cols-2 gap-3 mb-1">
-          <button
-            type="button"
-            onClick={() => setPretInterne(true)}
-            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-              pretInterne ? "border-primary bg-primary/5" : "hover:bg-secondary/50"
-            }`}
-          >
-            <Banknote size={20} className={pretInterne ? "text-primary" : "text-muted-foreground"} />
+        {!parametres ? (
+          <SimulateurPret showAdopter onAdopter={adopter} />
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-md border border-border bg-secondary/20 p-3 text-sm">
+              Simulation retenue : <strong>{parametres.montant} DH</strong> sur <strong>{parametres.nb_echeance} mois</strong>,
+              premiere echeance le <strong>{parametres.date_premiere_echeance}</strong>.
+              <button type="button" className="ml-2 text-xs text-primary underline" onClick={reinitialiser}>
+                Modifier la simulation
+              </button>
+            </div>
+
             <div>
-              <p className="text-sm font-medium">Prêt interne</p>
-              <p className="text-[11px] text-muted-foreground">L'entreprise prête directement</p>
+              <Label className="text-xs mb-1 block">Objet de la demande</Label>
+              <Textarea rows={2} value={objet} onChange={e => setObjet(e.target.value)} placeholder="Ex. Travaux de logement, evenement familial..." />
             </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setPretInterne(false)}
-            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-              !pretInterne ? "border-primary bg-primary/5" : "hover:bg-secondary/50"
-            }`}
-          >
-            <Building2 size={20} className={!pretInterne ? "text-primary" : "text-muted-foreground"} />
             <div>
-              <p className="text-sm font-medium">Cession externe</p>
-              <p className="text-[11px] text-muted-foreground">Banque → prélèvement sur salaire</p>
-            </div>
-          </button>
-        </div>
-
-        {pretInterne && (
-          <div className="flex items-start gap-1.5 rounded bg-sky-50 border border-sky-100 px-3 py-2 text-xs text-sky-700">
-            <Info size={12} className="mt-0.5 flex-shrink-0" />
-            Les prêts internes sont sans intérêts selon votre convention. La mensualité est déduite automatiquement de votre bulletin de paie.
-          </div>
-        )}
-        {!pretInterne && (
-          <div className="flex items-start gap-1.5 rounded bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-            <Info size={12} className="mt-0.5 flex-shrink-0" />
-            La cession sur salaire transfère automatiquement la mensualité à votre banque. En cas de départ, la cession est annulée et le remboursement redevient votre responsabilité directe.
-          </div>
-        )}
-
-        {/* Onglets formulaire / simulateur */}
-        <Tabs value={tab} onValueChange={v => setTab(v as any)}>
-          <TabsList className="mb-3">
-            <TabsTrigger value="formulaire">Paramètres</TabsTrigger>
-            <TabsTrigger value="simulateur">Simuler d'abord</TabsTrigger>
-          </TabsList>
-
-          {/* ── FORMULAIRE ─────────────────────────────────── */}
-          <TabsContent value="formulaire" className="space-y-4">
-            {/* Paramètres financiers */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Montant demandé (MAD)" error={errors.montant} required>
-                <Input
-                  type="number" value={montant} min={100} max={montantMax} step={500}
-                  onChange={e => setMontant(Number(e.target.value))}
-                  className={errors.montant ? "border-destructive" : ""}
-                />
-              </Field>
-              <Field label="Durée de remboursement (mois)" error={errors.nb} required>
-                <Input
-                  type="number" value={nbEcheances} min={1} max={dureeMax}
-                  onChange={e => setNbEcheances(Number(e.target.value))}
-                  className={errors.nb ? "border-destructive" : ""}
-                />
-              </Field>
+              <Label className="text-xs mb-1 block">Motif / precisions (optionnel)</Label>
+              <Textarea rows={2} value={motif} onChange={e => setMotif(e.target.value)} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {!pretInterne && (
-                <Field label="Taux annuel (%)">
-                  <Input
-                    type="number" value={taux} min={0} max={30} step={0.25}
-                    onChange={e => setTaux(Number(e.target.value))}
-                  />
-                </Field>
-              )}
-              <Field label="Méthode de calcul">
-                <Select value={algo} onValueChange={v => setAlgo(v as PretAlgo)}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ALGO_LABELS).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-
-            {/* Champs externes */}
-            {!pretInterne && (
-              <div className="space-y-3 rounded-lg border p-3">
-                <p className="text-xs font-medium">Établissement prêteur</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Organisme de crédit" error={errors.org} required>
-                    <Input value={organismeCredit} onChange={e => setOrganismeCredit(e.target.value)}
-                      placeholder="Ex: CIH, Attijariwafa, BMCE…" className={errors.org ? "border-destructive" : ""} />
-                  </Field>
-                  <Field label="Établissement (code)">
-                    <Input value={etabCredit} onChange={e => setEtabCredit(e.target.value)} placeholder="Ex: BMCE" />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="Code banque">
-                    <Input value={codeBqe} onChange={e => setCodeBqe(e.target.value)} placeholder="007" maxLength={5} />
-                  </Field>
-                  <Field label="N° de compte" error={errors.compte} required>
-                    <Input value={noCompte} onChange={e => setNoCompte(e.target.value)}
-                      placeholder="0123456789" className={errors.compte ? "border-destructive" : ""} />
-                  </Field>
-                  <Field label="Clé RIB">
-                    <Input value={clerib} onChange={e => setClerib(e.target.value)} placeholder="00" maxLength={2} />
-                  </Field>
-                </div>
+            {verification && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 size={13} className="animate-spin" /> Verification de votre eligibilite...
               </div>
             )}
 
-            {/* Motif */}
-            <Field label="Motif de la demande" error={errors.motif} required>
-              <Textarea
-                value={motif}
-                onChange={e => setMotif(e.target.value)}
-                rows={3}
-                placeholder="Décrivez la raison de votre demande (10 caractères minimum)…"
-                className={errors.motif ? "border-destructive" : ""}
-              />
-              <p className="text-[11px] text-muted-foreground mt-0.5">{motif.length} / 1000</p>
-            </Field>
-
-            {globalError && (
-              <p className="text-sm text-destructive rounded border border-destructive/30 bg-red-50/50 px-3 py-2">
-                {globalError}
-              </p>
+            {eligibilite && (
+              <div className="space-y-1.5">
+                {eligibilite.resultats.map(r => (
+                  <div
+                    key={r.code_regle}
+                    className="flex items-start gap-2 rounded-md border p-2 text-xs"
+                    style={{
+                      borderColor: r.respectee ? "hsl(var(--success) / 0.3)" : "hsl(var(--destructive) / 0.3)",
+                      background: r.respectee ? "hsl(var(--success) / 0.08)" : "hsl(var(--destructive) / 0.08)",
+                    }}
+                  >
+                    {r.respectee
+                      ? <CheckCircle2 size={13} className="mt-0.5 flex-shrink-0" style={{ color: "hsl(var(--success))" }} />
+                      : <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" style={{ color: "hsl(var(--destructive))" }} />}
+                    <div>
+                      <p className="font-medium">{r.libelle}</p>
+                      <p className="text-muted-foreground">{r.message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
-          </TabsContent>
 
-          {/* ── SIMULATEUR ─────────────────────────────────── */}
-          <TabsContent value="simulateur">
-            <SimulateurPret
-              montantInitial={montant}
-              nbEcheancesInitial={nbEcheances}
-              tauxInitial={taux}
-              algoInitial={algo}
-              montantMax={montantMax}
-              dureeMaxMois={dureeMax}
-              showAdopter
-              onAdopter={p => {
-                setMontant(p.montant);
-                setNbEcheances(p.nb_echeances);
-                setTaux(p.taux);
-                setAlgo(p.algo);
-                setTab("formulaire");
-              }}
-            />
-          </TabsContent>
-        </Tabs>
+            {erreur && (
+              <div className="flex items-center gap-2 text-xs text-destructive">
+                <AlertTriangle size={13} /> {erreur}
+              </div>
+            )}
+          </div>
+        )}
 
-        <DialogFooter className="mt-2">
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={soumettre} disabled={submitting || tab === "simulateur"}>
-            {submitting ? "Envoi en cours…" : "Soumettre la demande"}
-          </Button>
+        <DialogFooter>
+          <Button variant="outline" onClick={fermer}>Annuler</Button>
+          {parametres && (
+            <Button onClick={soumettre} disabled={soumission || bloque}>
+              {soumission && <Loader2 size={14} className="mr-2 animate-spin" />}
+              Soumettre la demande
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

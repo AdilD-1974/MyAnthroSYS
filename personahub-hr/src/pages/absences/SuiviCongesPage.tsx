@@ -286,28 +286,26 @@ export default function SuiviCongesPage() {
 
   return (
     <TooltipProvider>
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Suivi des Congés</h1>
-          <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Vue consolidée des soldes, consommations et reliquats
-          </p>
-        </div>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Absences</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Suivi des Congés</span>
       </div>
 
+      <div className="p-6 space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Collaborateurs suivis",      value: totalCollabs,       icon: <BarChart3 size={18} />,     color: "hsl(var(--primary))" },
-          { label: "Solde moyen restant",         value: `${soldeMoyen} j`,  icon: <TrendingUp size={18} />,    color: "hsl(142 71% 45%)" },
-          { label: "Reliquats actifs",            value: reliquatsActifs,    icon: <RefreshCw size={18} />,     color: "hsl(38 92% 50%)" },
-          { label: "Reliquats expirés/à risque",  value: reliquatsExpires,   icon: <AlertTriangle size={18} />, color: "hsl(0 72% 51%)" },
+          { label: "Collaborateurs suivis",      value: totalCollabs,       icon: <BarChart3 size={18} />,     token: "primary" },
+          { label: "Solde moyen restant",         value: `${soldeMoyen} j`,  icon: <TrendingUp size={18} />,    token: "success" },
+          { label: "Reliquats actifs",            value: reliquatsActifs,    icon: <RefreshCw size={18} />,     token: "warning" },
+          { label: "Reliquats expirés/à risque",  value: reliquatsExpires,   icon: <AlertTriangle size={18} />, token: "destructive" },
         ].map(k => (
           <Card key={k.label}>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg" style={{ background: `${k.color}20`, color: k.color }}>{k.icon}</div>
+              <div className="p-2 rounded-lg" style={{ background: `hsl(var(--${k.token}) / 0.12)`, color: `hsl(var(--${k.token}))` }}>{k.icon}</div>
               <div>
                 <p className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>{k.value}</p>
                 <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p>
@@ -662,6 +660,7 @@ export default function SuiviCongesPage() {
             )}
           </SheetContent>
         </Sheet>
+      </div>
     </div>
     </TooltipProvider>
   );

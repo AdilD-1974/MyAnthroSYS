@@ -71,7 +71,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => {
           display: "flex", alignItems: "center", gap: 6, padding: "3px 8px",
           borderRadius: 6, border: "1px solid hsl(var(--border))",
           background: "hsl(var(--background))", cursor: "pointer",
-          fontSize: 11, color: "hsl(var(--foreground))"
+          fontSize: "calc(11px * var(--font-scale))", color: "hsl(var(--foreground))"
         }}
       >
         <span style={{ width: 16, height: 16, borderRadius: 4, background: value || "#6366F1", border: "1px solid hsl(var(--border) / 0.5)", flexShrink: 0 }} />
@@ -85,7 +85,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => {
           borderRadius: 10, padding: 10, boxShadow: "0 8px 24px hsl(0 0% 0% / 0.15)",
           width: 200,
         }}>
-          <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 600, color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <p style={{ margin: "0 0 8px", fontSize: "calc(10px * var(--font-scale))", fontWeight: 600, color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Palette de couleurs
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4 }}>
@@ -113,7 +113,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => {
               title="Couleur personnalisée"
               style={{ width: 28, height: 24, border: "none", padding: 0, borderRadius: 4, cursor: "pointer", background: "none" }}
             />
-            <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>Couleur personnalisée</span>
+            <span style={{ fontSize: "calc(10px * var(--font-scale))", color: "hsl(var(--muted-foreground))" }}>Couleur personnalisée</span>
           </div>
         </div>
       )}
@@ -147,6 +147,22 @@ const REF_GROUPS: RefGroup[] = [
           { key: "code_unite_duree_defaut", label: "Unité (J/M/A)", width: "w-20" },
           { key: "a_titularisation", label: "Titularisation", type: "boolean", width: "w-20" },
           { key: "auto_cloture", label: "Auto-clôture", type: "boolean", width: "w-20" },
+          // RG-DECL-IR-9421-01 (Adil DAIA) : classification DGI (État 9421) par type de contrat
+          {
+            key: "code_categorie_dts_ir", label: "Catégorie DTS/9421", type: "select", width: "w-36",
+            refTable: "ref_categorie_dts_ir", refValueCol: "code", refLabelCol: "libelle",
+          },
+          { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
+          { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
+        ],
+      },
+      {
+        key: "ref_categorie_dts_ir", label: "Catégories DTS/9421 (IR)",
+        hasDescription: true,
+        fields: [
+          { key: "code", label: "Code", width: "w-40" },
+          { key: "libelle", label: "Libellé" },
+          { key: "description", label: "Description" },
           { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
           { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
         ],
@@ -254,6 +270,22 @@ const REF_GROUPS: RefGroup[] = [
           { key: "code", label: "Code", width: "w-24" },
           { key: "libelle", label: "Libellé" },
           { key: "description", label: "Description" },
+          { key: "categorie_reference", label: "Catégorie de référence", type: "select",
+            refTable: "ref_categorie_reference", refValueCol: "code", refLabelCol: "libelle" },
+          { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
+          { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
+        ],
+      },
+      {
+        key: "ref_categorie_reference", label: "Catégories de référence (préavis)",
+        fields: [
+          { key: "code", label: "Code", width: "w-28" },
+          { key: "libelle", label: "Libellé" },
+          { key: "description", label: "Description" },
+          { key: "preavis_jours_moins_1an", label: "Préavis < 1 an (j)", type: "number", width: "w-32" },
+          { key: "preavis_jours_1_a_5ans", label: "Préavis 1-5 ans (j)", type: "number", width: "w-32" },
+          { key: "preavis_jours_plus_5ans", label: "Préavis > 5 ans (j)", type: "number", width: "w-32" },
+          { key: "reference_legale", label: "Référence légale", width: "w-32" },
           { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
           { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
         ],
@@ -788,10 +820,52 @@ const REF_GROUPS: RefGroup[] = [
         ],
       },
       {
+        key: "ref_nature_compte", label: "Natures de compte",
+        fields: [
+          { key: "code", label: "Code", width: "w-32" },
+          { key: "libelle", label: "Libellé" },
+          { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
+          { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
+        ],
+      },
+      {
+        key: "ref_type_auxiliaire", label: "Types d'auxiliaire comptable",
+        fields: [
+          { key: "code", label: "Code", width: "w-32" },
+          { key: "libelle", label: "Libellé" },
+          { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
+          { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
+        ],
+      },
+      {
         key: "ref_imputation_comptable", label: "Imputations comptables",
         fields: [
           { key: "code_compte", label: "Code compte", width: "w-32" },
           { key: "intitule_compte", label: "Intitulé du compte" },
+          {
+            key: "nature_compte", label: "Nature", type: "select", width: "w-40",
+            refTable: "ref_nature_compte", refValueCol: "code", refLabelCol: "libelle",
+          },
+          { key: "necessite_axe_analytique", label: "Axe analytique requis", type: "boolean", width: "w-20" },
+          { key: "necessite_compte_auxiliaire", label: "Auxiliaire requis", type: "boolean", width: "w-20" },
+          {
+            key: "type_auxiliaire", label: "Type auxiliaire", type: "select", width: "w-40",
+            refTable: "ref_type_auxiliaire", refValueCol: "code", refLabelCol: "libelle",
+          },
+          { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
+        ],
+      },
+      {
+        // Répartition analytique de paie (01/08) : un centre de coût auquel un
+        // agent peut être rattaché soit directement (collaborateur_centre_cout,
+        // avec pourcentage — pas géré ici, voir la fiche collaborateur), soit
+        // par défaut via son UO (comptabilisation_engine.py, HERITE_UO).
+        key: "centres_cout", label: "Centres de coût",
+        fields: [
+          { key: "code", label: "Code", width: "w-32" },
+          { key: "libelle", label: "Libellé" },
+          { key: "date_debut", label: "Début", type: "date", width: "w-28" },
+          { key: "date_fin", label: "Fin", type: "date", width: "w-28" },
           { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
         ],
       },
@@ -971,6 +1045,21 @@ const REF_GROUPS: RefGroup[] = [
           { key: "description", label: "Description" },
           { key: "est_temporaire", label: "Temporaire", type: "boolean", width: "w-20" },
           { key: "est_definitif", label: "Définitif", type: "boolean", width: "w-20" },
+          { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
+          { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
+        ],
+      },
+      {
+        key: "ref_motif_depart", label: "Motifs de départ",
+        fields: [
+          { key: "code", label: "Code", width: "w-28" },
+          { key: "libelle", label: "Libellé" },
+          { key: "description", label: "Description" },
+          { key: "statut_cible", label: "Statut cible", width: "w-28" },
+          { key: "avec_preavis", label: "Préavis", type: "boolean", width: "w-20" },
+          { key: "avec_indemnite", label: "Indemnité", type: "boolean", width: "w-20" },
+          { key: "requiert_entretien", label: "Entretien préalable", type: "boolean", width: "w-32" },
+          { key: "declencheur_rh", label: "Déclench. RH", type: "boolean", width: "w-24" },
           { key: "ordre", label: "Ordre", type: "number", width: "w-16" },
           { key: "actif", label: "Actif", type: "boolean", width: "w-16" },
         ],
@@ -1253,41 +1342,41 @@ const DuplicateModal: React.FC<DuplicateModalProps> = ({ row, fields, pkCol, act
             <Copy size={18} style={{ color: "hsl(var(--accent))" }} />
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "hsl(var(--foreground))" }}>Dupliquer l'entrée</h2>
-            <p style={{ margin: 0, fontSize: 11, color: "hsl(var(--muted-foreground))" }}>Le code sera préfixé par « Du_ »</p>
+            <h2 style={{ margin: 0, fontSize: "calc(15px * var(--font-scale))", fontWeight: 700, color: "hsl(var(--foreground))" }}>Dupliquer l'entrée</h2>
+            <p style={{ margin: 0, fontSize: "calc(11px * var(--font-scale))", color: "hsl(var(--muted-foreground))" }}>Le code sera préfixé par « Du_ »</p>
           </div>
           <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "hsl(var(--muted-foreground))" }}><X size={16} /></button>
         </div>
         <div style={{ padding: "18px 22px" }}>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4, color: "hsl(var(--muted-foreground))" }}>
+            <label style={{ display: "block", fontSize: "calc(11px * var(--font-scale))", fontWeight: 600, marginBottom: 4, color: "hsl(var(--muted-foreground))" }}>
               Nouveau code *
             </label>
             <input
               value={newCode}
               onChange={e => setNewCode(e.target.value)}
-              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--background))", color: "hsl(var(--foreground))", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--background))", color: "hsl(var(--foreground))", fontSize: "calc(13px * var(--font-scale))", outline: "none", boxSizing: "border-box" }}
             />
           </div>
           {(row.libelle !== undefined || row.nom !== undefined) && (
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4, color: "hsl(var(--muted-foreground))" }}>
+              <label style={{ display: "block", fontSize: "calc(11px * var(--font-scale))", fontWeight: 600, marginBottom: 4, color: "hsl(var(--muted-foreground))" }}>
                 Libellé
               </label>
               <input
                 value={newLibelle}
                 onChange={e => setNewLibelle(e.target.value)}
-                style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--background))", color: "hsl(var(--foreground))", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--background))", color: "hsl(var(--foreground))", fontSize: "calc(13px * var(--font-scale))", outline: "none", boxSizing: "border-box" }}
               />
             </div>
           )}
-          {error && <p style={{ fontSize: 12, color: "hsl(0 84% 50%)", margin: "0 0 8px" }}>{error}</p>}
+          {error && <p style={{ fontSize: "calc(12px * var(--font-scale))", color: "hsl(0 84% 50%)", margin: "0 0 8px" }}>{error}</p>}
         </div>
         <div style={{ padding: "12px 22px", borderTop: "1px solid hsl(var(--border))", display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button onClick={onClose} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--muted))", color: "hsl(var(--foreground))", fontSize: 13, cursor: "pointer" }}>
+          <button onClick={onClose} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--muted))", color: "hsl(var(--foreground))", fontSize: "calc(13px * var(--font-scale))", cursor: "pointer" }}>
             Annuler
           </button>
-          <button onClick={handleDuplicate} disabled={saving} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "hsl(var(--accent))", color: "white", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={handleDuplicate} disabled={saving} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "hsl(var(--accent))", color: "white", fontSize: "calc(13px * var(--font-scale))", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1, display: "flex", alignItems: "center", gap: 6 }}>
             {saving ? "…" : <><Copy size={13} /> Dupliquer</>}
           </button>
         </div>
@@ -1419,9 +1508,9 @@ const ImportModal: React.FC<ImportModalProps> = ({ tableDef, fields, pkCol, onCl
   const headerStyle: React.CSSProperties = { padding: "20px 24px 16px", borderBottom: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", gap: 12 };
   const bodyStyle: React.CSSProperties = { padding: "20px 24px", overflowY: "auto", flex: 1 };
   const footerStyle: React.CSSProperties = { padding: "14px 24px", borderTop: "1px solid hsl(var(--border))", display: "flex", justifyContent: "flex-end", gap: 10 };
-  const btnPrimary: React.CSSProperties = { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "hsl(var(--primary))", color: "white", fontWeight: 600, fontSize: 13 };
-  const btnSecondary: React.CSSProperties = { padding: "8px 20px", borderRadius: 8, cursor: "pointer", background: "hsl(var(--muted))", color: "hsl(var(--foreground))", fontWeight: 500, fontSize: 13, border: "1px solid hsl(var(--border))" };
-  const btnGreen: React.CSSProperties = { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "hsl(84 55% 46%)", color: "white", fontWeight: 600, fontSize: 13 };
+  const btnPrimary: React.CSSProperties = { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "hsl(var(--primary))", color: "white", fontWeight: 600, fontSize: "calc(13px * var(--font-scale))" };
+  const btnSecondary: React.CSSProperties = { padding: "8px 20px", borderRadius: 8, cursor: "pointer", background: "hsl(var(--muted))", color: "hsl(var(--foreground))", fontWeight: 500, fontSize: "calc(13px * var(--font-scale))", border: "1px solid hsl(var(--border))" };
+  const btnGreen: React.CSSProperties = { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "hsl(84 55% 46%)", color: "white", fontWeight: 600, fontSize: "calc(13px * var(--font-scale))" };
 
   return (
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -1431,8 +1520,8 @@ const ImportModal: React.FC<ImportModalProps> = ({ tableDef, fields, pkCol, onCl
             <FileSpreadsheet size={20} style={{ color: "hsl(var(--primary))" }} />
           </div>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "hsl(var(--foreground))" }}>Import Excel / CSV</h2>
-            <p style={{ margin: 0, fontSize: 12, color: "hsl(var(--muted-foreground))" }}>{tableDef.label}</p>
+            <h2 style={{ margin: 0, fontSize: "calc(16px * var(--font-scale))", fontWeight: 700, color: "hsl(var(--foreground))" }}>Import Excel / CSV</h2>
+            <p style={{ margin: 0, fontSize: "calc(12px * var(--font-scale))", color: "hsl(var(--muted-foreground))" }}>{tableDef.label}</p>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "hsl(var(--muted-foreground))" }}><X size={18} /></button>
         </div>
@@ -1448,47 +1537,47 @@ const ImportModal: React.FC<ImportModalProps> = ({ tableDef, fields, pkCol, onCl
               >
                 <Upload size={36} style={{ color: "hsl(var(--primary))", margin: "0 auto 12px" }} />
                 <p style={{ fontWeight: 600, color: "hsl(var(--foreground))", margin: "0 0 4px" }}>Glissez-déposez votre fichier ici</p>
-                <p style={{ fontSize: 12, color: "hsl(var(--muted-foreground))", margin: 0 }}>ou cliquez pour sélectionner — .xlsx, .xls, .csv</p>
+                <p style={{ fontSize: "calc(12px * var(--font-scale))", color: "hsl(var(--muted-foreground))", margin: 0 }}>ou cliquez pour sélectionner — .xlsx, .xls, .csv</p>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
               </div>
               <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 8, background: "hsl(var(--accent) / 0.08)", border: "1px solid hsl(var(--accent) / 0.2)", display: "flex", alignItems: "center", gap: 10 }}>
                 <Download size={16} style={{ color: "hsl(var(--accent))", flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "hsl(var(--foreground))" }}>Télécharger le modèle</p>
-                  <p style={{ margin: 0, fontSize: 11, color: "hsl(var(--muted-foreground))" }}>Colonnes : {fields.map(f => f.key).join(", ")}</p>
+                  <p style={{ margin: 0, fontSize: "calc(13px * var(--font-scale))", fontWeight: 600, color: "hsl(var(--foreground))" }}>Télécharger le modèle</p>
+                  <p style={{ margin: 0, fontSize: "calc(11px * var(--font-scale))", color: "hsl(var(--muted-foreground))" }}>Colonnes : {fields.map(f => f.key).join(", ")}</p>
                 </div>
-                <button onClick={downloadTemplate} style={{ ...btnSecondary, padding: "6px 14px", fontSize: 12 }}>Modèle .xlsx</button>
+                <button onClick={downloadTemplate} style={{ ...btnSecondary, padding: "6px 14px", fontSize: "calc(12px * var(--font-scale))" }}>Modèle .xlsx</button>
               </div>
               <div style={{ marginTop: 16 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--foreground))", margin: "0 0 8px" }}>Mode d'import</p>
+                <p style={{ fontSize: "calc(12px * var(--font-scale))", fontWeight: 600, color: "hsl(var(--foreground))", margin: "0 0 8px" }}>Mode d'import</p>
                 <div style={{ display: "flex", gap: 10 }}>
                   {(["upsert", "insert"] as const).map((m) => (
-                    <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: "hsl(var(--foreground))", padding: "8px 14px", borderRadius: 8, border: `1px solid ${importMode === m ? "hsl(var(--primary))" : "hsl(var(--border))"}`, background: importMode === m ? "hsl(var(--primary) / 0.07)" : "transparent" }}>
+                    <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: "calc(13px * var(--font-scale))", color: "hsl(var(--foreground))", padding: "8px 14px", borderRadius: 8, border: `1px solid ${importMode === m ? "hsl(var(--primary))" : "hsl(var(--border))"}`, background: importMode === m ? "hsl(var(--primary) / 0.07)" : "transparent" }}>
                       <input type="radio" value={m} checked={importMode === m} onChange={() => setImportMode(m)} style={{ accentColor: "hsl(var(--primary))" }} />
                       {m === "upsert" ? <><strong>Upsert</strong> — mettre à jour si existe, créer sinon</> : <><strong>Insertion seule</strong> — échoue si doublon</>}
                     </label>
                   ))}
                 </div>
               </div>
-              {errors.length > 0 && <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "hsl(0 84% 96%)", border: "1px solid hsl(0 84% 85%)", color: "hsl(0 84% 40%)", fontSize: 12 }}>{errors.map((e, i) => <p key={i} style={{ margin: 0 }}>⚠ {e}</p>)}</div>}
+              {errors.length > 0 && <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "hsl(0 84% 96%)", border: "1px solid hsl(0 84% 85%)", color: "hsl(0 84% 40%)", fontSize: "calc(12px * var(--font-scale))" }}>{errors.map((e, i) => <p key={i} style={{ margin: 0 }}>⚠ {e}</p>)}</div>}
             </div>
           )}
           {step === "preview" && (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <Check size={16} style={{ color: "hsl(84 55% 46%)" }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--foreground))" }}>{fileName} — {previewRows.length} ligne(s) détectée(s)</span>
+                <span style={{ fontSize: "calc(13px * var(--font-scale))", fontWeight: 600, color: "hsl(var(--foreground))" }}>{fileName} — {previewRows.length} ligne(s) détectée(s)</span>
               </div>
               {errors.length > 0 && (
-                <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "hsl(39 95% 96%)", border: "1px solid hsl(39 95% 80%)", color: "hsl(39 95% 30%)", fontSize: 12 }}>
+                <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "hsl(39 95% 96%)", border: "1px solid hsl(39 95% 80%)", color: "hsl(39 95% 30%)", fontSize: "calc(12px * var(--font-scale))" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, marginBottom: 4 }}><AlertTriangle size={13} /> Avertissements ({errors.length})</div>
                   {errors.slice(0, 5).map((e, i) => <p key={i} style={{ margin: 0 }}>• {e}</p>)}
                   {errors.length > 5 && <p style={{ margin: 0 }}>…et {errors.length - 5} autres</p>}
                 </div>
               )}
-              <p style={{ fontSize: 12, color: "hsl(var(--muted-foreground))", marginBottom: 8 }}>Aperçu des 10 premières lignes :</p>
+              <p style={{ fontSize: "calc(12px * var(--font-scale))", color: "hsl(var(--muted-foreground))", marginBottom: 8 }}>Aperçu des 10 premières lignes :</p>
               <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid hsl(var(--border))" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "calc(11px * var(--font-scale))" }}>
                   <thead>
                     <tr style={{ background: "hsl(var(--muted))" }}>
                       {fields.map((f) => <th key={f.key} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 600, color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap", borderBottom: "1px solid hsl(var(--border))" }}>{f.label}</th>)}
@@ -1509,7 +1598,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ tableDef, fields, pkCol, onCl
                   </tbody>
                 </table>
               </div>
-              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "hsl(var(--muted) / 0.4)", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "hsl(var(--muted) / 0.4)", fontSize: "calc(12px * var(--font-scale))", color: "hsl(var(--muted-foreground))" }}>
                 Mode : <strong style={{ color: "hsl(var(--foreground))" }}>{importMode === "upsert" ? "Upsert (créer ou mettre à jour)" : "Insertion seule"}</strong>
                 {previewRows.length > 10 && <> · <strong style={{ color: "hsl(var(--foreground))" }}>{previewRows.length - 10}</strong> lignes supplémentaires non affichées</>}
               </div>
@@ -1528,16 +1617,16 @@ const ImportModal: React.FC<ImportModalProps> = ({ tableDef, fields, pkCol, onCl
                   <div style={{ width: 56, height: 56, borderRadius: "50%", background: "hsl(84 55% 46% / 0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                     <Check size={28} style={{ color: "hsl(84 55% 46%)" }} />
                   </div>
-                  <p style={{ fontWeight: 700, fontSize: 16, color: "hsl(var(--foreground))", margin: "0 0 6px" }}>Import terminé !</p>
-                  <p style={{ fontSize: 13, color: "hsl(var(--muted-foreground))", margin: 0 }}><strong>{importedCount}</strong> enregistrement(s) importé(s) avec succès.</p>
+                  <p style={{ fontWeight: 700, fontSize: "calc(16px * var(--font-scale))", color: "hsl(var(--foreground))", margin: "0 0 6px" }}>Import terminé !</p>
+                  <p style={{ fontSize: "calc(13px * var(--font-scale))", color: "hsl(var(--muted-foreground))", margin: 0 }}><strong>{importedCount}</strong> enregistrement(s) importé(s) avec succès.</p>
                 </>
               ) : (
                 <>
                   <div style={{ width: 56, height: 56, borderRadius: "50%", background: "hsl(39 95% 96%)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                     <AlertTriangle size={28} style={{ color: "hsl(39 95% 45%)" }} />
                   </div>
-                  <p style={{ fontWeight: 700, fontSize: 16, color: "hsl(var(--foreground))", margin: "0 0 6px" }}>Import partiel — {importedCount} ligne(s) importée(s)</p>
-                  <div style={{ textAlign: "left", marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "hsl(0 84% 96%)", border: "1px solid hsl(0 84% 85%)", fontSize: 12, color: "hsl(0 84% 40%)" }}>
+                  <p style={{ fontWeight: 700, fontSize: "calc(16px * var(--font-scale))", color: "hsl(var(--foreground))", margin: "0 0 6px" }}>Import partiel — {importedCount} ligne(s) importée(s)</p>
+                  <div style={{ textAlign: "left", marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "hsl(0 84% 96%)", border: "1px solid hsl(0 84% 85%)", fontSize: "calc(12px * var(--font-scale))", color: "hsl(0 84% 40%)" }}>
                     {errors.map((e, i) => <p key={i} style={{ margin: 0 }}>• {e}</p>)}
                   </div>
                 </>
@@ -1779,7 +1868,7 @@ const ReferentielsPage: React.FC = () => {
               <button
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold transition-all"
                 style={{
-                  background: activeGroup === gi ? `${group.color}18` : "transparent",
+                  background: activeGroup === gi ? group.color.replace(")", " / 0.1)") : "transparent",
                   color: activeGroup === gi ? group.color : "hsl(var(--foreground))",
                 }}
                 onClick={() => { setActiveGroup(gi); toggleGroup(gi); }}
@@ -1796,7 +1885,7 @@ const ReferentielsPage: React.FC = () => {
                       key={t.key}
                       className="w-full text-left px-2 py-1 rounded text-xs transition-all"
                       style={{
-                        background: activeTable === t.key ? `${group.color}22` : "transparent",
+                        background: activeTable === t.key ? group.color.replace(")", " / 0.14)") : "transparent",
                         color: activeTable === t.key ? group.color : "hsl(var(--muted-foreground))",
                         fontWeight: activeTable === t.key ? 600 : 400,
                         borderLeft: activeTable === t.key ? `2px solid ${group.color}` : "2px solid transparent",
@@ -1814,12 +1903,18 @@ const ReferentielsPage: React.FC = () => {
 
         {/* ── Main content ── */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Fil d'Ariane */}
+          <div className="flex items-center gap-1.5 px-6 pt-3 pb-0 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+            <span>Référentiels</span>
+            <span style={{ opacity: 0.5 }}>/</span>
+            <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>{currentGroup?.label}</span>
+          </div>
           {/* Header */}
           <div className="px-6 py-3 border-b flex items-center gap-3 flex-wrap" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
             <div className="flex items-center gap-2.5">
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0"
-                style={{ background: `${currentGroup?.color}18` }}
+                style={{ background: currentGroup?.color.replace(")", " / 0.1)") }}
               >
                 {currentGroup?.icon}
               </div>
@@ -1858,7 +1953,7 @@ const ReferentielsPage: React.FC = () => {
                 XLSX.writeFile(wb, `${activeTable}_export.xlsx`);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
-              style={{ background: "hsl(84 55% 46% / 0.12)", color: "hsl(84 55% 36%)", border: "1px solid hsl(84 55% 46% / 0.3)" }}
+              style={{ background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.3)" }}
             >
               <Download size={13} /> Exporter
             </button>
@@ -1883,7 +1978,7 @@ const ReferentielsPage: React.FC = () => {
           </div>
 
           {error && (
-            <div className="mx-6 mt-3 px-4 py-2 rounded-lg text-xs" style={{ background: "hsl(0 84% 96%)", color: "hsl(0 84% 40%)", border: "1px solid hsl(0 84% 85%)" }}>
+            <div className="mx-6 mt-3 px-4 py-2 rounded-lg text-xs" style={{ background: "hsl(var(--destructive) / 0.08)", color: "hsl(var(--destructive))", border: "1px solid hsl(var(--destructive) / 0.25)" }}>
               {error} <button onClick={() => setError("")} className="ml-2 font-bold">×</button>
             </div>
           )}

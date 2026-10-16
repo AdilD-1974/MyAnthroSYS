@@ -1,10 +1,31 @@
-﻿const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
+﻿export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
 
 export const tokenStore = {
   get: () => sessionStorage.getItem("access_token"),
   set: (token: string) => sessionStorage.setItem("access_token", token),
   clear: () => sessionStorage.removeItem("access_token"),
 };
+
+/**
+ * FastAPI renvoie `detail` comme une CHAÎNE pour une erreur métier
+ * (HTTPException(400, "...")) mais comme un TABLEAU d'objets de validation
+ * Pydantic pour un 422 : [{type, loc, msg, input}, ...]. `new Error(tableau)`
+ * le convertit silencieusement en "[object Object]" (String() sur un
+ * tableau d'objets) — ce correctif construit un message lisible dans les
+ * deux cas, pour que les erreurs 422 soient enfin diagnosticables sans
+ * ouvrir l'onglet Network à chaque fois.
+ */
+function messageErreur(detail: unknown, status: number): string {
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const lignes = detail.map((d: any) => {
+      const champ = Array.isArray(d?.loc) ? d.loc.filter((p: unknown) => p !== "body" && p !== "query").join(".") : "";
+      return champ ? `${champ} : ${d?.msg ?? "invalide"}` : (d?.msg ?? "invalide");
+    });
+    if (lignes.length) return lignes.join(" · ");
+  }
+  return `Erreur ${status}`;
+}
 
 async function request<T>(method: string, path: string, body?: unknown, options: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
@@ -15,7 +36,7 @@ async function request<T>(method: string, path: string, body?: unknown, options:
     ...options,
   });
   if (response.status === 401) { tokenStore.clear(); window.location.href = "/login"; throw new Error("Session expirée"); }
-  if (!response.ok) { const error = await response.json().catch(() => ({ detail: "Erreur inconnue" })); throw new Error(error.detail ?? `Erreur ${response.status}`); }
+  if (!response.ok) { const error = await response.json().catch(() => ({ detail: "Erreur inconnue" })); throw new Error(messageErreur(error.detail, response.status)); }
   if (response.status === 204) return undefined as T;
   return response.json();
 }
@@ -27,6 +48,40 @@ export const api = {
   put:    <T>(path: string, body: unknown) => request<T>("PUT", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
+
+// Requête multipart/form-data (upload de fichiers) — chemin séparé de
+// `request()` car il ne faut PAS fixer Content-Type manuellement : le
+// navigateur doit poser lui-même l'en-tête avec sa boundary multipart.
+export async function uploadFile<T = unknown>(path: string, formData: FormData): Promise<T> {
+  const token = tokenStore.get();
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData,
+  });
+  if (response.status === 401) { tokenStore.clear(); window.location.href = "/login"; throw new Error("Session expirée"); }
+  if (!response.ok) { const error = await response.json().catch(() => ({ detail: "Erreur inconnue" })); throw new Error(messageErreur(error.detail, response.status)); }
+  if (response.status === 204) return undefined as T;
+  return response.json();
+}
+
+// Requête POST dont la réponse est un fichier binaire (PDF, etc.) — chemin
+// séparé de request() car celui-ci force response.json(), ce qui casserait
+// la lecture d'un binaire.
+export async function postForBlob(path: string, body: unknown): Promise<Blob> {
+  const token = tokenStore.get();
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 401) { tokenStore.clear(); window.location.href = "/login"; throw new Error("Session expirée"); }
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Erreur inconnue" }));
+    throw new Error(messageErreur(error.detail, response.status));
+  }
+  return response.blob();
+}
 
 export const qs = (params: Record<string, unknown>): string => {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "");

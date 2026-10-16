@@ -1,262 +1,260 @@
 /**
- * SimulationPanel — Sandbox d'exécution d'une règle spécifique.
- * Permet de saisir des valeurs d'entrée (accesseurs détectés dans la règle)
- * et d'afficher la trace pas-à-pas + sorties calculées, sans toucher à la prod.
+ * SimulationPanel — Bac à sable d'exécution d'une règle spécifique.
+ * On saisit les valeurs d'entrée (attributs, rubriques, constantes, cumuls,
+ * précédents, barèmes) détectées dans la règle, puis on exécute sur le VRAI
+ * moteur backend (/paie/regles/tester-manuel). Aucun collaborateur, aucune base.
+ * Auteur : Adil DAIA
  */
 import React, { useEffect, useMemo, useState } from "react";
+import {
+  X, Play, Loader2, AlertTriangle, CheckCircle2, RefreshCw,
+  Layers, Link2, Hash, TrendingUp, History, Table2,
+} from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Play, X, AlertTriangle, CheckCircle2, ArrowRight, Sparkles, RefreshCw,
-} from "lucide-react";
-import { simulateRegle, type SimulationContext, type SimulationResult, type AccessorKind } from "./engine/simulator";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   lignes: Array<{ numero: number; instruction: string; label?: string | null }>;
   regleLibelle?: string;
+  /** RG-SIM-INLINE-01 : remonte le dernier résultat au parent (RegleSpecifiqueForm)
+   * pour affichage inline dans le tableau des instructions, sans dupliquer la
+   * logique d'appel — ce panneau reste la seule source de vérité de l'exécution. */
+  onResult?: (result: { sorties: Record<string, any>; trace: any[]; avertissements: string[] } | null) => void;
 }
 
-const ACCESSOR_LABELS: Record<AccessorKind, string> = {
-  MT: "Montant courant",
-  NB: "Nombre courant",
-  TY: "Taux courant",
-  MTC: "Montant cumulé",
-  NBC: "Nombre cumulé",
-  MTP: "Montant précédente paie",
-  NBP: "Nombre précédente paie",
-  TYP: "Taux précédente paie",
-  DTP: "Date précédente paie",
-};
+const ATTRS = ["MT", "NB", "TX", "BASE", "DATE", "TEXTE"] as const;
+const ATTR_LABEL: Record<string, string> = { MT: "Montant", NB: "Nombre", TX: "Taux", BASE: "Base", DATE: "Date", TEXTE: "Texte" };
 
-const ACCESSOR_RE = /\b(MT|NB|TY|MTC|NBC|MTP|NBP|TYP|DTP)\.([A-Z0-9_]+)\b/g;
+const SimulationPanel: React.FC<Props> = ({ open, onClose, lignes, regleLibelle, onResult }) => {
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ sorties: Record<string, any>; trace: any[]; avertissements: string[] } | null>(null);
 
-const SimulationPanel: React.FC<Props> = ({ open, onClose, lignes, regleLibelle }) => {
-  const [inputs, setInputs] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<SimulationResult | null>(null);
+  const src = useMemo(() => lignes.map((l) => l.instruction).join("\n"), [lignes]);
 
-  // Détecter tous les accesseurs utilisés dans les instructions
-  const detectedAccessors = useMemo(() => {
-    const set = new Set<string>();
-    lignes.forEach((l) => {
-      const matches = l.instruction.matchAll(ACCESSOR_RE);
-      for (const m of matches) set.add(`${m[1]}.${m[2]}`);
-    });
-    return Array.from(set).sort();
-  }, [lignes]);
+  const detected = useMemo(() => {
+    const rubs = new Map<string, Set<string>>();
+    const consts = new Set<string>();
+    const cumuls = new Set<string>();
+    const precs = new Set<string>();
+    const baremes = new Set<string>();
+    let m: RegExpExecArray | null;
 
-  // Reset inputs quand on ouvre le panneau
-  useEffect(() => {
-    if (open) {
-      setInputs((prev) => {
-        const next = { ...prev };
-        detectedAccessors.forEach((a) => {
-          if (!(a in next)) next[a] = "";
-        });
-        return next;
-      });
-      setResult(null);
+    const reRub = /\[([A-Z0-9_]+)\](?:\.(MT|NB|TX|BASE|DATE|TEXTE))?/gi;
+    while ((m = reRub.exec(src))) {
+      const code = m[1].toUpperCase();
+      if (!rubs.has(code)) rubs.set(code, new Set());
+      rubs.get(code)!.add((m[2] || "MT").toUpperCase());
     }
-  }, [open, detectedAccessors]);
+    const reConst = /#([A-Z0-9_]+)/g;
+    while ((m = reConst.exec(src))) consts.add(m[1].toUpperCase());
+    const reCumul = /\b(?:CUMUL|SOMME|MOYENNE)\s*\(\s*"([A-Z0-9_]+)"/gi;
+    while ((m = reCumul.exec(src))) cumuls.add(m[1].toUpperCase());
+    const rePrec = /\bPREC\s*\(\s*"([A-Z0-9_]+)"\s*(?:,\s*(\d+))?/gi;
+    while ((m = rePrec.exec(src))) precs.add(`${m[1].toUpperCase()}:${m[2] || "1"}`);
+    const reBareme = /\bBAREME\s*\(\s*"([A-Z0-9_]+)"/gi;
+    while ((m = reBareme.exec(src))) baremes.add(m[1].toUpperCase());
+
+    const seed = new Set<string>();
+    lignes.forEach((l) => {
+      const line = l.instruction;
+      const cible = line.match(/^\s*(MT|NB|TX|BASE|DATE|TEXTE)\s*=/i)?.[1]?.toUpperCase();
+      const rhs = cible ? line.slice(line.indexOf("=") + 1) : line;
+      ATTRS.forEach((a) => {
+        if (new RegExp(`(?<![\\w.\\]])${a}\\b`, "i").test(rhs)) seed.add(a);
+      });
+    });
+
+    return { rubs, consts, cumuls, precs, baremes, seed };
+  }, [src, lignes]);
+
+  useEffect(() => { if (open) setResult(null); }, [open]);
+
+  const set = (k: string, v: string) => setVals((p) => ({ ...p, [k]: v }));
+  const num = (v?: string) => (v === undefined || v === "" ? undefined : parseFloat(v));
+  const reset = () => { setVals({}); setResult(null); onResult?.(null); };
+
+  const lancer = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const seed: Record<string, any> = {};
+      detected.seed.forEach((a) => {
+        const v = vals[`seed:${a}`];
+        if (v !== undefined && v !== "") seed[a] = a === "DATE" || a === "TEXTE" ? v : num(v);
+      });
+      const rubriques: Record<string, Record<string, any>> = {};
+      detected.rubs.forEach((attrs, code) => {
+        attrs.forEach((a) => {
+          const v = vals[`rub:${code}:${a}`];
+          if (v !== undefined && v !== "") (rubriques[code] ||= {})[a] = a === "DATE" || a === "TEXTE" ? v : num(v);
+        });
+      });
+      const constantes: Record<string, any> = {};
+      detected.consts.forEach((c) => { const v = num(vals[`const:${c}`]); if (v !== undefined) constantes[c] = v; });
+      const cumuls: Record<string, any> = {};
+      detected.cumuls.forEach((c) => { const v = num(vals[`cumul:${c}`]); if (v !== undefined) cumuls[c] = v; });
+      const precedents: Record<string, any> = {};
+      detected.precs.forEach((c) => { const v = num(vals[`prec:${c}`]); if (v !== undefined) precedents[c] = v; });
+      const baremes: Record<string, any> = {};
+      detected.baremes.forEach((c) => { const v = num(vals[`bareme:${c}`]); if (v !== undefined) baremes[c] = v; });
+
+      const r = await api.post<{ sorties: Record<string, any>; trace: any[]; avertissements: string[] }>(
+        "/paie/regles/tester-manuel",
+        { instructions: lignes, seed, rubriques, constantes, cumuls, precedents, baremes },
+      );
+      setResult(r);
+      onResult?.(r);
+    } catch (e: any) {
+      toast({ title: "Test impossible", description: e.message, variant: "destructive" });
+    } finally { setBusy(false); }
+  };
+
+  const sortiesList = useMemo(() => {
+    if (!result) return [];
+    return ATTRS.map((k) => [ATTR_LABEL[k], result.sorties[k]] as const)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "");
+  }, [result]);
 
   if (!open) return null;
 
-  const runSimulation = () => {
-    // Construire le contexte
-    const rubriques: SimulationContext["rubriques"] = {};
-    detectedAccessors.forEach((a) => {
-      const [kind, rub] = a.split(".") as [AccessorKind, string];
-      const v = inputs[a];
-      if (v === undefined || v === "") return;
-      if (!rubriques[kind]) rubriques[kind] = {};
-      // DTP = date string, autres = number
-      rubriques[kind]![rub] = kind === "DTP" ? v : parseFloat(v) || 0;
-    });
-    const ctx: SimulationContext = {
-      rubriques,
-      dateJour: new Date().toISOString().slice(0, 10),
-      datePaie: new Date().toISOString().slice(0, 10),
-    };
-    setResult(simulateRegle(lignes, ctx));
-  };
+  const field = (key: string, label: string, hint: string, type = "number") => (
+    <div key={key} className="space-y-1">
+      <Label className="text-[11px] font-mono text-foreground flex items-center gap-1.5">
+        {label}
+        <span className="text-[9px] text-muted-foreground font-sans normal-case">{hint}</span>
+      </Label>
+      <Input type={type} value={vals[key] || ""} onChange={(e) => set(key, e.target.value)}
+        placeholder={type === "date" ? "" : "0"} className="h-8 text-xs font-mono" />
+    </div>
+  );
 
-  const resetInputs = () => {
-    const cleared: Record<string, string> = {};
-    detectedAccessors.forEach((a) => (cleared[a] = ""));
-    setInputs(cleared);
-    setResult(null);
-  };
+  const nbInputs = detected.seed.size + [...detected.rubs.values()].reduce((n, s) => n + s.size, 0)
+    + detected.consts.size + detected.cumuls.size + detected.precs.size + detected.baremes.size;
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-foreground/40 backdrop-blur-sm">
-      <div className="w-full max-w-2xl h-full bg-background border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right">
-        {/* Header */}
+      <div className="w-full max-w-3xl h-full bg-background border-l border-border shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/20">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-accent/15 text-accent">
-              <Sparkles size={16} />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Simulation de la règle</h3>
-              <p className="text-[11px] text-muted-foreground">
-                {regleLibelle || "Test sandbox — aucune écriture en base"}
-              </p>
-            </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Simulation de la règle</h3>
+            <p className="text-[11px] text-muted-foreground">{regleLibelle || "Bac à sable — aucune écriture en base"}</p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
-            <X size={16} />
-          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}><X size={16} /></Button>
         </div>
 
-        {/* Body scrollable */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Inputs */}
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Valeurs d'entrée ({detectedAccessors.length})
-              </Label>
-              {detectedAccessors.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={resetInputs} className="h-7 text-[11px] gap-1">
-                  <RefreshCw size={11} /> Réinitialiser
-                </Button>
-              )}
-            </div>
-            {detectedAccessors.length === 0 ? (
-              <div className="text-[12px] text-muted-foreground italic p-3 rounded-lg border border-dashed border-border bg-muted/20">
-                Aucun accesseur détecté dans la règle. Ajoutez des références (ex: <code className="font-mono">MT.IGRA</code>, <code className="font-mono">NBP.HSUP</code>) puis relancez.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {detectedAccessors.map((a) => {
-                  const [kind, rub] = a.split(".") as [AccessorKind, string];
-                  return (
-                    <div key={a} className="space-y-1">
-                      <Label className="text-[11px] font-mono text-foreground flex items-center gap-1.5">
-                        {a}
-                        <span className="text-[9px] text-muted-foreground font-sans normal-case">
-                          {ACCESSOR_LABELS[kind]}
-                        </span>
-                      </Label>
-                      <Input
-                        type={kind === "DTP" ? "date" : "number"}
-                        step={kind === "TY" || kind === "TYP" ? "0.01" : "1"}
-                        value={inputs[a] || ""}
-                        onChange={(e) => setInputs({ ...inputs, [a]: e.target.value })}
-                        placeholder={kind === "DTP" ? "" : "0"}
-                        className="h-8 text-xs font-mono"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valeurs d'entrée ({nbInputs})</Label>
+            {nbInputs > 0 && (
+              <Button variant="ghost" size="sm" onClick={reset} className="h-7 text-[11px] gap-1"><RefreshCw size={11} /> Réinitialiser</Button>
             )}
-          </section>
+          </div>
 
-          {/* Résultats */}
-          {result && (
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                {result.ok ? (
-                  <CheckCircle2 size={14} className="text-emerald-600" />
-                ) : (
-                  <AlertTriangle size={14} className="text-destructive" />
-                )}
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Résultat
-                </Label>
+          {nbInputs === 0 && (
+            <div className="text-[12px] text-muted-foreground italic p-3 rounded-lg border border-dashed border-border bg-muted/20">
+              Aucune valeur d'entrée à saisir. Cliquez sur « Exécuter » pour lancer directement.
+            </div>
+          )}
+
+          {detected.seed.size > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2 flex items-center gap-1.5"><Layers size={12} /> Attributs de la rubrique (départ)</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[...detected.seed].map((a) => field(`seed:${a}`, a, ATTR_LABEL[a], a === "DATE" ? "date" : a === "TEXTE" ? "text" : "number"))}
               </div>
+            </section>
+          )}
 
-              {result.erreurGlobale && (
-                <div className="text-[12px] text-destructive p-2 rounded border border-destructive/40 bg-destructive/5">
-                  {result.erreurGlobale}
-                </div>
-              )}
+          {detected.rubs.size > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2 flex items-center gap-1.5"><Link2 size={12} /> Rubriques référencées [CODE]</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[...detected.rubs.entries()].flatMap(([code, attrs]) =>
+                  [...attrs].map((a) => field(`rub:${code}:${a}`, `[${code}].${a}`, ATTR_LABEL[a], a === "DATE" ? "date" : a === "TEXTE" ? "text" : "number")))}
+              </div>
+            </section>
+          )}
 
-              {/* Sorties */}
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
-                <div className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold mb-1.5">
-                  Sorties calculées
-                </div>
-                {Object.keys(result.sorties).length === 0 ? (
-                  <p className="text-[12px] text-muted-foreground italic">
-                    Aucune affectation de sortie (MT, NB, TY, BASE).
-                  </p>
+          {detected.consts.size > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2 flex items-center gap-1.5"><Hash size={12} /> Constantes #</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[...detected.consts].map((c) => field(`const:${c}`, `#${c}`, "constante"))}
+              </div>
+            </section>
+          )}
+
+          {detected.cumuls.size > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2 flex items-center gap-1.5"><TrendingUp size={12} /> Cumuls (CUMUL / SOMME / MOYENNE)</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[...detected.cumuls].map((c) => field(`cumul:${c}`, `CUMUL("${c}")`, "cumul annuel"))}
+              </div>
+            </section>
+          )}
+
+          {detected.precs.size > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2 flex items-center gap-1.5"><History size={12} /> Paies précédentes (PREC)</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[...detected.precs].map((c) => { const [code, n] = c.split(":"); return field(`prec:${c}`, `PREC("${code}",${n})`, `il y a ${n} période(s)`); })}
+              </div>
+            </section>
+          )}
+
+          {detected.baremes.size > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2 flex items-center gap-1.5"><Table2 size={12} /> Barèmes (BAREME)</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[...detected.baremes].map((c) => field(`bareme:${c}`, `BAREME("${c}")`, "valeur retournée"))}
+              </div>
+            </section>
+          )}
+
+          {result && (
+            <section className="space-y-3 pt-2 border-t border-border">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={14} style={{ color: "hsl(var(--success))" }} />
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Résultat</Label>
+              </div>
+              <div className="rounded-lg p-3" style={{ border: "1px solid hsl(var(--success) / 0.3)", background: "hsl(var(--success) / 0.05)" }}>
+                {sortiesList.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground italic">Aucune sortie (affectez MT, NB, TX, BASE, DATE ou TEXTE).</p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(result.sorties).map(([k, v]) => (
-                      <div key={k} className="flex items-center justify-between bg-background/60 rounded px-2 py-1.5">
-                        <span className="text-[11px] font-mono text-foreground">{k}</span>
-                        <span className="text-sm font-mono font-semibold text-emerald-700">
-                          {typeof v === "number" ? v.toLocaleString("fr-MA", { maximumFractionDigits: 4 }) : v}
-                        </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {sortiesList.map(([lbl, v]) => (
+                      <div key={lbl as string} className="rounded-md bg-background/70 px-2.5 py-2">
+                        <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">{lbl}</div>
+                        <div className="text-base font-mono font-semibold tabular-nums" style={{ color: "hsl(var(--success))" }}>{String(v)}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Registres */}
-              {Object.keys(result.registres).length > 0 && (
-                <details className="rounded-lg border border-border bg-muted/20" open>
-                  <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Registres ({Object.keys(result.registres).length})
-                  </summary>
-                  <div className="grid grid-cols-3 gap-1.5 p-3 pt-0">
-                    {Object.entries(result.registres)
-                      .sort(([a], [b]) => a.localeCompare(b))
-                      .map(([k, v]) => (
-                        <div key={k} className="flex items-center justify-between bg-background rounded px-2 py-1 border border-border">
-                          <span className="text-[10px] font-mono text-muted-foreground">{k}</span>
-                          <span className="text-[11px] font-mono font-semibold text-foreground">
-                            {v.toLocaleString("fr-MA", { maximumFractionDigits: 4 })}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                </details>
+              {result.avertissements.length > 0 && (
+                <div className="rounded-lg p-2.5 text-[11px]" style={{ border: "1px solid hsl(var(--warning) / 0.3)", background: "hsl(var(--warning) / 0.05)", color: "hsl(var(--warning))" }}>
+                  <div className="font-semibold mb-1 flex items-center gap-1.5"><AlertTriangle size={11} /> Avertissements</div>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {[...new Set(result.avertissements)].map((a, i) => <li key={i}>{a}</li>)}
+                  </ul>
+                </div>
               )}
 
-              {/* Trace */}
-              <details className="rounded-lg border border-border bg-muted/20">
-                <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Trace d'exécution ({result.trace.length})
-                </summary>
+              <details className="rounded-lg border border-border bg-muted/20" open>
+                <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Trace d'exécution ({result.trace.length})</summary>
                 <ol className="divide-y divide-border">
-                  {result.trace.map((s, idx) => (
-                    <li key={idx} className="px-3 py-2 text-[11px] font-mono">
-                      <div className="flex items-start gap-2">
-                        <span className="text-muted-foreground w-8 flex-shrink-0">{s.numero}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-foreground">{s.instruction}</div>
-                          {s.resolu && s.resolu !== s.instruction && (
-                            <div className="text-muted-foreground mt-0.5 flex items-center gap-1">
-                              <ArrowRight size={9} />
-                              <span className="break-all">{s.resolu}</span>
-                            </div>
-                          )}
-                          {s.affectation && (
-                            <Badge variant="secondary" className="mt-1 text-[9px] font-mono">
-                              {s.affectation.cible} = {String(s.affectation.valeur)}
-                            </Badge>
-                          )}
-                          {s.branchement && (
-                            <Badge
-                              variant={s.branchement.pris ? "default" : "outline"}
-                              className="mt-1 ml-1 text-[9px] font-mono"
-                            >
-                              {s.branchement.pris ? "✓" : "✗"} BRANCH {s.branchement.vers}
-                            </Badge>
-                          )}
-                          {s.erreur && (
-                            <div className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
-                              <AlertTriangle size={9} /> {s.erreur}
-                            </div>
-                          )}
-                        </div>
+                  {result.trace.map((s, i) => (
+                    <li key={i} className="px-3 py-1.5 text-[11px] font-mono flex items-start gap-2 hover:bg-muted/30 transition-colors">
+                      <span className="text-muted-foreground w-6 text-right flex-shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-foreground break-all">{s.resolu || s.instruction}</span>
+                        {s.avert && <div className="mt-0.5" style={{ color: "hsl(var(--warning))" }}>{s.avert}</div>}
                       </div>
                     </li>
                   ))}
@@ -266,13 +264,10 @@ const SimulationPanel: React.FC<Props> = ({ open, onClose, lignes, regleLibelle 
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-5 py-3 border-t border-border bg-muted/10 flex items-center justify-between">
-          <p className="text-[11px] text-muted-foreground">
-            🔒 Aucune donnée n'est écrite — environnement de test isolé.
-          </p>
-          <Button onClick={runSimulation} className="gap-1.5" size="sm">
-            <Play size={13} /> Lancer la simulation
+          <p className="text-[11px] text-muted-foreground">🔒 Aucune donnée n'est écrite — bac à sable isolé.</p>
+          <Button onClick={lancer} disabled={busy} className="gap-1.5" size="sm">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play size={13} />} Exécuter
           </Button>
         </div>
       </div>

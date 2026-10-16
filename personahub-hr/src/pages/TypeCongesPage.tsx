@@ -106,6 +106,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { db } from "@/lib/api";
 import { useReferentiels } from "@/hooks/useReferentiels";
 import CongeWorkflowPanel from "@/pages/configuration/temps/CongeWorkflowPanel";
+import OperationsWorkflowPanel from "@/pages/absences/OperationsWorkflowPanel";   // ✅ Workflows des opérations (annulation / report / reprise)
 import FamilleWorkflowSelect from "@/pages/configuration/temps/FamilleWorkflowSelect";
 import {
   Clock, Plus, Pencil, Trash2, Check, X, Loader2,
@@ -186,6 +187,10 @@ interface TypeConge {
   droit_particulier_jours: number | null;
   condition_particuliere: string | null;
   impacte_paie: boolean;
+  /** RG-CONGE-VARPAIE-01 (Adil DAIA) : rubrique de paie alimentée en NOMBRE
+   * lors de la récupération des modules (jours de congé approuvés → élément
+   * variable). Distinct de rollover_code_rubrique_paie (rachat de reliquat). */
+  code_rubrique_paie: string | null;
   indemnisable_cnss: boolean;
   indemnisable_amo: boolean;
   indemnisable_cimr: boolean;
@@ -298,7 +303,7 @@ const EMPTY_TYPE: TypeConge = {
   droit_legal_jours: null, reference_legale: null,
   droit_convention_jours: null, reference_convention: null,
   droit_particulier_jours: null, condition_particuliere: null,
-  impacte_paie: false, indemnisable_cnss: false,
+  impacte_paie: false, code_rubrique_paie: null, indemnisable_cnss: false,
   indemnisable_amo: false, indemnisable_cimr: false,
   workflow_obligatoire: false, decision_reference: null,
   actif: true, ordre: 0,
@@ -459,6 +464,9 @@ const TypeCongesPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<"general" | "droits" | "paie" | "workflow" | "report" | "reconduction" | "acquisition">("general");
   const [baremes, setBaremes] = useState<Array<{code: string; libelle: string; critere_principal: string}>>([]);
+  // RG-CONGE-VARPAIE-01 (Adil DAIA) : rubriques disponibles pour l'association
+  // congé → rubrique (alimentation de l'attribut Nombre à la récupération des modules)
+  const [rubriquesPaie, setRubriquesPaie] = useState<Array<{code: string; libelle: string}>>([]);
 
   // ── Duplication ───────────────────────────────────────────────────────────
   const [duplicateSource, setDuplicateSource] = useState<TypeConge | null>(null);
@@ -473,6 +481,16 @@ const TypeCongesPage: React.FC = () => {
       actif: true,
       order: "libelle",
     }).then(data => setBaremes(data));
+  }, []);
+
+  // Charger les rubriques de paie disponibles (association congé → rubrique)
+  useEffect(() => {
+    db.list<any>("rubrique_paie", {
+      select: "code,libelle",
+      archive: false,
+      v_ajout: true, // RG-CONGE-VARPAIE-01 : seules les rubriques autorisées en saisie d'EV "Ajout"
+      order: "code",
+    }).then(data => setRubriquesPaie(data)).catch(() => setRubriquesPaie([]));
   }, []);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -753,6 +771,8 @@ const TypeCongesPage: React.FC = () => {
       rollover_taux_rachat_pct: raw.rollover_taux_rachat_pct ?? null,
       rollover_plafond_jours_rachat: raw.rollover_plafond_jours_rachat ?? null,
       rollover_code_rubrique_paie: raw.rollover_code_rubrique_paie ?? null,
+      // RG-CONGE-VARPAIE-01 (Adil DAIA)
+      code_rubrique_paie: raw.code_rubrique_paie ?? null,
       // RG-CONGE-LIMIT-01 (Adil DAIA)
       nb_jours_max_carriere: raw.nb_jours_max_carriere ?? null,
       nb_occurrences_max_carriere: raw.nb_occurrences_max_carriere ?? null,
@@ -1078,9 +1098,24 @@ const TypeCongesPage: React.FC = () => {
     return (
       <div className="rounded-xl border p-4 mb-4"
         style={{ background: "hsl(var(--accent) / 0.04)", borderColor: "hsl(var(--accent) / 0.3)" }}>
-        <p className="text-sm font-semibold mb-3" style={{ color: "hsl(var(--accent))" }}>
-          {panel === "new_type" ? "Nouveau type de congé" : `Modifier : ${typeForm.code}`}
-        </p>
+        {panel === "new_type" ? (
+          <p className="text-sm font-semibold mb-3" style={{ color: "hsl(var(--accent))" }}>
+            Nouveau type de congé
+          </p>
+        ) : (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <p className="text-sm font-semibold" style={{ color: "hsl(var(--accent))" }}>
+              Modifier :
+            </p>
+            <span className="font-mono px-1.5 py-0.5 rounded text-xs font-semibold"
+              style={{ background: "hsl(var(--accent) / 0.12)", color: "hsl(var(--accent))" }}>
+              {typeForm.code}
+            </span>
+            <span className="text-sm font-medium" style={{ color: "hsl(var(--foreground))" }}>
+              {typeForm.libelle}
+            </span>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 mb-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
@@ -1292,7 +1327,7 @@ const TypeCongesPage: React.FC = () => {
                     }}>{m}</button>
                 ))}
                 {typeForm.mode_calcul_droit_legal === "BAREME" && (
-                  <select className={inputCls} style={{ ...inputStyle, fontSize: 12, padding: "2px 8px" }}
+                  <select className={inputCls} style={{ ...inputStyle, fontSize: "calc(12px * var(--font-scale))", padding: "2px 8px" }}
                     value={typeForm.code_bareme_legal || ""}
                     onChange={e => setTypeForm(f => ({ ...f, code_bareme_legal: e.target.value || null }))}>
                     <option value="">— Choisir un barème —</option>
@@ -1767,6 +1802,26 @@ const TypeCongesPage: React.FC = () => {
               <Toggle value={typeForm.impacte_paie}
                 onChange={v => setTypeForm(f => ({ ...f, impacte_paie: v }))}
                 label="Ce congé impacte la paie" />
+              {typeForm.impacte_paie && (
+                <div className="mt-3">
+                  <Field label="Rubrique de paie associée (élément variable — Nombre)">
+                    <select className={inputCls} style={inputStyle}
+                      value={typeForm.code_rubrique_paie ?? ""}
+                      onChange={e => setTypeForm(f => ({ ...f, code_rubrique_paie: e.target.value || null }))}>
+                      <option value="">— Aucune association —</option>
+                      {rubriquesPaie.map(r => (
+                        <option key={r.code} value={r.code}>{r.code} · {r.libelle}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <p className="text-[10px] mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    Utilisée par « Récupération des modules » : le nombre de jours de congé approuvés
+                    et chevauchant la période est déposé dans l'attribut <strong>Nombre</strong> de cette
+                    rubrique, sur un élément variable de type <strong>Ajout</strong>, source <strong>POINTAGE</strong>.
+                    Sans association, ce type de congé est ignoré par la récupération automatique.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="p-3 rounded-lg" style={{ background: "hsl(var(--muted) / 0.3)" }}>
               <p className="text-xs font-semibold mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>Indemnisations</p>
@@ -1789,7 +1844,12 @@ const TypeCongesPage: React.FC = () => {
         {activeTab === "workflow" && (
           <div className="p-3 rounded-lg" style={{ background: "hsl(var(--muted) / 0.3)" }}>
             {typeForm.code ? (
-              <CongeWorkflowPanel codeType={typeForm.code} codeFamille={typeForm.code_famille} />
+              <div className="space-y-5">
+                <CongeWorkflowPanel codeType={typeForm.code} codeFamille={typeForm.code_famille} />
+                <div className="pt-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                  <OperationsWorkflowPanel codeType={typeForm.code} />
+                </div>
+              </div>
             ) : (
               <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
                 Enregistrez d'abord le type de congé pour configurer son circuit de validation.
@@ -2345,7 +2405,7 @@ const TypeCongesPage: React.FC = () => {
             {/* Bandeau info */}
             <div className="flex items-start gap-3 rounded-xl p-4"
               style={{ background: "hsl(210 80% 97%)", border: "0.5px solid hsl(210 70% 80%)" }}>
-              <span style={{ fontSize: 20 }}>🌍</span>
+              <span style={{ fontSize: "calc(20px * var(--font-scale))" }}>🌍</span>
               <div>
                 <p className="text-sm font-semibold" style={{ color: "hsl(210 70% 30%)" }}>
                   Paramétrage International
@@ -2646,7 +2706,7 @@ const TypeCongesPage: React.FC = () => {
   // ─── Main render ──────────────────────────────────────────────────────────
   return (
     <>
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-[1600px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">

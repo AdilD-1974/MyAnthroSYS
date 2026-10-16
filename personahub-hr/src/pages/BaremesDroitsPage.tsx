@@ -370,7 +370,7 @@ const BaremesDroitsPage: React.FC = () => {
             style={{ background: "hsl(var(--accent)/0.12)", color: "hsl(var(--accent))" }}>
             Tranche {idx + 1}
           </span>
-          <input className={inputCls} style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+          <input className={inputCls} style={{ ...inputStyle, flex: 1, fontSize: "calc(12px * var(--font-scale))" }}
             placeholder="Libellé optionnel (ex: Cadres > 5 ans)"
             value={t.libelle}
             onChange={e => updateTranche(t._id, "libelle", e.target.value)} />
@@ -529,7 +529,7 @@ const BaremesDroitsPage: React.FC = () => {
             ].map(f => (
               <div key={f.key}>
                 <label className="block text-[11px] mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>{f.label}</label>
-                <select className={inputCls} style={{ ...inputStyle, width: "100%", fontSize: 12 }}
+                <select className={inputCls} style={{ ...inputStyle, width: "100%", fontSize: "calc(12px * var(--font-scale))" }}
                   value={(sim as any)[f.key]}
                   onChange={e => setSim(s => ({ ...s, [f.key]: e.target.value }))}>
                   {f.opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -585,42 +585,39 @@ const BaremesDroitsPage: React.FC = () => {
   );
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl" style={{ background: "hsl(var(--accent)/0.1)" }}>
-            <BarChart2 size={20} style={{ color: "hsl(var(--accent))" }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Barèmes de Droits</h1>
-            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Grilles de calcul paramétrables pour les droits de congé • {baremes.length} barème(s)
-            </p>
-          </div>
-        </div>
-        <button onClick={openNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-          style={{ background: "hsl(var(--accent))", color: "white" }}>
-          <Plus size={13} /> Nouveau barème
-        </button>
+    <div className="max-w-5xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Référentiels</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Barèmes de Droits</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={openNew}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouveau barème
+        </button>
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+        <div className="flex items-center flex-1 min-w-[200px] h-8 px-2.5" style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))", maxWidth: 320 }}>
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0 mr-1.5" />
+          <input className="flex-1 text-[13px] outline-none bg-transparent" style={{ color: "hsl(var(--foreground))" }}
+            value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un barème..." />
+        </div>
+        <div className="flex-1" />
+        <span className="text-[12px] whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>{baremes.length} barème(s)</span>
+      </div>
+
+      <div className="p-6">
       {/* Formulaire */}
       {panel && renderForm()}
-
-      {/* Filtre */}
-      <div className="relative mb-4">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
-        <input className="w-full pl-8 pr-3 py-1.5 rounded-lg border text-sm outline-none"
-          style={inputStyle} value={search}
-          onChange={e => setSearch(e.target.value)} placeholder="Rechercher un barème..." />
-      </div>
 
       {/* Liste */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="animate-spin" style={{ color: "hsl(var(--accent))" }} />
+          <Loader2 className="animate-spin" style={{ color: "hsl(var(--primary))" }} />
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -705,6 +702,7 @@ const BaremesDroitsPage: React.FC = () => {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 };

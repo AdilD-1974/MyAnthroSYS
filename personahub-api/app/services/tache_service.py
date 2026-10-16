@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import json
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
@@ -261,6 +264,20 @@ def create_tache(db: Session, data: dict, createur_id: str) -> dict:
         })
 
     db.commit()
+
+    # ── Email aux assignataires ──────────────────────────────
+    if assignations:
+        _envoyer_email_si_assignation(
+            db=db,
+            tache_id=tache_id,
+            tache_titre=data["titre"],
+            tache_description=data.get("description"),
+            tache_priorite=data.get("priorite", "normale"),
+            tache_echeance=data.get("date_echeance"),
+            createur_id=createur_id,
+            assignataires_ids=[a["collaborateur_id"] for a in assignations],
+        )
+
     return _row_to_dict(row)
 
 
@@ -287,12 +304,28 @@ def update_tache(db: Session, tache_id: str, data: dict, user_id: str) -> Option
         return None
 
     # Gestion des assignations si fournies
+    nouvelles_assignations: list[dict] = []
     if "assignations" in data:
         db.execute(text("DELETE FROM tache_assignation WHERE tache_id = :tid"), {"tid": tache_id})
         for a in data["assignations"]:
             _insert_assignation(db, tache_id, a["collaborateur_id"], a.get("role", "responsable"), user_id)
+            nouvelles_assignations.append(a)
 
     db.commit()
+
+    # ── Email aux nouveaux assignataires ────────────────────
+    if nouvelles_assignations:
+        _envoyer_email_si_assignation(
+            db=db,
+            tache_id=tache_id,
+            tache_titre=row["titre"],
+            tache_description=row.get("description"),
+            tache_priorite=row.get("priorite", "normale"),
+            tache_echeance=row.get("date_echeance"),
+            createur_id=user_id,
+            assignataires_ids=[a["collaborateur_id"] for a in nouvelles_assignations],
+        )
+
     return _row_to_dict(row)
 
 
@@ -379,3 +412,43 @@ def create_tache_depuis_workflow(
         "assignations":   assignations or [],
     }
     return create_tache(db, data, createur_id=proprietaire_id)
+
+
+# ── Helper : déclencher les emails d'assignation ─────────────
+
+def _envoyer_email_si_assignation(
+    db,
+    tache_id: str,
+    tache_titre: str,
+    tache_description,
+    tache_priorite: str,
+    tache_echeance,
+    createur_id: str,
+    assignataires_ids: list[str],
+) -> None:
+    """Envoie les emails d'assignation de façon non-bloquante."""
+    if not assignataires_ids:
+        return
+    try:
+        # Récupérer nom/prénom du manager (créateur)
+        manager_row = db.execute(
+            text("SELECT prenom, nom FROM collaborateurs WHERE id = :uid LIMIT 1"),
+            {"uid": createur_id}
+        ).fetchone()
+        manager_prenom = manager_row["prenom"] if manager_row else "Votre manager"
+        manager_nom    = manager_row["nom"]    if manager_row else ""
+
+        from app.services.tache_assign_email import envoyer_email_assignation
+        envoyer_email_assignation(
+            db=db,
+            tache_id=tache_id,
+            tache_titre=tache_titre,
+            tache_description=tache_description,
+            tache_priorite=tache_priorite,
+            tache_echeance=tache_echeance,
+            manager_nom=manager_nom,
+            manager_prenom=manager_prenom,
+            assignataires_ids=assignataires_ids,
+        )
+    except Exception as e:
+        logger.warning(f"[tache_service] Email assignation ignoré: {e}")

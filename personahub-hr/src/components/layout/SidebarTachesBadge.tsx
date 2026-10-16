@@ -33,7 +33,7 @@ export default function SidebarTachesBadge() {
         borderRadius: 10,
         background: "var(--color-text-danger)",
         color: "#fff",
-        fontSize: 10, fontWeight: 700,
+        fontSize: "calc(10px * var(--font-scale))", fontWeight: 700,
         padding: "0 5px",
         lineHeight: 1,
       }}>
@@ -51,7 +51,7 @@ export default function SidebarTachesBadge() {
         borderRadius: 10,
         background: "var(--color-text-warning)",
         color: "#fff",
-        fontSize: 10, fontWeight: 700,
+        fontSize: "calc(10px * var(--font-scale))", fontWeight: 700,
         padding: "0 5px",
         lineHeight: 1,
       }}>

@@ -6,13 +6,14 @@
  * À chaque collaborateur (ou population) on peut affecter un ou plusieurs régimes.
  */
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Pencil, Trash2, Search, Power, Info, Users } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Search, Power, Info, Users, Copy } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useFormatMasks } from "@/hooks/useFormatMasks";
 import RegleCotisationForm from "./RegleCotisationForm";
 
 interface Regime { code: string; libelle: string; organisme: string | null; }
@@ -45,17 +46,18 @@ const ReglesCotisationList: React.FC = () => {
   const [filterRegime, setFilterRegime] = useState<string>("all");
   const [editId, setEditId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const { formatPercent } = useFormatMasks();
 
   const load = async () => {
     setLoading(true);
-    const [{ data: regs }, { data: r }, { data: compos }] = await Promise.all([
-      supabase.from("ref_regime_cotisation" as never)
-        .select("code,libelle,organisme").eq("actif" as never, true as never).order("ordre" as never),
-      supabase.from("regle_calcul_cotisation" as never)
-        .select("*").eq("archive" as never, false as never).order("code_regime" as never).order("code" as never),
-      supabase.from("regle_calcul_cotisation_composante" as never)
-        .select("id_regle,taux_salarial,taux_patronal").eq("actif" as never, true as never),
-    ]);
+    let regs: any[] = [], r: any[] = [], compos: any[] = [];
+    try {
+      [regs, r, compos] = await Promise.all([
+        db.list<any>("ref_regime_cotisation", { actif: true, select: "code,libelle,organisme", order: "ordre" }),
+        db.list<any>("regle_calcul_cotisation", { archive: false, select: "*", order: "code" }),
+        db.list<any>("regle_calcul_cotisation_composante", { actif: true, select: "id_regle,taux_salarial,taux_patronal" }),
+      ]);
+    } catch { /* ignore */ }
     setRegimes((regs || []) as Regime[]);
     // Agréger par règle
     const aggregates: Record<string, { nb: number; ts: number; tp: number }> = {};
@@ -79,18 +81,49 @@ const ReglesCotisationList: React.FC = () => {
   useEffect(() => { load(); }, []);
 
   const handleToggleActif = async (r: RegleCotisation) => {
-    const { error } = await supabase.from("regle_calcul_cotisation" as never)
-      .update({ actif: !r.actif } as never).eq("id" as never, r.id as never);
-    if (error) toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    else { toast({ title: r.actif ? "Règle désactivée" : "Règle activée" }); load(); }
+    try {
+      await db.update("regle_calcul_cotisation", { id: r.id }, { actif: !r.actif });
+      toast({ title: r.actif ? "Règle désactivée" : "Règle activée" }); load();
+    } catch (e: any) { toast({ title: "Erreur", description: e.message, variant: "destructive" }); }
   };
 
   const handleDelete = async (r: RegleCotisation) => {
     if (!confirm(`Archiver la règle "${r.libelle}" ?`)) return;
-    const { error } = await supabase.from("regle_calcul_cotisation" as never)
-      .update({ archive: true } as never).eq("id" as never, r.id as never);
-    if (error) toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    else { toast({ title: "Règle archivée" }); load(); }
+    try {
+      await db.update("regle_calcul_cotisation", { id: r.id }, { archive: true });
+      toast({ title: "Règle archivée" }); load();
+    } catch (e: any) { toast({ title: "Erreur", description: e.message, variant: "destructive" }); }
+  };
+
+  // RG-COTIS-DUP-01 (Adil DAIA) : duplique la règle ET ses composantes.
+  // Code auto-suffixé (unicité garantie par la contrainte en base sinon
+  // l'utilisateur ajuste depuis le formulaire qui s'ouvre juste après) ;
+  // inactive par défaut pour ne jamais appliquer silencieusement une
+  // cotisation en double avant relecture.
+  const handleDuplicate = async (r: RegleCotisation) => {
+    try {
+      const [original] = await db.list<any>("regle_calcul_cotisation", { id: r.id, select: "*" });
+      const { id, created_at, updated_at, ...champs } = original as any;
+      const nouveau = await db.insert("regle_calcul_cotisation", {
+        ...champs,
+        code: `${champs.code}_COPIE`,
+        libelle: `${champs.libelle} (copie)`,
+        actif: false,
+      });
+
+      const composantes = await db.list<any>("regle_calcul_cotisation_composante", { id_regle: r.id, select: "*" });
+      for (const c of composantes) {
+        const { id: cId, created_at: cCreated, updated_at: cUpdated, ...cChamps } = c;
+        await db.insert("regle_calcul_cotisation_composante", { ...cChamps, id_regle: nouveau.id });
+      }
+
+      toast({ title: "Règle dupliquée", description: "Ajustez le code et le libellé avant d'activer." });
+      setEditId(nouveau.id);
+      setShowForm(true);
+      load();
+    } catch (e: any) {
+      toast({ title: "Erreur lors de la duplication", description: e.message, variant: "destructive" });
+    }
   };
 
   // RG-REACT-HOOKS-01 (Adil DAIA) : Tous les hooks doivent être appelés AVANT
@@ -165,8 +198,8 @@ const ReglesCotisationList: React.FC = () => {
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead style={{ background: "hsl(var(--muted) / 0.5)" }}>
+              <tr className="text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
                 <th onClick={() => toggleSort("code")} className="px-4 py-2.5 font-semibold cursor-pointer select-none hover:text-foreground transition-colors">
                   Code <SortIcon column="code" />
                 </th>
@@ -211,11 +244,11 @@ const ReglesCotisationList: React.FC = () => {
                       {r.nb_composantes || 0}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    {r.total_taux_salarial ? `${Number(r.total_taux_salarial).toFixed(2)} %` : "—"}
+                  <td className="px-4 py-3 text-right font-mono text-sm">
+                    {r.total_taux_salarial ? formatPercent(r.total_taux_salarial) : "—"}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    {r.total_taux_patronal ? `${Number(r.total_taux_patronal).toFixed(2)} %` : "—"}
+                  <td className="px-4 py-3 text-right font-mono text-sm">
+                    {r.total_taux_patronal ? formatPercent(r.total_taux_patronal) : "—"}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={r.actif ? "default" : "secondary"} className="text-[10px]">
@@ -225,11 +258,15 @@ const ReglesCotisationList: React.FC = () => {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggleActif(r)} title={r.actif ? "Désactiver" : "Activer"}>
-                        <Power size={13} />
+                        <Power size={13} style={{ color: "hsl(var(--warning))" }} />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7"
                         onClick={() => { setEditId(r.id); setShowForm(true); }} title="Modifier">
-                        <Pencil size={13} />
+                        <Pencil size={13} style={{ color: "hsl(var(--accent))" }} />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7"
+                        onClick={() => handleDuplicate(r)} title="Dupliquer">
+                        <Copy size={13} style={{ color: "hsl(var(--info))" }} />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive"
                         onClick={() => handleDelete(r)} title="Archiver">

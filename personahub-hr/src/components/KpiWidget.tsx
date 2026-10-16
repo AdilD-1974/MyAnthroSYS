@@ -244,8 +244,8 @@ const KpiWidget: React.FC<KpiWidgetProps> = ({ widget }) => {
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={widget.chartData} margin={{ top: 4, right: 8, left: -25, bottom: 4 }}>
               {cfg.afficher_grille && <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />}
-              <XAxis dataKey="name" tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }} />
-              <YAxis tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }} />
+              <XAxis dataKey="name" tick={{ fontSize: "calc(8px * var(--font-scale))", fill: "hsl(var(--muted-foreground))" }} />
+              <YAxis tick={{ fontSize: "calc(8px * var(--font-scale))", fill: "hsl(var(--muted-foreground))" }} />
               <Tooltip formatter={(val: any) => [val, "Valeur"]} />
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                 {widget.chartData.map((entry, index) => (

@@ -12,7 +12,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-export type NotifType = "contrat" | "document" | "anniversaire" | "reprise" | "depart_provisoire" | "paiement";
+export type NotifType = "contrat" | "document" | "anniversaire" | "reprise" | "depart_provisoire" | "paiement" | "workflow";
 
 export interface Notification {
   id: string;
@@ -24,6 +24,8 @@ export interface Notification {
   collaborateurNom?: string;
   collaborateurMatricule?: string;
   daysLeft?: number;
+  lien?: string;              // cible de navigation (notifications persistées)
+  source?: "db";              // "db" = table notifications ; sinon = alerte calculée
   lue: boolean;
 }
 
@@ -48,11 +50,32 @@ function markAllLues(ids: string[]) {
   localStorage.setItem(LS_KEY, JSON.stringify(Array.from(s)));
 }
 
+const LS_KEY_MASK = "notifs_masquees";
+
+function getMasqueesSet(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_KEY_MASK);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+function masquer(id: string) {
+  const s = getMasqueesSet();
+  s.add(id);
+  localStorage.setItem(LS_KEY_MASK, JSON.stringify(Array.from(s)));
+}
+function masquerPlusieurs(ids: string[]) {
+  const s = getMasqueesSet();
+  ids.forEach(id => s.add(id));
+  localStorage.setItem(LS_KEY_MASK, JSON.stringify(Array.from(s)));
+}
+
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [intervalJours, setIntervalJours] = useState(14);
-  const { activeRole, profile } = useAuth();
+  const { activeRole, profile, user } = useAuth();
   const luesSet = getLuesSet();
 
   // Collaborateur voit uniquement ses propres notifs
@@ -368,23 +391,70 @@ export function useNotifications() {
     }
 
     notifs.sort((a, b) => a.date.localeCompare(b.date));
-    setNotifications(notifs);
+
+    // ── Notifications PERSISTÉES (table notifications) ───────────────────────
+    // Créées par le moteur de workflow (ex. « Demande de congés à valider »).
+    // L'état "lue" vit en base (pas dans le localStorage des alertes calculées).
+    if (user?.id) {
+      try {
+        const { data: dbRows } = await supabase
+          .from("notifications" as never)
+          .select("id,titre,message,lien,lue,created_at")
+          .eq("user_id", user.id);
+        const dbNotifs: Notification[] = ((dbRows || []) as any[]).map((r) => ({
+          id: r.id,
+          type: "workflow" as NotifType,
+          titre: r.titre,
+          description: r.message,
+          date: r.created_at,
+          lien: r.lien || undefined,
+          source: "db" as const,
+          lue: !!r.lue,
+        }));
+        dbNotifs.sort((a, b) => b.date.localeCompare(a.date)); // récentes d'abord
+        notifs.unshift(...dbNotifs);                            // placées en tête
+      } catch { /* table absente / erreur réseau : on ignore */ }
+    }
+
+    const masquees = getMasqueesSet();
+    setNotifications(notifs.filter((n) => !masquees.has(n.id)));
     setLoading(false);
-  }, [intervalJours, isCollaborateur, collaborateurId]);
+  }, [intervalJours, isCollaborateur, collaborateurId, user?.id]);
 
   useEffect(() => { load(); }, [load]);
 
   const markAsRead = (id: string) => {
-    markLue(id);
+    const cible = notifications.find((x) => x.id === id);
+    if (cible?.source === "db") {
+      supabase.from("notifications" as never).update({ lue: true } as never).eq("id", id).then(() => {}, () => {});
+    } else {
+      markLue(id);
+    }
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, lue: true } : n));
   };
 
   const markAllAsRead = () => {
-    markAllLues(notifications.map(n => n.id));
+    const calcIds = notifications.filter((n) => n.source !== "db").map((n) => n.id);
+    const dbIds = notifications.filter((n) => n.source === "db" && !n.lue).map((n) => n.id);
+    markAllLues(calcIds);
+    dbIds.forEach((id) => {
+      supabase.from("notifications" as never).update({ lue: true } as never).eq("id", id).then(() => {}, () => {});
+    });
     setNotifications(prev => prev.map(n => ({ ...n, lue: true })));
+  };
+
+  // Retirer de la liste (masquage persistant, sans suppression en base)
+  const dismiss = (id: string) => {
+    masquer(id);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const dismissAll = () => {
+    masquerPlusieurs(notifications.map(n => n.id));
+    setNotifications([]);
   };
 
   const unreadCount = notifications.filter(n => !n.lue).length;
 
-  return { notifications, loading, unreadCount, markAsRead, markAllAsRead, reload: load, intervalJours };
+  return { notifications, loading, unreadCount, markAsRead, markAllAsRead, dismiss, dismissAll, reload: load, intervalJours };
 }

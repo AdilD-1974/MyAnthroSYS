@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Bulletin de paie — {{ collaborateur.matricule }} — {{ periode.libelle }}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 14mm 12mm 16mm 12mm;
+        @bottom-center {
+            content: "Bulletin généré le {{ date_generation }} — Document confidentiel";
+            font-size: 7pt;
+            color: #999999;
+        }
+    }
+    * { box-sizing: border-box; }
+    body { font-family: "DejaVu Sans", "Calibri", Arial, sans-serif; font-size: 9.5pt; color: #1a1a1a; }
+
+    .header { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    .header td { vertical-align: top; border: none; padding: 0; }
+    .societe-nom { font-size: 16pt; font-weight: bold; color: #1F3864; margin: 0 0 2px 0; }
+    .societe-info { font-size: 7.5pt; color: #555555; line-height: 1.5; }
+    .bulletin-tag { display: inline-block; background: #1F3864; color: #FFFFFF; font-weight: bold; font-size: 11pt; padding: 4px 10px; float: right; }
+    .header-meta { text-align: right; font-size: 8.5pt; line-height: 1.9; clear: both; padding-top: 6px; }
+    .statut-VALIDE  { color: #2E7D32; font-weight: bold; }
+    .statut-CALCULE { color: #B8860B; font-weight: bold; }
+    .statut-CLOTURE { color: #555555; font-weight: bold; }
+
+    h2.section-title { font-size: 10.5pt; color: #1F3864; margin: 14px 0 5px 0; border-bottom: 1.5px solid #1F3864; padding-bottom: 2px; }
+
+    table.identite { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    table.identite td { border: 1px solid #BFBFBF; padding: 3px 6px; font-size: 8.5pt; }
+    table.identite td.lbl { background: #F2F2F2; color: #555555; width: 15%; }
+    table.identite td.val { font-weight: bold; width: 35%; }
+
+    table.rubriques { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    table.rubriques th { background: #1F3864; color: #FFFFFF; font-size: 8pt; padding: 4px 5px; text-align: left; border: 1px solid #BFBFBF; }
+    table.rubriques td { border: 1px solid #BFBFBF; padding: 3px 5px; font-size: 8.3pt; }
+    table.rubriques td.num { text-align: right; }
+    table.rubriques td.center { text-align: center; }
+    tr.section-row td { background: #DCE6F1; color: #1F3864; font-weight: bold; font-size: 8pt; }
+    tr.section-total td { font-weight: bold; background: #F2F2F2; }
+
+    table.recap { width: 100%; border-collapse: collapse; margin: 6px 0 10px 0; }
+    table.recap td { border: 1px solid #BFBFBF; padding: 4px 8px; font-size: 9pt; }
+    table.recap td.v { text-align: right; }
+    tr.net-a-payer td { background: #1F3864; color: #FFFFFF; font-weight: bold; font-size: 11pt; }
+
+    .footnote { font-size: 7.5pt; color: #888888; font-style: italic; margin-top: 4px; }
+    .signature { margin-top: 26px; font-size: 8.5pt; overflow: auto; }
+    .signature .right { float: right; }
+    .warn-badge { display: inline-block; background: #FDECEA; color: #C00000; border: 1px solid #C00000; font-size: 6.5pt; padding: 0 4px; border-radius: 3px; margin-left: 4px; }
+</style>
+</head>
+<body>
+
+    <table class="header">
+        <tr>
+            <td style="width: 60%;">
+                <p class="societe-nom">{{ societe.raison_sociale }}</p>
+                <p class="societe-info">
+                    {{ societe.activite }}<br>
+                    {{ societe.adresse }}<br>
+                    RC : {{ societe.rc }} &nbsp; IF : {{ societe.if_fiscal }} &nbsp; Patente : {{ societe.patente }}<br>
+                    Affiliation CNSS : {{ societe.cnss }}
+                </p>
+            </td>
+            <td style="width: 40%;">
+                <span class="bulletin-tag">BULLETIN DE PAIE</span>
+                <div class="header-meta">
+                    Période : <b>{{ periode.libelle }}</b><br>
+                    Plan de paie : <b>{{ periode.code_plan }}</b><br>
+                    N° bulletin : <b>{{ bulletin.numero }}</b><br>
+                    Statut : <span class="statut-{{ bulletin.statut }}">{{ bulletin.statut }}</span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <h2 class="section-title">Informations collaborateur</h2>
+    <table class="identite">
+        {% for row in identite_rows %}
+        <tr>
+            {% for lbl, val in row %}
+            <td class="lbl">{{ lbl }}</td><td class="val">{{ val }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2 class="section-title">Détail du bulletin</h2>
+    <table class="rubriques">
+        <tr>
+            <th style="width:8%">Code</th>
+            <th style="width:28%">Libellé</th>
+            <th style="width:11%">Base</th>
+            <th style="width:8%">Nb</th>
+            <th style="width:8%">Taux</th>
+            <th style="width:13%">Montant</th>
+            <th style="width:13%">Part patr.</th>
+            <th style="width:11%">Cumul à date</th>
+        </tr>
+        {% for section in sections %}
+            {% if section.lignes %}
+            <tr class="section-row"><td colspan="8">{{ section.titre }}</td></tr>
+            {% for l in section.lignes %}
+            <tr>
+                <td class="center">{{ l.code }}</td>
+                <td>{{ l.libelle }}{% if l.observation %}<span class="warn-badge">{{ l.observation }}</span>{% endif %}</td>
+                <td class="num">{{ l.base }}</td>
+                <td class="num">{{ l.nombre }}</td>
+                <td class="num">{{ l.taux }}</td>
+                <td class="num">{{ l.montant }}</td>
+                <td class="num">{{ l.montant_patronal }}</td>
+                <td class="num">{{ l.montant_cumul }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="section-total">
+                <td colspan="5">Sous-total {{ section.titre|lower }}</td>
+                <td class="num">{{ section.sous_total }}</td>
+                <td class="num">{{ section.sous_total_patronal }}</td>
+                <td></td>
+            </tr>
+            {% endif %}
+        {% endfor %}
+    </table>
+
+    <table class="recap">
+        <tr><td>Total des gains</td><td class="v">{{ totaux.total_gains }} MAD</td></tr>
+        <tr><td>Total des cotisations salariales</td><td class="v">{{ totaux.total_cot_salariale }} MAD</td></tr>
+        <tr><td>Total des retenues</td><td class="v">{{ totaux.total_retenues }} MAD</td></tr>
+        <tr><td>Net imposable</td><td class="v">{{ totaux.net_imposable }} MAD</td></tr>
+        <tr class="net-a-payer"><td>NET À PAYER</td><td class="v">{{ totaux.net_a_payer }} MAD</td></tr>
+        <tr><td>Cotisations patronales (indicatif)</td><td class="v">{{ totaux.total_cot_patronale }} MAD</td></tr>
+        <tr><td>Coût employeur total</td><td class="v">{{ totaux.cout_employeur }} MAD</td></tr>
+    </table>
+
+    <p class="footnote">
+        Net à payer en toutes lettres : {{ totaux.net_a_payer_lettres }}.<br>
+        Ce bulletin de paie est à conserver sans limitation de durée. Conformément à la législation en vigueur,
+        il peut être exigé en cas de contrôle ou de litige.
+    </p>
+
+    <div class="signature">
+        Mode de règlement : {{ bulletin.mode_reglement }}
+        <span class="right">Signature / Cachet employeur</span>
+    </div>
+
+</body>
+</html>

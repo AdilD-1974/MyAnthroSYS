@@ -752,8 +752,8 @@ const KpiChart: React.FC<{ kpi: KpiConfig; data: any[]; config: Record<string, a
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
           {config.afficher_grille && <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />}
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-          <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+          <XAxis dataKey="name" tick={{ fontSize: "calc(11px * var(--font-scale))", fill: "hsl(var(--muted-foreground))" }} />
+          <YAxis tick={{ fontSize: "calc(11px * var(--font-scale))", fill: "hsl(var(--muted-foreground))" }} />
           <Tooltip formatter={(val: any) => [val, "Effectif"]} />
           <Bar dataKey="value" radius={[4, 4, 0, 0]}>
             {data.map((entry, index) => (

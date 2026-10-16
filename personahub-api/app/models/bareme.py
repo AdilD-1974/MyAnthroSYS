@@ -43,6 +43,12 @@ class Bareme(Base):
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     archive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # RG-MULTISOCIETE-03 (migration 057) : None = barème générique (visible
+    # de toutes les sociétés), une valeur = surcharge propre à cette société.
+    societe_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("societes.id"), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -73,7 +79,15 @@ class Bareme(Base):
         order_by="BaremeLigne.ordre",
     )
 
-    __table_args__ = (UniqueConstraint("code", name="uq_bareme_code"),)
+    # RG-MULTISOCIETE-03 (correctif 24/08, migration 061) : uq_bareme_code
+    # supprimée en base -- remplacée par 2 index partiels
+    # (uq_bareme_code_generique / uq_bareme_societe_code) pour permettre une
+    # surcharge société avec le même code qu'un barème générique. Ne pas la
+    # redéclarer ici : SQLAlchemy ne modélise pas nativement les index
+    # partiels via UniqueConstraint -- laisser la base gouverner cette
+    # unicité (déjà le cas : create_bareme dans baremes.py capture
+    # IntegrityError plutôt que de présupposer la forme de la contrainte).
+    __table_args__ = ()
 
 
 class BaremeCle(Base):

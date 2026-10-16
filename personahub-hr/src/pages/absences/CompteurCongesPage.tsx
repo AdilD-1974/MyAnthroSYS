@@ -896,75 +896,75 @@ export default function CompteurCongesPage() {
 
   return (
     <TooltipProvider>
-    <div className="p-6 space-y-6">
-      {/* En-tête */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
-            Compteurs de Congés
-          </h1>
-          <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {isManager ? "Soldes et droits de votre équipe" : "Gestion des droits acquis, soldes et reliquats par collaborateur"}
-          </p>
-        </div>
-        {!isManager && (
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => recalculAll.mutate()} disabled={recalculAll.isPending}>
-              <RefreshCw size={15} className={recalculAll.isPending ? "animate-spin" : ""} />
-              Recalculer les soldes
-            </Button>
-            {collabsSansDroits.length > 0 && (
-              <Button variant="outline" size="sm"
-                onClick={() => genererTousDroits.mutate()}
-                disabled={genererTousDroits.isPending}
-                className="border-amber-500/50 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950">
-                <Wand2 size={15} className={genererTousDroits.isPending ? "animate-spin" : ""} />
-                Générer droits manquants ({collabsSansDroits.length})
-              </Button>
-            )}
-            <Button size="sm" onClick={openNewDroit}>
-              <Plus size={15} /> Saisir un droit
-            </Button>
-          </div>
-        )}
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Absences</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Compteurs de Congés</span>
       </div>
+
+      {/* Barre d'outils */}
+      {!isManager && (
+        <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+          <button onClick={openNewDroit}
+            className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+            style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+            <Plus size={14} /> Saisir un droit
+          </button>
+          <button onClick={() => recalculAll.mutate()} disabled={recalculAll.isPending}
+            className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors" style={{ color: "hsl(var(--muted-foreground))" }}>
+            <RefreshCw size={14} className={recalculAll.isPending ? "animate-spin" : ""} />
+            Recalculer les soldes
+          </button>
+          {collabsSansDroits.length > 0 && (
+            <button onClick={() => genererTousDroits.mutate()} disabled={genererTousDroits.isPending}
+              className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors" style={{ color: "hsl(var(--warning))" }}>
+              <Wand2 size={14} className={genererTousDroits.isPending ? "animate-spin" : ""} />
+              Générer droits manquants ({collabsSansDroits.length})
+            </button>
+          )}
+          <div className="flex-1" />
+          <span className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+            {isManager ? "Soldes et droits de votre équipe" : "Droits acquis, soldes et reliquats par collaborateur"}
+          </span>
+        </div>
+      )}
+
+      <div className="p-6 space-y-6">
 
       {/* Alerte collaborateurs sans droits — admin/RH uniquement */}
       {!isManager && collabsSansDroits.length > 0 && (
-        <Card className="border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20">
-          <CardContent className="p-4 flex items-start gap-3">
-            <AlertTriangle size={18} className="mt-0.5 text-amber-500 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                {collabsSansDroits.length} collaborateur(s) sans droits pour l'exercice {filterExercice}
-              </p>
-              <p className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-0.5">
-                Les droits seront calculés proportionnellement à la date d'entrée (date début du contrat).
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-start gap-3 p-4" style={{ background: "hsl(var(--warning) / 0.08)", border: "1px solid hsl(var(--warning) / 0.25)", borderRadius: "var(--radius)" }}>
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" style={{ color: "hsl(var(--warning))" }} />
+          <div className="flex-1">
+            <p className="text-sm font-medium" style={{ color: "hsl(var(--warning))" }}>
+              {collabsSansDroits.length} collaborateur(s) sans droits pour l'exercice {filterExercice}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "hsl(var(--warning) / 0.85)" }}>
+              Les droits seront calculés proportionnellement à la date d'entrée (date début du contrat).
+            </p>
+          </div>
+        </div>
       )}
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Jours acquis", value: totalAcquis.toFixed(1), icon: <TrendingUp size={18} />, color: "hsl(var(--primary))" },
-          { label: "Jours pris", value: totalPris.toFixed(1), icon: <CheckCircle size={18} />, color: "hsl(142 71% 45%)" },
-          { label: "Solde restant", value: totalRest.toFixed(1), icon: <Clock size={18} />, color: "hsl(38 92% 50%)" },
-          { label: "Reliquats reportés", value: totalReliq.toFixed(1), icon: <AlertTriangle size={18} />, color: "hsl(0 72% 51%)" },
+          { label: "Jours acquis", value: totalAcquis.toFixed(1), icon: <TrendingUp size={18} />, token: "primary" },
+          { label: "Jours pris", value: totalPris.toFixed(1), icon: <CheckCircle size={18} />, token: "success" },
+          { label: "Solde restant", value: totalRest.toFixed(1), icon: <Clock size={18} />, token: "warning" },
+          { label: "Reliquats reportés", value: totalReliq.toFixed(1), icon: <AlertTriangle size={18} />, token: "destructive" },
         ].map(k => (
-          <Card key={k.label}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg" style={{ background: `${k.color}20`, color: k.color }}>
-                {k.icon}
-              </div>
-              <div>
-                <p className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>{k.value}</p>
-                <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div key={k.label} className="p-4 flex items-center gap-3" style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--card))" }}>
+            <div className="p-2 rounded-lg" style={{ background: `hsl(var(--${k.token}) / 0.12)`, color: `hsl(var(--${k.token}))` }}>
+              {k.icon}
+            </div>
+            <div>
+              <p className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>{k.value}</p>
+              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p>
+            </div>
+          </div>
         ))}
       </div>
 
@@ -1815,6 +1815,7 @@ export default function CompteurCongesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
     </TooltipProvider>
   );

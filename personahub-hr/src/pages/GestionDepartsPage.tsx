@@ -16,6 +16,7 @@ import { toast } from "@/hooks/use-toast";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { fr } from "date-fns/locale";
 import DepartForm from "@/components/depart/DepartForm";
+import SuiviDemandeWorkflow from "@/pages/espaces/SuiviDemandeWorkflow";
 import * as XLSX from "xlsx";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -37,8 +38,10 @@ interface Depart {
 
 // ─── Config statuts ──────────────────────────────────────────────────────────
 const STATUT_CFG: Record<string, { label: string; bg: string; color: string; border: string; icon: React.ReactNode }> = {
+  EN_COURS:   { label: "En cours",   bg: "hsl(210 90% 55% / 0.12)", color: "hsl(210 90% 40%)", border: "hsl(210 90% 55% / 0.3)",  icon: <CircleDot size={12} /> },
   PLANIFIE: { label: "Planifié",  bg: "hsl(45 100% 50% / 0.12)",  color: "hsl(45 100% 28%)",  border: "hsl(45 100% 50% / 0.3)",  icon: <Clock size={12} /> },
   TRAITE:   { label: "Traité",    bg: "hsl(142 55% 45% / 0.12)", color: "hsl(142 55% 28%)", border: "hsl(142 55% 45% / 0.3)", icon: <CheckCircle2 size={12} /> },
+  ENREGISTRE: { label: "Enregistré", bg: "hsl(265 60% 55% / 0.12)", color: "hsl(265 60% 45%)", border: "hsl(265 60% 55% / 0.3)", icon: <UserCheck size={12} /> },
   ANNULE:   { label: "Annulé",    bg: "hsl(0 70% 50% / 0.10)",   color: "hsl(0 70% 38%)",   border: "hsl(0 70% 50% / 0.25)",  icon: <X size={12} /> },
 };
 
@@ -192,6 +195,16 @@ const DetailDepartModal: React.FC<{ dep: Depart; onClose: () => void; onNavigate
             </div>
             <StatutBadge statut={dep.statut} />
           </div>
+
+          {/* ── Suivi du workflow (si mode Processus) ── */}
+          {(dep as any).mode_traitement === "PROCESSUS" && (
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+              <SectionTitle title="Suivi de la validation" />
+              <div className="p-4">
+                <SuiviDemandeWorkflow tableSource="collaborateur_departs" demandeId={dep.id} statutDemande={dep.statut} />
+              </div>
+            </div>
+          )}
 
           {/* ── Infos départ ── */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
@@ -354,6 +367,7 @@ const GestionDepartsPage: React.FC = () => {
   const [showForm, setShowForm]             = useState(false);
   const [detailTarget, setDetailTarget]     = useState<Depart | null>(null);
   const [editTarget, setEditTarget]         = useState<Depart | null>(null);
+  const [enregTarget, setEnregTarget]       = useState<Depart | null>(null);
   const [annulTarget, setAnnulTarget]       = useState<Depart | null>(null);
   const [annulMotif, setAnnulMotif]         = useState("");
   const [annulComment, setAnnulComment]     = useState("");
@@ -425,6 +439,23 @@ const GestionDepartsPage: React.FC = () => {
       toast({ title: "Départ traité", description: `${traitTarget.collaborateur?.prenom} ${traitTarget.collaborateur?.nom} est passé(e) en statut SORTI.` });
       queryClient.invalidateQueries({ queryKey: ["departs"] });
       setTraitTarget(null); setTraitDate("");
+    } catch (err: any) {
+      toast({ title: "Erreur", description: err.message, variant: "destructive" });
+    } finally { setSubmittingAction(false); }
+  };
+
+  // ── #6-C : Enregistrer définitivement (TRAITE -> ENREGISTRE) ──────────────
+  const marquerEnregistre = async () => {
+    if (!enregTarget) return;
+    setSubmittingAction(true);
+    try {
+      await api.patch(`/db/collaborateur_departs?id=eq.${enregTarget.id}`, {
+        statut: "ENREGISTRE",
+        updated_at: new Date().toISOString(),
+      });
+      toast({ title: "Départ enregistré", description: `Le dossier de ${enregTarget.collaborateur?.prenom} ${enregTarget.collaborateur?.nom} est définitivement enregistré.` });
+      queryClient.invalidateQueries({ queryKey: ["departs"] });
+      setEnregTarget(null);
     } catch (err: any) {
       toast({ title: "Erreur", description: err.message, variant: "destructive" });
     } finally { setSubmittingAction(false); }
@@ -542,8 +573,10 @@ const GestionDepartsPage: React.FC = () => {
 
   // ── KPIs enrichis ─────────────────────────────────────────────────────────
   const now = new Date();
+  const enCours       = departs.filter(d => d.statut === "EN_COURS").length;
   const planifies     = departs.filter(d => d.statut === "PLANIFIE").length;
   const traites       = departs.filter(d => d.statut === "TRAITE").length;
+  const enregistres   = departs.filter(d => d.statut === "ENREGISTRE").length;
   const annules       = departs.filter(d => d.statut === "ANNULE").length;
   const avenir30j     = departs.filter(d => {
     if (d.statut !== "PLANIFIE") return false;
@@ -560,48 +593,50 @@ const GestionDepartsPage: React.FC = () => {
   ).length;
 
   return (
-    <div className="p-6 space-y-6">
-
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <DoorOpen size={20} style={{ color: "hsl(var(--accent))" }} />
-            <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Gestion des Départs</h1>
-          </div>
-          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {isManager ? "Suivi des départs de votre équipe" : "Enregistrement et suivi des départs de collaborateurs"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium hover:opacity-80 transition-opacity"
-            style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "hsl(var(--card))" }}
-            title="Exporter en Excel">
-            <FileDown size={14} /> Export Excel
-          </button>
-          {!isReadOnly && (
-            <Button onClick={() => setShowForm(true)} size="sm" className="flex items-center gap-2">
-              <Plus size={15} /> Enregistrer un départ
-            </Button>
-          )}
-        </div>
+    <div className="max-w-7xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Gestion des Départs</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        {!isReadOnly && (
+          <button onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+            style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+            <Plus size={14} /> Enregistrer un départ
+          </button>
+        )}
+        <button onClick={handleExport}
+          title="Exporter en Excel"
+          className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors"
+          style={{ color: "hsl(var(--muted-foreground))" }}>
+          <FileDown size={14} /> Export Excel
+        </button>
+        <div className="flex-1" />
+        <span className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {isManager ? "Suivi des départs de votre équipe" : "Enregistrement et suivi des départs de collaborateurs"}
+        </span>
+      </div>
+
+      <div className="p-6 space-y-6">
       {/* ── KPIs enrichis ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
-          { label: "Planifiés",       value: planifies,      icon: <Clock size={15} />,          bg: "hsl(45 100% 50% / 0.12)",  color: "hsl(45 100% 28%)",  border: "hsl(45 100% 50% / 0.25)" },
-          { label: "Traités",         value: traites,        icon: <CheckCircle2 size={15} />,   bg: "hsl(142 55% 45% / 0.12)", color: "hsl(142 55% 28%)", border: "hsl(142 55% 45% / 0.25)" },
-          { label: "Annulés",         value: annules,        icon: <X size={15} />,              bg: "hsl(0 70% 50% / 0.10)",   color: "hsl(0 70% 38%)",   border: "hsl(0 70% 50% / 0.2)" },
-          { label: "≤ 30 jours",      value: avenir30j,      icon: <Bell size={15} />,           bg: "hsl(38 92% 50% / 0.12)",  color: "hsl(38 92% 35%)",  border: "hsl(38 92% 50% / 0.25)" },
-          { label: "Préavis en cours", value: preavisEnCours, icon: <CalendarClock size={15} />, bg: "hsl(210 70% 50% / 0.12)", color: "hsl(210 70% 35%)", border: "hsl(210 70% 50% / 0.25)" },
-          { label: "Ce mois",         value: deCeMois,       icon: <TrendingUp size={15} />,     bg: "hsl(var(--accent) / 0.1)", color: "hsl(var(--accent))", border: "hsl(var(--accent) / 0.2)" },
+          { label: "En cours",        value: enCours,        icon: <CircleDot size={15} />,      token: "info" },
+          { label: "Planifiés",       value: planifies,      icon: <Clock size={15} />,          token: "warning" },
+          { label: "Traités",         value: traites,        icon: <CheckCircle2 size={15} />,   token: "success" },
+          { label: "Enregistrés",     value: enregistres,    icon: <UserCheck size={15} />,      token: "accent" },
+          { label: "Annulés",         value: annules,        icon: <X size={15} />,              token: "destructive" },
+          { label: "≤ 30 jours",      value: avenir30j,      icon: <Bell size={15} />,           token: "warning" },
+          { label: "Préavis en cours", value: preavisEnCours, icon: <CalendarClock size={15} />, token: "info" },
+          { label: "Ce mois",         value: deCeMois,       icon: <TrendingUp size={15} />,     token: "primary" },
         ].map(k => (
           <div key={k.label} className="rounded-xl p-3 flex items-center gap-2.5"
-            style={{ background: "hsl(var(--card))", border: `1px solid ${k.border}` }}>
+            style={{ background: "hsl(var(--card))", border: `1px solid hsl(var(--${k.token}) / 0.25)` }}>
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: k.bg, color: k.color }}>{k.icon}</div>
+              style={{ background: `hsl(var(--${k.token}) / 0.12)`, color: `hsl(var(--${k.token}))` }}>{k.icon}</div>
             <div>
               <p className="text-lg font-bold leading-none" style={{ color: "hsl(var(--foreground))" }}>{k.value}</p>
               <p className="text-[10px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p>
@@ -620,15 +655,15 @@ const GestionDepartsPage: React.FC = () => {
         if (!urgents.length) return null;
         return (
           <div className="rounded-xl border overflow-hidden"
-            style={{ borderColor: "hsl(38 92% 50% / 0.3)", background: "hsl(38 92% 50% / 0.04)" }}>
+            style={{ borderColor: "hsl(var(--warning) / 0.3)", background: "hsl(var(--warning) / 0.04)" }}>
             <div className="flex items-center gap-2 px-4 py-2.5 border-b"
-              style={{ borderColor: "hsl(38 92% 50% / 0.2)", background: "hsl(38 92% 50% / 0.08)" }}>
+              style={{ borderColor: "hsl(var(--warning) / 0.2)", background: "hsl(var(--warning) / 0.08)" }}>
               <Bell size={13} style={{ color: "hsl(38 92% 35%)" }} />
               <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "hsl(38 92% 35%)" }}>
                 {urgents.length} départ{urgents.length > 1 ? "s" : ""} dans les 7 prochains jours
               </span>
             </div>
-            <div className="divide-y" style={{ borderColor: "hsl(38 92% 50% / 0.1)" }}>
+            <div className="divide-y" style={{ borderColor: "hsl(var(--warning) / 0.1)" }}>
               {urgents.map(dep => {
                 const j = differenceInDays(new Date(dep.date_depart), now);
                 const col = dep.collaborateur;
@@ -883,7 +918,7 @@ const GestionDepartsPage: React.FC = () => {
                       const enCours = dd.preavis_date_debut && dd.preavis_date_fin
                         && new Date(dd.preavis_date_debut) <= now && new Date(dd.preavis_date_fin) >= now;
                       const couleur = dispense ? "hsl(38 92% 35%)" : effectue ? "hsl(142 55% 28%)" : enCours ? "hsl(210 70% 35%)" : "hsl(var(--muted-foreground))";
-                      const bg = dispense ? "hsl(38 92% 50% / 0.1)" : effectue ? "hsl(142 55% 45% / 0.1)" : enCours ? "hsl(210 70% 50% / 0.1)" : "hsl(var(--muted))";
+                      const bg = dispense ? "hsl(var(--warning) / 0.1)" : effectue ? "hsl(var(--success) / 0.1)" : enCours ? "hsl(var(--info) / 0.1)" : "hsl(var(--muted))";
                       return (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
                           style={{ background: bg, color: couleur }}>
@@ -907,6 +942,22 @@ const GestionDepartsPage: React.FC = () => {
                         title="Voir le détail">
                         <Eye size={13} />
                       </button>
+                      {!isReadOnly && dep.statut === "TRAITE" && (
+                        <button onClick={() => setEditTarget(dep)}
+                          className="p-1.5 rounded-lg hover:opacity-70 transition-opacity"
+                          style={{ background: "hsl(210 70% 50% / 0.1)", color: "hsl(210 70% 45%)" }}
+                          title="Compléter / éditer le dossier">
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {!isReadOnly && dep.statut === "TRAITE" && (
+                        <button onClick={() => setEnregTarget(dep)}
+                          className="p-1.5 rounded-lg hover:opacity-70 transition-opacity"
+                          style={{ background: "hsl(265 60% 55% / 0.12)", color: "hsl(265 60% 45%)" }}
+                          title="Enregistrer définitivement">
+                          <UserCheck size={13} />
+                        </button>
+                      )}
                       {!isReadOnly && dep.statut === "PLANIFIE" && (
                         <>
                           <button onClick={() => { setTraitTarget(dep); setTraitDate(dep.date_depart); }}
@@ -945,6 +996,48 @@ const GestionDepartsPage: React.FC = () => {
             }
           }}
         />
+      )}
+
+      {/* ── Modal : Enregistrer définitivement (#6-C) ── */}
+      {enregTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "hsl(var(--background) / 0.85)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
+            style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b"
+              style={{ borderColor: "hsl(var(--border))", background: "hsl(265 60% 55% / 0.06)" }}>
+              <div className="flex items-center gap-2">
+                <UserCheck size={15} style={{ color: "hsl(265 60% 45%)" }} />
+                <h2 className="text-base font-bold" style={{ color: "hsl(var(--foreground))" }}>Enregistrer définitivement</h2>
+              </div>
+              <button onClick={() => setEnregTarget(null)} className="p-1.5 rounded-lg hover:opacity-70"
+                style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}><X size={15} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-xl"
+                style={{ background: "hsl(265 60% 55% / 0.07)", border: "1px solid hsl(265 60% 55% / 0.2)" }}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: "hsl(265 60% 55% / 0.15)", color: "hsl(265 60% 40%)" }}>
+                  {enregTarget.collaborateur?.prenom?.[0]}{enregTarget.collaborateur?.nom?.[0]}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{enregTarget.collaborateur?.prenom} {enregTarget.collaborateur?.nom}</p>
+                  <p className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{enregTarget.motif_depart}</p>
+                </div>
+              </div>
+              <p className="text-[11px] p-2 rounded-lg" style={{ background: "hsl(var(--muted) / 0.5)", color: "hsl(var(--muted-foreground))" }}>
+                Confirme que <strong>toutes les étapes du dossier sont complètes</strong>. Le départ passera au statut <strong>ENREGISTRÉ</strong> (définitif).
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+              <Button variant="outline" onClick={() => setEnregTarget(null)} disabled={submittingAction}>Annuler</Button>
+              <Button onClick={marquerEnregistre} disabled={submittingAction}
+                style={{ background: "hsl(265 60% 50%)", color: "white" }}>
+                {submittingAction ? "Enregistrement…" : "Enregistrer définitivement"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Modal : Marquer traité ── */}
@@ -1060,6 +1153,18 @@ const GestionDepartsPage: React.FC = () => {
           }}
         />
       )}
+
+      {editTarget && (
+        <DepartForm
+          departExistant={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSuccess={() => {
+            setEditTarget(null);
+            queryClient.invalidateQueries({ queryKey: ["departs"] });
+          }}
+        />
+      )}
+      </div>
     </div>
   );
 };

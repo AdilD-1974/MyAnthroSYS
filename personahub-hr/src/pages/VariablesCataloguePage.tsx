@@ -243,7 +243,7 @@ const VariablesCataloguePage: React.FC = () => {
               Source SQL (optionnel) — comment cette variable est calculée
             </label>
             <textarea className="px-3 py-2 rounded-lg border text-sm outline-none w-full font-mono"
-              style={{ ...inpStyle, minHeight: 80, fontSize: 11 }}
+              style={{ ...inpStyle, minHeight: 80, fontSize: "calc(11px * var(--font-scale))" }}
               value={editing.source_sql || ""}
               onChange={e => setEditing({ ...editing, source_sql: e.target.value })}
               placeholder="SELECT nom FROM collaborateurs WHERE id = :demandeur_id" />
@@ -258,23 +258,25 @@ const VariablesCataloguePage: React.FC = () => {
 
   // ── Render liste ─────────────
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-medium">Catalogue de variables</h1>
-          <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Variables disponibles dans les templates de notifications et de documents • {variables.length} variable(s)
-          </p>
-        </div>
-        <button onClick={openNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "hsl(var(--accent))", color: "white" }}>
-          <Plus size={13} /> Nouvelle variable
-        </button>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Catalogue de variables</span>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select className={inp} style={{ ...inpStyle, width: "auto", fontSize: 12 }}
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={openNew}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouvelle variable
+        </button>
+
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+
+        <select className={inp} style={{ ...inpStyle, width: "auto", height: 32, fontSize: "calc(12px * var(--font-scale))", border: "1px solid hsl(var(--border))" }}
           value={filterObjet} onChange={e => setFilterObjet(e.target.value)}>
           <option value="ALL">Tous les contextes</option>
           <option value="GLOBAL">Globales uniquement</option>
@@ -282,22 +284,28 @@ const VariablesCataloguePage: React.FC = () => {
             <option key={t.v} value={t.v}>{t.l}</option>
           )}
         </select>
-        <select className={inp} style={{ ...inpStyle, width: "auto", fontSize: 12 }}
+        <select className={inp} style={{ ...inpStyle, width: "auto", height: 32, fontSize: "calc(12px * var(--font-scale))", border: "1px solid hsl(var(--border))" }}
           value={filterCat} onChange={e => setFilterCat(e.target.value)}>
           <option value="ALL">Toutes catégories</option>
           {CATEGORIES.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
         </select>
-        <div className="relative ml-auto">
-          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2"
-            style={{ color: "hsl(var(--muted-foreground))" }} />
-          <input className="pl-7 pr-3 py-1.5 rounded-lg border text-xs w-64"
-            style={inpStyle}
+
+        <div className="flex items-center flex-1 min-w-[220px] h-8 px-2.5 ml-auto"
+          style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))", maxWidth: 280 }}>
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0 mr-1.5" />
+          <input
+            className="flex-1 text-[13px] outline-none bg-transparent"
+            style={{ color: "hsl(var(--foreground))" }}
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Rechercher un code ou libellé…" />
         </div>
+        <span className="text-[12px] whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {variables.length} variable(s)
+        </span>
       </div>
 
+      <div className="p-6">
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin" style={{ color: "hsl(var(--accent))" }} />
@@ -359,6 +367,7 @@ const VariablesCataloguePage: React.FC = () => {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 };

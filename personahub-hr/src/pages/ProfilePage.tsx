@@ -34,21 +34,22 @@ const ProfilePage: React.FC = () => {
   const inputClass = "w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-all focus:ring-2";
 
   return (
-    <div className="p-6 max-w-2xl">
-      <div className="page-header">
-        <h1 className="page-title">Mon Profil</h1>
-        <p className="page-subtitle">Gérez vos informations personnelles</p>
+    <div className="max-w-2xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-3 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Mon Profil</span>
       </div>
 
-      <div className="rounded-2xl p-6" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", boxShadow: "var(--shadow-md)" }}>
+      <div className="px-6 pb-8">
+      <div className="p-6" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)" }}>
         {/* Avatar */}
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold"
-            style={{ background: "hsl(var(--primary))", color: "white" }}>
+          <div className="w-16 h-16 flex items-center justify-center text-2xl font-bold"
+            style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
             {form.prenom?.[0]?.toUpperCase() || "U"}
           </div>
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: "Poppins, sans-serif" }}>
+            <h2 className="text-lg font-bold" style={{ color: "hsl(var(--foreground))" }}>
               {form.prenom} {form.nom}
             </h2>
             <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>{form.poste || "— Poste non renseigné"}</p>
@@ -112,9 +113,10 @@ const ProfilePage: React.FC = () => {
               {loading ? <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "white", borderTopColor: "transparent" }} /> : <Save size={14} />}
               Enregistrer
             </button>
-            {saved && <p className="text-sm font-medium" style={{ color: "hsl(84 55% 45%)" }}>✓ Profil enregistré</p>}
+            {saved && <p className="text-sm font-medium" style={{ color: "hsl(var(--success))" }}>✓ Profil enregistré</p>}
           </div>
         </form>
+      </div>
       </div>
     </div>
   );

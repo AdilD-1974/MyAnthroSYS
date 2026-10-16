@@ -882,42 +882,40 @@ const MouvementsPage: React.FC = () => {
 
   // ── Rendu ───────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
-
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <ArrowRightLeft size={20} className="text-muted-foreground" />
-            Mouvements internes
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Suivi des transferts, promotions et mutations de collaborateurs
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={exportExcel}
-            title="Exporter la sélection en Excel"
-          >
-            <FileDown size={14} className="mr-1.5" /> Exporter
-            {hasActiveFilters && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-accent text-white">
-                {sortedFiltered.length}
-              </span>
-            )}
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => { setShowNewDialog(true); setSelectedCollabId(null); setCollabSearch(""); }}
-          >
-            <Plus size={14} className="mr-1.5" /> Nouveau mouvement
-          </Button>
-        </div>
+    <div className="max-w-7xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px] text-muted-foreground">
+        <span className="font-semibold text-foreground">Mouvements internes</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap border-b border-border bg-card">
+        <button
+          onClick={() => { setShowNewDialog(true); setSelectedCollabId(null); setCollabSearch(""); }}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}
+        >
+          <Plus size={14} /> Nouveau mouvement
+        </button>
+        <button
+          onClick={exportExcel}
+          title="Exporter la sélection en Excel"
+          className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium text-muted-foreground transition-colors"
+        >
+          <FileDown size={14} /> Exporter
+          {hasActiveFilters && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-primary text-white">
+              {sortedFiltered.length}
+            </span>
+          )}
+        </button>
+        <div className="flex-1" />
+        <span className="text-[12px] text-muted-foreground">
+          Suivi des transferts, promotions et mutations
+        </span>
+      </div>
+
+      <div className="p-6 space-y-5">
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard
@@ -934,20 +932,20 @@ const MouvementsPage: React.FC = () => {
           label="Promotions"
           value={kpiPromotions}
           sub={hasActiveFilters ? "dans la sélection" : "actives"}
-          accent="text-emerald-600 dark:text-emerald-400"
+          accent="text-[hsl(var(--success))]"
         />
         <KpiCard
           label="Temporaires"
           value={kpiTemp}
           sub={alertes.length > 0 ? `${alertes.length} alerte(s)` : hasActiveFilters ? "dans la sélection" : "en cours"}
-          accent={alertes.length > 0 ? "text-amber-600 dark:text-amber-400" : undefined}
+          accent={alertes.length > 0 ? "text-[hsl(var(--warning))]" : undefined}
         />
       </div>
 
       {/* ── Alertes ── */}
       {alertes.length > 0 && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-start gap-3">
-          <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="p-4 flex items-start gap-3" style={{ background: "hsl(var(--warning) / 0.08)", border: "1px solid hsl(var(--warning) / 0.25)", borderRadius: "var(--radius)" }}>
+          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: "hsl(var(--warning))" }} />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
               {alertes.length} mouvement(s) temporaire(s) à échéance proche ou sans date de fin
@@ -1298,6 +1296,7 @@ const MouvementsPage: React.FC = () => {
         uoMap={uoMap}
         posteMap={posteMap}
       />
+      </div>
     </div>
   );
 };

@@ -71,17 +71,23 @@ const FrequencesCalendrierSettings: React.FC = () => {
   const expandAll = () => setOpenPlans(new Set(plans.map(p => p.id)));
   const collapseAll = () => setOpenPlans(new Set());
 
+  // RG-FREQ-BUG-01 (correctif, Adil DAIA) : cette fonction interrogeait
+  // "collaborateur_divers" avec une variable `collaborateurId` inexistante
+  // dans ce composant (ni prop, ni state) — plantait (ReferenceError) à
+  // chaque création/modification/suppression de fréquence, puisqu'appelée
+  // juste après (saveFreq/deleteFreq). Corrigé pour interroger la vraie
+  // table du référentiel des fréquences, comme au chargement initial (fRes).
   const loadFrequences = async () => {
     const { data } = await supabase
-      .from("collaborateur_divers")
-      .select("*")
-      .eq("collaborateur_id", collaborateurId)
-      .maybeSingle();
+      .from("ref_frequence_rubrique_paie" as never)
+      .select("code,libelle,description,actif" as never)
+      .order("libelle" as never, { ascending: true });
     if (data) {
-      setFrequences(data);
-      if (data.length > 0 && !selectedFreq) {
-        const periodique = data.find((f: Frequence) => f.code === "PERIODIQUE");
-        setSelectedFreq(periodique?.code || data[0].code);
+      setFrequences(data as unknown as Frequence[]);
+      const liste = data as unknown as Frequence[];
+      if (liste.length > 0 && !selectedFreq) {
+        const periodique = liste.find((f) => f.code === "PERIODIQUE");
+        setSelectedFreq(periodique?.code || liste[0].code);
       }
     }
   };
@@ -254,7 +260,8 @@ const FrequencesCalendrierSettings: React.FC = () => {
             <p className="text-xs text-muted-foreground">{frequences.length} fréquence(s) · {frequencesActives.length} active(s)</p>
           </div>
           <button onClick={startCreate}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white hover:bg-accent/90 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+            style={{ background: "hsl(var(--accent))", color: "hsl(var(--accent-foreground))" }}>
             <Plus size={14} /> Nouvelle fréquence
           </button>
         </div>
@@ -286,7 +293,8 @@ const FrequencesCalendrierSettings: React.FC = () => {
                 <span className="text-xs font-medium text-foreground">Actif</span>
               </label>
               <button onClick={saveFreq} disabled={freqSaving || !freqForm.code.trim() || !freqForm.libelle.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50">
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                style={{ background: "hsl(var(--accent))", color: "hsl(var(--accent-foreground))" }}>
                 {freqSaving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                 {editingCode ? "Modifier" : "Créer"}
               </button>
@@ -302,11 +310,11 @@ const FrequencesCalendrierSettings: React.FC = () => {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/20">
-                <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Code</th>
-                <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Libellé</th>
-                <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Description</th>
-                <th className="px-4 py-2 text-left font-semibold text-muted-foreground w-20">Statut</th>
-                <th className="px-4 py-2 text-right font-semibold text-muted-foreground w-32">Actions</th>
+                <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Code</th>
+                <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Libellé</th>
+                <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Description</th>
+                <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground w-20">Statut</th>
+                <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide font-semibold text-muted-foreground w-32">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -319,7 +327,7 @@ const FrequencesCalendrierSettings: React.FC = () => {
                   <td className="px-4 py-2 text-muted-foreground">{f.description || "—"}</td>
                   <td className="px-4 py-2">
                     {f.actif
-                      ? <span className="px-2 py-0.5 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-medium">Actif</span>
+                      ? <span className="px-2 py-0.5 rounded-md text-xs font-medium" style={{ background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" }}>Actif</span>
                       : <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs font-medium">Inactif</span>}
                   </td>
                   <td className="px-4 py-2">
@@ -357,11 +365,13 @@ const FrequencesCalendrierSettings: React.FC = () => {
           <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Type de fréquence</label>
           <div className="flex rounded-lg border border-border overflow-hidden">
             <button onClick={() => setSelectedType("CALCUL")}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors ${selectedType === "CALCUL" ? "bg-accent text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+              className="px-4 py-2.5 text-sm font-medium transition-colors"
+              style={selectedType === "CALCUL" ? { background: "hsl(var(--accent))", color: "hsl(var(--accent-foreground))" } : { background: "hsl(var(--background))", color: "hsl(var(--muted-foreground))" }}>
               Calcul
             </button>
             <button onClick={() => setSelectedType("RAZ")}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors border-l border-border ${selectedType === "RAZ" ? "bg-amber-500 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+              className="px-4 py-2.5 text-sm font-medium transition-colors border-l border-border"
+              style={selectedType === "RAZ" ? { background: "hsl(var(--warning))", color: "#fff" } : { background: "hsl(var(--background))", color: "hsl(var(--muted-foreground))" }}>
               RAZ Cumuls
             </button>
           </div>
@@ -377,7 +387,8 @@ const FrequencesCalendrierSettings: React.FC = () => {
           </button>
         </div>
         <button onClick={handleSave} disabled={saving || !selectedFreq}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50">
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+          style={{ background: "hsl(var(--accent))", color: "hsl(var(--accent-foreground))" }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           Enregistrer
         </button>
@@ -455,7 +466,7 @@ const FrequencesCalendrierSettings: React.FC = () => {
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b border-border bg-muted/20">
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-12">
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground w-12">
                                 <input type="checkbox"
                                   checked={anneePeriodes.every(p => isChecked(p.id)) && anneePeriodes.length > 0}
                                   disabled={!selectedFreq}
@@ -470,12 +481,12 @@ const FrequencesCalendrierSettings: React.FC = () => {
                                   }}
                                   className="rounded border-border text-accent focus:ring-accent/30" />
                               </th>
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Période</th>
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Mois</th>
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Date début</th>
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Date fin</th>
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Type</th>
-                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Statut</th>
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Période</th>
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Mois</th>
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Date début</th>
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Date fin</th>
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Type</th>
+                              <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Statut</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -484,13 +495,10 @@ const FrequencesCalendrierSettings: React.FC = () => {
                               return (
                                 <tr key={p.id}
                                   onClick={() => selectedFreq && toggle(p.id)}
-                                  className={`border-b border-border last:border-b-0 cursor-pointer transition-colors ${
-                                    checked
-                                      ? selectedType === "CALCUL"
-                                        ? "bg-accent/5 hover:bg-accent/10"
-                                        : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
-                                      : "hover:bg-muted/40"
-                                  }`}>
+                                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-muted/40"
+                                  style={checked
+                                    ? { background: selectedType === "CALCUL" ? "hsl(var(--accent) / 0.08)" : "hsl(var(--warning) / 0.08)" }
+                                    : undefined}>
                                   <td className="px-3 py-2">
                                     <input type="checkbox" checked={checked} onChange={() => toggle(p.id)}
                                       disabled={!selectedFreq}
@@ -511,11 +519,11 @@ const FrequencesCalendrierSettings: React.FC = () => {
                                     <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs">{TYPE_PERIODE_LABELS[p.type_periode] || p.type_periode}</span>
                                   </td>
                                   <td className="px-3 py-2">
-                                    <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
-                                      p.statut === "CLOTUREE" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                                      p.statut === "EN_COURS" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
-                                      "bg-muted text-muted-foreground"
-                                    }`}>{p.statut}</span>
+                                    <span className="px-2 py-0.5 rounded-md text-xs font-medium" style={
+                                      p.statut === "CLOTUREE" ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" } :
+                                      p.statut === "EN_COURS" ? { background: "hsl(var(--info) / 0.12)", color: "hsl(var(--info))" } :
+                                      { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
+                                    }>{p.statut}</span>
                                   </td>
                                 </tr>
                               );

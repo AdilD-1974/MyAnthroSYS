@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
-from app.core.security import require_roles
+from app.core.security import require_roles, get_societe_active_id
 from app.models.bareme import Bareme, BaremeCle, BaremeLigne, BaremeSortie
 from app.schemas.bareme import (
     BaremeCreate,
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/baremes", tags=["Paie · Barèmes"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _get_or_404(db: Session, bareme_id: UUID) -> Bareme:
+def _get_or_404(db: Session, bareme_id: UUID, societe_id: str) -> Bareme:
     obj = (
         db.query(Bareme)
         .options(
@@ -50,6 +50,10 @@ def _get_or_404(db: Session, bareme_id: UUID) -> Bareme:
         .first()
     )
     if obj is None:
+        raise HTTPException(status_code=404, detail="Barème introuvable")
+    # RG-MULTISOCIETE-03 : 404 (pas 403) si le barème appartient à une autre
+    # société -- ne jamais confirmer son existence à qui n'y a pas accès.
+    if obj.societe_id is not None and str(obj.societe_id) != societe_id:
         raise HTTPException(status_code=404, detail="Barème introuvable")
     return obj
 
@@ -102,6 +106,7 @@ def list_baremes(
     search: str | None = Query(None, description="Recherche dans code/libellé"),
     db: Session = Depends(get_db),
     _=Depends(require_roles(*PAIE_ROLES)),
+    societe_id: str = Depends(get_societe_active_id),
 ):
     # Sous-requêtes pour les comptages (évite N+1)
     nb_cles_sq = (
@@ -139,6 +144,9 @@ def list_baremes(
     if search:
         like = f"%{search}%"
         q = q.filter(Bareme.code.ilike(like) | Bareme.libelle.ilike(like))
+    # RG-MULTISOCIETE-03 : générique (societe_id NULL) + spécifique à la
+    # société active -- jamais les barèmes spécifiques d'une autre société.
+    q = q.filter((Bareme.societe_id.is_(None)) | (Bareme.societe_id == societe_id))
 
     rows = q.order_by(Bareme.code.asc()).all()
 
@@ -168,8 +176,9 @@ def get_bareme(
     bareme_id: UUID,
     db: Session = Depends(get_db),
     _=Depends(require_roles(*PAIE_ROLES)),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    return _get_or_404(db, bareme_id)
+    return _get_or_404(db, bareme_id, societe_id)
 
 
 @router.post("", response_model=BaremeRead, status_code=status.HTTP_201_CREATED)
@@ -177,7 +186,14 @@ def create_bareme(
     payload: BaremeCreate,
     db: Session = Depends(get_db),
     _=Depends(require_roles(*PAIE_ROLES)),
+    societe_id: str = Depends(get_societe_active_id),
 ):
+    # RG-MULTISOCIETE-03 : impossible de créer un barème pour une autre
+    # société que l'active (payload.societe_id doit être None -- générique
+    # -- ou correspondre exactement à la société active).
+    if payload.societe_id is not None and str(payload.societe_id) != societe_id:
+        raise HTTPException(403, "Impossible de créer un barème pour une autre société que l'active.")
+
     # Création de l'en-tête
     header_data = payload.model_dump(exclude={"cles", "sorties", "lignes"})
     bareme = Bareme(**header_data)
@@ -199,7 +215,7 @@ def create_bareme(
         raise HTTPException(409, detail=f"Conflit d'intégrité : {e.orig}")
 
     db.refresh(bareme)
-    return _get_or_404(db, bareme.id)
+    return _get_or_404(db, bareme.id, societe_id)
 
 
 @router.put("/{bareme_id}", response_model=BaremeRead)
@@ -208,15 +224,20 @@ def replace_bareme(
     payload: BaremeUpdate,
     db: Session = Depends(get_db),
     _=Depends(require_roles(*PAIE_ROLES)),
+    societe_id: str = Depends(get_societe_active_id),
 ):
     """
     Remplacement atomique : en-tête + clés + sorties + lignes.
     Correspond au clic "Enregistrer" sur le formulaire complet.
+
+    RG-MULTISOCIETE-03 : `societe_id` n'est jamais modifiable via ce endpoint
+    même si présent dans `payload` -- un barème ne change pas de portée
+    après coup, il se recrée.
     """
-    bareme = _get_or_404(db, bareme_id)
+    bareme = _get_or_404(db, bareme_id, societe_id)
 
     # Mise à jour de l'en-tête
-    header_data = payload.model_dump(exclude={"cles", "sorties", "lignes"})
+    header_data = payload.model_dump(exclude={"cles", "sorties", "lignes", "societe_id"})
     for k, v in header_data.items():
         setattr(bareme, k, v)
 
@@ -229,7 +250,7 @@ def replace_bareme(
         db.rollback()
         raise HTTPException(409, detail=f"Conflit d'intégrité : {e.orig}")
 
-    return _get_or_404(db, bareme.id)
+    return _get_or_404(db, bareme.id, societe_id)
 
 
 @router.patch("/{bareme_id}/header", response_model=BaremeRead)
@@ -238,9 +259,12 @@ def update_bareme_header(
     payload: BaremeHeaderUpdate,
     db: Session = Depends(get_db),
     _=Depends(require_roles(*PAIE_ROLES)),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    """Mise à jour partielle de l'en-tête (sans toucher aux clés/sorties/lignes)."""
-    bareme = _get_or_404(db, bareme_id)
+    """Mise à jour partielle de l'en-tête (sans toucher aux clés/sorties/lignes).
+    RG-MULTISOCIETE-03 : BaremeHeaderUpdate n'expose pas societe_id (hérite
+    de BaseModel, pas de BaremeBase) -- non modifiable par construction."""
+    bareme = _get_or_404(db, bareme_id, societe_id)
 
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(bareme, k, v)
@@ -251,7 +275,7 @@ def update_bareme_header(
         db.rollback()
         raise HTTPException(409, detail="Conflit (code déjà utilisé ?).")
 
-    return _get_or_404(db, bareme.id)
+    return _get_or_404(db, bareme.id, societe_id)
 
 
 @router.delete("/{bareme_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -260,8 +284,9 @@ def delete_bareme(
     hard: bool = Query(False, description="Si true, suppression définitive"),
     db: Session = Depends(get_db),
     _=Depends(require_roles("administrateur", "gestionnaire_paie")),
+    societe_id: str = Depends(get_societe_active_id),
 ):
-    bareme = _get_or_404(db, bareme_id)
+    bareme = _get_or_404(db, bareme_id, societe_id)
 
     if hard:
         db.delete(bareme)

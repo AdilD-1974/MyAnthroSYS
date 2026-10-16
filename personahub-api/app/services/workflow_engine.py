@@ -31,8 +31,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
+import smtplib
+import ssl
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from email.message import EmailMessage
 from typing import Any, Optional, Sequence
 from uuid import UUID
 
@@ -58,6 +63,10 @@ def _interpolate(template: str, contexte: dict) -> str:
     out = template
     for k, v in (contexte or {}).items():
         out = out.replace("{" + str(k) + "}", str(v) if v is not None else "")
+    # Convertit les sauts de ligne littéraux (modèles saisis avec \n) en vrais retours
+    out = out.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
+    # Retire les variables non résolues pour ne pas afficher de {accolades}
+    out = re.sub(r"\{[a-zA-Z0-9_]+\}", "", out)
     return out
 
 
@@ -238,6 +247,7 @@ class WorkflowEngine:
         type_decision: str,  # VALIDER / REJETER / RENVOYER / DELEGUER / VISER
         commentaire: Optional[str] = None,
         pieces_jointes: Optional[list] = None,
+        cible_id: Optional[UUID] = None,  # délégataire (collaborateur) si DELEGUER
     ) -> dict:
         """Enregistre la décision d'un acteur et fait avancer le workflow."""
         # Charger le contexte
@@ -269,6 +279,27 @@ class WorkflowEngine:
             "td": type_decision, "comm": commentaire,
             "pj": json.dumps(pieces_jointes or []),
         })
+
+        # ── DELEGUER (ponctuelle) : réassigne l'étape, ne fait pas avancer ──
+        if type_decision == "DELEGUER":
+            if not cible_id:
+                raise ValueError("Un délégataire est requis pour déléguer.")
+            if str(cible_id) == str(acteur_id):
+                raise ValueError("Impossible de se déléguer à soi-même.")
+            # Désactiver une éventuelle délégation ponctuelle précédente sur cette étape
+            self.db.execute(text("""
+                UPDATE wf_instance_delegation SET actif = false
+                WHERE id_instance_etape = :ie AND delegant_id = :del AND actif = true
+            """), {"ie": str(instance_etape_id), "del": str(acteur_id)})
+            self.db.execute(text("""
+                INSERT INTO wf_instance_delegation
+                    (id_instance_etape, delegant_id, delegue_id, motif, actif)
+                VALUES (:ie, :del, :cib, :m, true)
+            """), {"ie": str(instance_etape_id), "del": str(acteur_id),
+                   "cib": str(cible_id), "m": commentaire})
+            self.db.commit()
+            return {"resultat": "DELEGUE", "delegataire": str(cible_id),
+                    "etape_ordre": ie["etape_ordre"]}
 
         # Compteurs
         if type_decision == "VALIDER":
@@ -517,6 +548,50 @@ class WorkflowEngine:
         # Résoudre les acteurs et compter les requis
         acteurs = self._resolve_etape_acteurs(etape_def_id, demandeur_id)
         nb_requis = sum(1 for a in acteurs if not a.est_observateur) or 1
+
+        # ── SAUT AUTOMATIQUE : étape de VALIDATION sans acteur résolvable ──
+        # Cas visé : HIERARCHIE_N2 (ou N1) qui dépasse le sommet hiérarchique,
+        # ou rôle sans titulaire dans le périmètre. Plutôt que de rester bloquée
+        # EN_COURS avec un validateur requis qui n'existe pas, l'étape est
+        # FRANCHIE automatiquement (= approuvée) et le moteur enchaîne sur la
+        # suivante (cascade : si la suivante est elle aussi sans acteur, même
+        # traitement, jusqu'à une étape avec acteur ou une étape terminale).
+        # NB : on ne saute QUE s'il n'existe aucun acteur réel. Si des acteurs
+        # existent mais n'ont pas encore décidé, on attend normalement.
+        if type_etape == "VALIDATION" and not any(not a.est_observateur for a in acteurs):
+            info = self.db.execute(text(
+                "SELECT libelle, ordre FROM ref_workflow_etape WHERE id = :e"
+            ), {"e": str(etape_def_id)}).mappings().first()
+            lib = (info["libelle"] if info else "Validation")
+            ordre_saut = (info["ordre"] if info else 0)
+
+            self.db.execute(text("""
+                UPDATE wf_instance_etape
+                SET statut = 'PASSE', date_debut = NOW(), date_fin = NOW(),
+                    nb_acteurs_requis = 0
+                WHERE id = :ie
+            """), {"ie": str(ie_id)})
+            self.db.execute(text("""
+                UPDATE wf_instance SET id_etape_courante = :ed WHERE id = :i
+            """), {"ed": str(etape_def_id), "i": str(instance_id)})
+            # Trace auditable sur l'instance (wf_instance_action exige acteur_id
+            # NOT NULL, qu'on n'a pas ici : on consigne donc sur commentaire_final,
+            # comme pour le retour administratif).
+            self.db.execute(text("""
+                UPDATE wf_instance
+                SET commentaire_final = COALESCE(commentaire_final || E'\n', '')
+                    || '[ÉTAPE IGNORÉE ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || '] '
+                    || :lib || ' — aucun acteur (limite hiérarchique dépassée ou rôle sans titulaire)'
+                WHERE id = :i
+            """), {"i": str(instance_id), "lib": lib})
+            self.db.commit()
+            logger.info(
+                "Étape '%s' (%s) ignorée — aucun acteur résolvable — instance %s",
+                lib, etape_def_id, instance_id,
+            )
+            # Cascade vers l'étape suivante
+            self._activate_next_etape(instance_id, demandeur_id, ordre_saut)
+            return
 
         echeance = None
         if delai_heures:
@@ -793,6 +868,82 @@ class WorkflowEngine:
                 # la décision : le SAVEPOINT est annulé, la transaction reste saine.
                 logger.error("Erreur action %s : %s", action["type_action"], exc)
 
+    def _contexte_enrichi(self, instance_id, demandeur_id, contexte: dict) -> dict:
+        """Complète le contexte des modèles : lien de traitement, infos demandeur,
+        et toutes les colonnes de l'objet métier (cong_demandes, etc.)."""
+        ctx = dict(contexte or {})
+        ctx.setdefault("lien_validation", f"/gestion-demandes?instance={instance_id}")
+        ctx.setdefault("lien", ctx["lien_validation"])
+        # Infos demandeur (collaborateurs)
+        try:
+            r = self.db.execute(text(
+                "SELECT nom, prenom, matricule, email_professionnel "
+                "FROM collaborateurs WHERE id = :d"
+            ), {"d": str(demandeur_id)}).mappings().first()
+            if r:
+                ctx.setdefault("demandeur_nom", f"{r['prenom']} {r['nom']}".strip())
+                ctx.setdefault("demandeur_prenom", r["prenom"])
+                ctx.setdefault("demandeur_matricule", r["matricule"])
+                ctx.setdefault("demandeur_email", r["email_professionnel"])
+        except Exception as e:
+            logger.warning("Contexte demandeur : %s", e)
+        # Toutes les colonnes de l'objet métier, via le registre `demande`
+        try:
+            d = self.db.execute(text(
+                "SELECT table_objet, id_objet FROM demande WHERE wf_instance_id = :i LIMIT 1"
+            ), {"i": str(instance_id)}).mappings().first()
+            if d and d["table_objet"] and d["id_objet"]:
+                t = str(d["table_objet"])
+                if t.replace("_", "").isalnum():  # garde-fou anti-injection
+                    obj = self.db.execute(
+                        text(f"SELECT * FROM {t} WHERE id = :oid"),
+                        {"oid": str(d["id_objet"])}
+                    ).mappings().first()
+                    if obj:
+                        for k, v in obj.items():
+                            ctx.setdefault(k, v)
+        except Exception as e:
+            logger.warning("Contexte objet métier : %s", e)
+
+        # Alias « métier » pour les modèles RH (congés) : on mappe les vrais
+        # noms de colonnes vers les variables usuelles des modèles.
+        if "date_fin" not in ctx:
+            ctx["date_fin"] = (ctx.get("date_fin_absence") or ctx.get("date_retour")
+                               or ctx.get("date_reprise_effective") or "")
+        if "nb_jours" not in ctx:
+            ctx["nb_jours"] = (ctx.get("nbr_jours_decomptes")
+                               or ctx.get("nbr_jours_calendaires") or "")
+        # Libellé du type de congé (depuis le code stocké)
+        if not ctx.get("type_conge") and ctx.get("code_type_conge"):
+            try:
+                lib = self.db.execute(text(
+                    "SELECT libelle FROM ref_type_conge WHERE code = :c"
+                ), {"c": str(ctx["code_type_conge"])}).scalar()
+                if lib:
+                    ctx["type_conge"] = lib
+            except Exception as e:
+                logger.warning("Libellé type de congé : %s", e)
+
+        # Solde (table cong_solde) pour le collaborateur + type de congé
+        if not ctx.get("solde_restant") and ctx.get("collaborateur_id") and ctx.get("code_type_conge"):
+            try:
+                srow = self.db.execute(text("""
+                    SELECT solde_restant, solde_acquis, solde_pris, solde_en_attente
+                    FROM cong_solde
+                    WHERE collaborateur_id = :c AND code_type_conge = :t
+                    ORDER BY exercice DESC NULLS LAST, date_calcul DESC NULLS LAST
+                    LIMIT 1
+                """), {"c": str(ctx["collaborateur_id"]), "t": str(ctx["code_type_conge"])}).mappings().first()
+                if srow:
+                    ctx.setdefault("solde_restant", srow["solde_restant"])
+                    ctx.setdefault("solde_acquis", srow["solde_acquis"])
+                    ctx.setdefault("solde_pris", srow["solde_pris"])
+                    ctx.setdefault("solde_en_attente", srow["solde_en_attente"])
+            except Exception as e:
+                logger.warning("Solde congé : %s", e)
+
+        return ctx
+
     def _exec_action(
         self, action: dict, ie_id: UUID, instance_id: UUID,
         demandeur_id: UUID, contexte: dict,
@@ -816,6 +967,7 @@ class WorkflowEngine:
                 WHERE code = :c AND actif = true
             """), {"c": tpl_code}).mappings().first()
 
+        contexte = self._contexte_enrichi(instance_id, demandeur_id, contexte)
         sujet = _interpolate(template["sujet"] if template else "", contexte) if template else ""
         corps = _interpolate(template["corps"] if template else "", contexte) if template else ""
 
@@ -827,19 +979,28 @@ class WorkflowEngine:
                     VALUES (:u, :t, :m, :l, false, NOW())
                 """), {
                     "u": str(user_id), "t": sujet, "m": corps,
-                    "l": f"/workflow/{instance_id}",
+                    "l": f"/gestion-demandes?instance={instance_id}",
                 })
             self._log_action(ie_id, "NOTIFICATION_INTERNE", "OK", config, {"recipients": [str(d) for d in destinataires]})
 
         elif type_action == "EMAIL":
-            # À brancher sur le service SMTP
-            payload = {"destinataires": [str(d) for d in destinataires], "sujet": sujet, "corps": corps}
-            # send_email(...) à implémenter
-            self._log_action(ie_id, "EMAIL", "OK", config, payload)
+            raw = config.get("destinataires", []) or []
+            emails_litteraux = [d for d in raw if isinstance(d, str) and "@" in d]
+            emails_users = self._emails_for_users(destinataires)
+            tous = list(dict.fromkeys(emails_litteraux + emails_users))
+            rep = self._send_email(tous, sujet, corps)
+            self._log_action(ie_id, "EMAIL", rep.get("status", "OK"), config, rep)
 
         elif type_action == "SMS":
-            payload = {"destinataires": [str(d) for d in destinataires], "message": corps}
-            self._log_action(ie_id, "SMS", "OK", config, payload)
+            from app.services.sms_service import config_effective as _sms_cfg, envoyer_sms
+            cfg = _sms_cfg(self.db)
+            raw = config.get("destinataires", []) or []
+            tel_litteraux = [d for d in raw if isinstance(d, str) and "@" not in d
+                             and re.match(r"^\+?[\d\s().-]{6,}$", d)]
+            tels_users = self._telephones_for_users(destinataires, cfg)
+            tous = list(dict.fromkeys(tel_litteraux + tels_users))
+            rep = envoyer_sms(cfg, tous, corps)
+            self._log_action(ie_id, "SMS", rep.get("status", "OK"), config, rep)
 
         elif type_action == "WEBHOOK":
             # À brancher sur httpx
@@ -853,6 +1014,67 @@ class WorkflowEngine:
             self._log_action(ie_id, "GENERER_DOCUMENT", "OK", config, {})
 
         self.db.commit()
+
+    # ── E-mail ───────────────────────────────────────────────────────────────
+    def _emails_for_users(self, ids: Sequence) -> list[str]:
+        """Résout des identifiants (user_id auth OU collaborateur_id) en adresses
+        e-mail (collaborateurs.email_professionnel). Robuste aux deux conventions
+        de lien profiles (id = user auth, ou colonne user_id)."""
+        liste = [str(i) for i in ids if i]
+        if not liste:
+            return []
+        emails: set[str] = set()
+
+        def _collect(sql: str):
+            try:
+                rows = self.db.execute(text(sql), {"ids": liste}).scalars().all()
+                emails.update(e.strip() for e in rows if e and "@" in e)
+            except Exception as exc:  # colonne/table absente : on ignore ce chemin
+                logger.warning("Résolution emails (%s) : %s", sql.split()[3], exc)
+
+        # a) id = collaborateur_id (ex. DEMANDEUR/ACTEUR hiérarchie)
+        _collect("SELECT email_professionnel FROM collaborateurs WHERE id::text = ANY(:ids)")
+        # b) id = user_id auth, lien via profiles.id = user
+        _collect("""SELECT c.email_professionnel FROM profiles p
+                     JOIN collaborateurs c ON c.id = p.collaborateur_id
+                     WHERE p.id::text = ANY(:ids)""")
+        # c) id = user_id auth, lien via profiles.user_id (si la colonne existe)
+        _collect("""SELECT c.email_professionnel FROM profiles p
+                     JOIN collaborateurs c ON c.id = p.collaborateur_id
+                     WHERE p.user_id::text = ANY(:ids)""")
+        return list(emails)
+
+    def _telephones_for_users(self, ids, cfg) -> list[str]:
+        """Résout des identifiants (user_id auth OU collaborateur_id) en numéros
+        de téléphone (colonne configurable dans param_sms.champ_telephone)."""
+        liste = [str(i) for i in ids if i]
+        if not liste:
+            return []
+        col = ((cfg or {}).get("champ_telephone") or "telephone")
+        if not col.replace("_", "").isalnum():
+            col = "telephone"
+        tels: set[str] = set()
+
+        def _c(sql: str):
+            try:
+                rows = self.db.execute(text(sql), {"ids": liste}).scalars().all()
+                tels.update(str(t).strip() for t in rows if t)
+            except Exception as exc:
+                logger.warning("Résolution téléphone (%s) : %s", col, exc)
+
+        _c(f"SELECT {col} FROM collaborateurs WHERE id::text = ANY(:ids)")
+        _c(f"""SELECT c.{col} FROM profiles p
+                JOIN collaborateurs c ON c.id = p.collaborateur_id
+                WHERE p.id::text = ANY(:ids)""")
+        _c(f"""SELECT c.{col} FROM profiles p
+                JOIN collaborateurs c ON c.id = p.collaborateur_id
+                WHERE p.user_id::text = ANY(:ids)""")
+        return list(tels)
+
+    def _send_email(self, destinataires: list[str], sujet: str, corps: str) -> dict:
+        """Délègue au service e-mail partagé (config base puis environnement)."""
+        from app.services.email_service import config_effective, envoyer_email
+        return envoyer_email(config_effective(self.db), destinataires, sujet, corps)
 
     def _log_action(self, ie_id: UUID, type_action: str, statut: str,
                     payload: dict, reponse: dict) -> None:
@@ -884,12 +1106,21 @@ class WorkflowEngine:
             if d == "DEMANDEUR":
                 out.append(demandeur_id)
             elif d == "ACTEUR":
-                # Acteurs en cours sur l'étape (instance_etape courante)
+                # a) Acteurs ayant DÉJÀ agi sur l'étape (utile après une décision)
                 rows = self.db.execute(text("""
                     SELECT acteur_id FROM wf_instance_action
                     WHERE id_instance_etape = :ie AND type_decision NOT IN ('SYSTEME')
                 """), {"ie": str(ie_id)}).scalars().all()
                 out.extend([r for r in rows if r])
+                # b) Acteurs ASSIGNÉS de l'étape courante (utile à l'ENTRÉE, avant
+                #    toute décision : c'est la personne qui DOIT agir / valider).
+                edef = self.db.execute(text(
+                    "SELECT id_etape_def FROM wf_instance_etape WHERE id = :ie"
+                ), {"ie": str(ie_id)}).scalar()
+                if edef:
+                    for a in self._resolve_etape_acteurs(edef, demandeur_id):
+                        if a.user_id and not a.est_observateur:
+                            out.append(a.user_id)
             elif d.startswith("ACTEUR_ETAPE:"):
                 ordre = int(d.split(":", 1)[1])
                 rows = self.db.execute(text("""
@@ -908,7 +1139,7 @@ class WorkflowEngine:
                 """), {"r": role}).scalars().all()
                 out.extend([r for r in rows if r])
             # Les emails littéraux sont laissés au service SMTP
-        return out
+        return list(dict.fromkeys(out))
 
     def _get_etapes(self, wf_id: UUID) -> list[dict]:
         rows = self.db.execute(text("""

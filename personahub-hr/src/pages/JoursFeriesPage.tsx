@@ -1005,10 +1005,17 @@ const JoursFeriesPage: React.FC = () => {
     <div className="flex gap-0 h-full min-h-0 overflow-hidden" style={{ background: "hsl(var(--background))" }}>
       {/* Zone principale */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Fil d'Ariane */}
+        <div className="flex items-center gap-1.5 px-6 pt-4 pb-0 text-[13px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>
+          <span>Référentiels</span>
+          <span style={{ opacity: 0.5 }}>/</span>
+          <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Jours Fériés</span>
+        </div>
+
         {/* En-tête */}
-        <div className="px-6 pt-6 pb-4 flex-shrink-0">
+        <div className="px-6 pt-3 pb-4 flex-shrink-0">
           <div className="flex items-center gap-3 mb-1">
-            <CalendarDays size={20} style={{ color: "hsl(var(--accent))" }} />
+            <CalendarDays size={20} style={{ color: "hsl(var(--primary))" }} />
             <h1 className="text-lg font-bold" style={{ color: "hsl(var(--foreground))" }}>Jours Fériés</h1>
           </div>
           <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>

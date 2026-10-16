@@ -481,70 +481,68 @@ const EquipeManagerView: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Mon équipe</h1>
-          <p className="text-sm mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {filtered.length} collaborateur{filtered.length > 1 ? "s" : ""} · {managerUoIds.length} UO{managerUoIds.length > 1 ? "s" : ""} dans votre périmètre
-          </p>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Mon équipe</span>
+      </div>
+
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <div className="flex items-center flex-1 min-w-[200px] h-8 px-2.5" style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))", maxWidth: 320 }}>
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0 mr-1.5" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Nom, matricule, poste, UO…"
+            className="flex-1 text-[13px] outline-none bg-transparent" style={{ color: "hsl(var(--foreground))" }} />
         </div>
-        {/* Toggle vue */}
-        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: "hsl(var(--border))" }}>
+
+        <div className="flex items-center gap-1">
+          {([["ACTIF","Actifs"], ["EN_DEPART","En départ"], ["tous","Tous"]] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setFilterStatut(v)}
+              className="px-2 py-1 text-[12px] font-medium transition-colors"
+              style={{
+                color: filterStatut === v ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                borderBottom: filterStatut === v ? "2px solid hsl(var(--primary))" : "2px solid transparent",
+              }}>{l}</button>
+          ))}
+        </div>
+
+        <UOSelector allUOs={allUOs} selectedIds={selectedUOIds} onChange={setSelectedUOIds} rootIds={rootUoIds} />
+
+        <div className="flex-1" />
+        <span className="text-[12px] whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {filtered.length} collaborateur{filtered.length > 1 ? "s" : ""}
+        </span>
+
+        {/* Bascule vue */}
+        <div className="flex items-center" style={{ borderLeft: "1px solid hsl(var(--border))", paddingLeft: 6 }}>
           {([
-            ["uo",    <Building2 size={13} />, "Par UO"],
-            ["carte", <LayoutGrid size={13} />, "Cartes"],
-            ["liste", <List size={13} />,      "Liste"],
+            ["uo",    <Building2 size={14} />, "Par UO"],
+            ["carte", <LayoutGrid size={14} />, "Cartes"],
+            ["liste", <List size={14} />,      "Liste"],
           ] as const).map(([v, icon, label]) => (
             <button key={v} onClick={() => setViewMode(v as any)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all"
+              title={label as string}
+              className="p-1.5 rounded transition-colors"
               style={{
-                background: viewMode === v ? "hsl(var(--primary))" : "hsl(var(--card))",
-                color: viewMode === v ? "white" : "hsl(var(--muted-foreground))",
+                color: viewMode === v ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                background: viewMode === v ? "hsl(var(--primary) / 0.1)" : "transparent",
               }}>
-              {icon}{label}
+              {icon}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Barre de filtres */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {/* Recherche */}
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Nom, matricule, poste, UO…"
-            className="w-full pl-9 pr-4 py-2 rounded-xl text-sm border outline-none"
-            style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }} />
-        </div>
-
-        {/* Filtre statut */}
-        <div className="flex gap-1.5">
-          {([["ACTIF","Actifs"], ["EN_DEPART","En départ"], ["tous","Tous"]] as const).map(([v, l]) => (
-            <button key={v} onClick={() => setFilterStatut(v)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
-              style={{
-                background: filterStatut === v ? "hsl(var(--primary))" : "transparent",
-                borderColor: filterStatut === v ? "hsl(var(--primary))" : "hsl(var(--border))",
-                color: filterStatut === v ? "white" : "hsl(var(--foreground))",
-              }}>{l}</button>
-          ))}
-        </div>
-
-        {/* Filtre UO */}
-        <UOSelector allUOs={allUOs} selectedIds={selectedUOIds} onChange={setSelectedUOIds} rootIds={rootUoIds} />
-
-        {/* Reset filtres */}
-        {(selectedUOIds.length > 0 || search || filterStatut !== "ACTIF") && (
+      <div className="p-6 space-y-4">
+      {/* Reset filtres (ligne discrète sous la toolbar) */}
+      {(selectedUOIds.length > 0 || search || filterStatut !== "ACTIF") && (
           <button onClick={() => { setSearch(""); setSelectedUOIds([]); setFilterStatut("ACTIF"); }}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs hover:opacity-70"
             style={{ color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" }}>
             <X size={11} /> Réinitialiser
           </button>
         )}
-      </div>
 
       {/* Contenu */}
       {filtered.length === 0 ? (
@@ -661,6 +659,7 @@ const EquipeManagerView: React.FC = () => {
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 };

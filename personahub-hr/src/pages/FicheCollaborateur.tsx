@@ -17,6 +17,7 @@ import EnfantForm from "@/components/famille/EnfantForm";
 import ContactUrgenceForm from "@/components/famille/ContactUrgenceForm";
 import ContratForm from "@/components/contrat/ContratForm";
 import AffectationForm from "@/components/affectation/AffectationForm";
+import RepartitionCentreCoutForm from "@/components/affectation/RepartitionCentreCoutForm";
 import WorkflowManagerForm from "@/components/affectation/WorkflowManagerForm";
 import DepartForm from "@/components/depart/DepartForm";
 import SyndicalMandatForm from "@/components/syndical/SyndicalMandatForm";
@@ -74,6 +75,20 @@ const TABS = [
   { id: "divers",         label: "Divers",         icon: <Settings size={15} /> },
 ];
 
+// Couleur dédiée par onglet pour le badge de comptage (teinte + fond clair assorti)
+const TAB_BADGE_COLORS: Record<string, string> = {
+  identite:        "217 91% 55%",  // bleu
+  contrats:        "262 83% 58%",  // violet
+  affectation:     "199 89% 48%",  // cyan
+  adresses:        "25 95% 53%",   // orange
+  famille:         "340 82% 52%",  // rose
+  remuneration:    "142 71% 40%",  // vert
+  formation:       "271 76% 53%",  // indigo
+  immatriculation: "38 92% 45%",   // ambre
+  syndical:        "199 60% 40%",  // bleu ardoise
+  divers:          "220 9% 46%",   // gris
+};
+
 /* ──────────────── Helpers ──────────────── */
 const Field: React.FC<{ label: string; value?: string | null; className?: string }> = ({ label, value, className }) => (
   <div className={className}>
@@ -85,18 +100,26 @@ const Field: React.FC<{ label: string; value?: string | null; className?: string
 );
 
 const SectionCard: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }> = ({ title, icon, children, action }) => (
-  <div className="rounded-xl mb-5 transition-shadow duration-200 hover:shadow-md"
+  <div className="group relative rounded-xl mb-5 overflow-hidden transition-all duration-200 hover:-translate-y-[1px]"
     style={{
       background: "hsl(var(--card))",
       border: "1px solid hsl(var(--border) / 0.7)",
       boxShadow: "0 1px 2px hsl(var(--foreground) / 0.02)",
-    }}>
+    }}
+    onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 24px -12px hsl(var(--foreground) / 0.12)"; e.currentTarget.style.borderColor = "hsl(var(--border))"; }}
+    onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 2px hsl(var(--foreground) / 0.02)"; e.currentTarget.style.borderColor = "hsl(var(--border) / 0.7)"; }}>
+    {/* Liseré d'accent — s'affirme au survol, discret au repos */}
+    <div className="absolute left-0 top-0 bottom-0 w-[3px] transition-all duration-200 opacity-0 group-hover:opacity-100"
+      style={{ background: "linear-gradient(180deg, hsl(var(--primary)), hsl(var(--primary) / 0.3))" }} />
     {/* Header — séparation fine, sans fond contrasté */}
     <div className="flex items-center justify-between px-6 py-4"
       style={{ borderBottom: "1px solid hsl(var(--border) / 0.4)" }}>
       <div className="flex items-center gap-3">
         {icon && (
-          <span style={{ color: "hsl(var(--muted-foreground))" }}>{icon}</span>
+          <span className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors duration-200"
+            style={{ background: "hsl(var(--muted) / 0.6)", color: "hsl(var(--muted-foreground))" }}>
+            {icon}
+          </span>
         )}
         <h3 className="text-sm font-semibold tracking-tight"
           style={{ color: "hsl(var(--foreground))" }}>
@@ -120,14 +143,16 @@ const CollapsibleSection: React.FC<{
 }> = ({ title, icon, defaultOpen = false, action, children }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-xl mb-5 transition-shadow duration-200"
+    <div className="relative rounded-xl mb-5 overflow-hidden transition-shadow duration-200"
       style={{
         background: "hsl(var(--card))",
         border: "1px solid hsl(var(--border) / 0.7)",
         boxShadow: open
-          ? "0 2px 8px hsl(var(--foreground) / 0.05)"
+          ? "0 8px 24px -14px hsl(var(--foreground) / 0.15)"
           : "0 1px 2px hsl(var(--foreground) / 0.02)",
       }}>
+      <div className="absolute left-0 top-0 bottom-0 w-[3px] transition-opacity duration-200"
+        style={{ background: "linear-gradient(180deg, hsl(var(--primary)), hsl(var(--primary) / 0.3))", opacity: open ? 1 : 0 }} />
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -140,7 +165,12 @@ const CollapsibleSection: React.FC<{
         onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
       >
         <div className="flex items-center gap-3">
-          {icon && <span style={{ color: "hsl(var(--muted-foreground))" }}>{icon}</span>}
+          {icon && (
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg"
+              style={{ background: "hsl(var(--muted) / 0.6)", color: "hsl(var(--muted-foreground))" }}>
+              {icon}
+            </span>
+          )}
           <h3 className="text-sm font-semibold tracking-tight"
             style={{ color: "hsl(var(--foreground))" }}>
             {title}
@@ -148,9 +178,9 @@ const CollapsibleSection: React.FC<{
         </div>
         <ChevronDown size={16}
           style={{
-            color: "hsl(var(--muted-foreground))",
+            color: open ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
             transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 200ms ease",
+            transition: "transform 200ms ease, color 200ms ease",
             flexShrink: 0,
           }} />
       </button>
@@ -701,6 +731,12 @@ const TabAffectation: React.FC<{ collaborateurId: string; ancienMatricule?: stri
         <AffectationForm collaborateurId={collaborateurId} ancienMatricule={ancienMatricule} />
       </SectionCard>
 
+      {/* Répartition analytique (comptabilité de paie) — prime sur l'UO ci-dessus
+          quand des lignes actives existent, cf. RepartitionCentreCoutForm. */}
+      <SectionCard title="Répartition centres de coût" icon={<Building2 size={15} />}>
+        <RepartitionCentreCoutForm collaborateurId={collaborateurId} />
+      </SectionCard>
+
       {/* Forçage workflow */}
       <SectionCard title="Forçage workflow de validation" icon={<Users size={15} />}>
         <WorkflowManagerForm collaborateurId={collaborateurId} />
@@ -726,6 +762,16 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
   const [nbDeductions, setNbDeductions] = React.useState<number | null>(null);
   const [calcAuto, setCalcAuto] = React.useState({ enfants: 0, personnes: 0, deductions: 0 });
   const [saving, setSaving] = React.useState(false);
+  const [dirtyIndicateurs, setDirtyIndicateurs] = React.useState(false);
+  const [savingIndicateurs, setSavingIndicateurs] = React.useState(false);
+  // RG-COLLAB-SITFAM-01 (Adil DAIA) : rappel de la situation matrimoniale en tête d'onglet
+  const [codeSituationFamiliale, setCodeSituationFamiliale] = React.useState<string | null>(null);
+  const [dateSituationFamiliale, setDateSituationFamiliale] = React.useState<string | null>(null);
+  const [sitFamMap, setSitFamMap] = React.useState<Record<string, string>>({});
+  const [editingSitFam, setEditingSitFam] = React.useState(false);
+  const [sitFamCodeDraft, setSitFamCodeDraft] = React.useState<string>("");
+  const [sitFamDateDraft, setSitFamDateDraft] = React.useState<string>("");
+  const [savingSitFam, setSavingSitFam] = React.useState(false);
   // RG-FAM-ACCORDION-01 (Adil DAIA) : compteurs pour les badges des sections accordéon
   const [stats, setStats] = React.useState({ nbEnfantsTotal: 0, nbConjoints: 0, nbContacts: 0 });
   // États d'accordéon (un par section)
@@ -737,9 +783,9 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
 
   // ── Charger l'état actuel (collaborateur + calcul auto) ─────────────────
   const loadAll = React.useCallback(async () => {
-    const [{ data: c }, { data: enfants }, { data: conjoints }, contactsRes] = await Promise.all([
+    const [{ data: c }, { data: enfants }, { data: conjoints }, contactsRes, { data: refSitFam }] = await Promise.all([
       supabase.from("collaborateurs" as never)
-        .select("famille_force_valeurs,nb_enfants_a_charge,nb_personnes_a_charge,nb_deductions_fiscales" as never)
+        .select("famille_force_valeurs,nb_enfants_a_charge,nb_personnes_a_charge,nb_deductions_fiscales,code_situation_familiale,date_situation_familiale" as never)
         .eq("id" as never, collaborateurId as never).single(),
       supabase.from("collaborateur_enfants" as never)
         .select("est_pris_en_charge,date_fin_prise_en_charge,date_deces" as never)
@@ -754,6 +800,10 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
         .select("id" as never, { count: "exact", head: true } as never)
         .eq("collaborateur_id" as never, collaborateurId as never)
         .eq("archive" as never, false as never).then((r: any) => ({ data: null, count: r.count })),
+      // Libellés situation matrimoniale (RG-COLLAB-SITFAM-01)
+      supabase.from("ref_situation_familiale" as never)
+        .select("code, libelle" as never)
+        .eq("actif" as never, true as never),
     ]);
 
     const today = new Date().toISOString().slice(0, 10);
@@ -793,7 +843,16 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
       setNbEnfants(d.famille_force_valeurs ? d.nb_enfants_a_charge : enfantsCharge);
       setNbPersonnes(d.famille_force_valeurs ? d.nb_personnes_a_charge : personnesCharge);
       setNbDeductions(d.famille_force_valeurs ? d.nb_deductions_fiscales : deductions);
+      setCodeSituationFamiliale(d.code_situation_familiale || null);
+      setDateSituationFamiliale(d.date_situation_familiale || null);
+      setSitFamCodeDraft(String(d.code_situation_familiale || "").trim().toUpperCase());
+      setSitFamDateDraft(d.date_situation_familiale || "");
     }
+
+    const map: Record<string, string> = {};
+    ((refSitFam || []) as any[]).forEach(r => { map[String(r.code).trim().toUpperCase()] = r.libelle; });
+    setSitFamMap(map);
+    setDirtyIndicateurs(false);
   }, [collaborateurId]);
 
   React.useEffect(() => { loadAll(); }, [loadAll]);
@@ -817,11 +876,19 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
       setNbPersonnes(calcAuto.personnes);
       setNbDeductions(calcAuto.deductions);
     }
-    const { error } = await supabase.from("collaborateurs" as never)
-      .update(payload as never).eq("id" as never, collaborateurId as never);
+    const { data: updated, error } = await supabase.from("collaborateurs" as never)
+      .update(payload as never).eq("id" as never, collaborateurId as never)
+      .select("id");
     setSaving(false);
-    if (error) toast.error(error.message);
-    else toast.success(checked ? "Mode forçage activé" : "Mode calcul auto activé");
+    if (error) { toast.error(error.message); return; }
+    if (!updated || updated.length === 0) {
+      toast.error("Écriture refusée par la base (droits insuffisants). La modification n'a pas été enregistrée.");
+      // On revient à l'état d'avant tentative pour ne pas afficher une valeur non persistée
+      loadAll();
+      return;
+    }
+    setDirtyIndicateurs(false);
+    toast.success(checked ? "Mode forçage activé" : "Mode calcul auto activé");
   };
 
   // ── Recalculer (réinitialiser depuis les données enfants/conjoints) ─────
@@ -830,25 +897,72 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
     setNbPersonnes(calcAuto.personnes);
     setNbDeductions(calcAuto.deductions);
     setSaving(true);
-    const { error } = await supabase.from("collaborateurs" as never).update({
+    const { data: updated, error } = await supabase.from("collaborateurs" as never).update({
       nb_enfants_a_charge: calcAuto.enfants,
       nb_personnes_a_charge: calcAuto.personnes,
       nb_deductions_fiscales: calcAuto.deductions,
-    } as never).eq("id" as never, collaborateurId as never);
+    } as never).eq("id" as never, collaborateurId as never)
+      .select("id");
     setSaving(false);
-    if (error) toast.error(error.message);
-    else toast.success("Indicateurs recalculés depuis les enfants et conjoints");
+    if (error) { toast.error(error.message); return; }
+    if (!updated || updated.length === 0) {
+      toast.error("Écriture refusée par la base (droits insuffisants). La modification n'a pas été enregistrée.");
+      loadAll();
+      return;
+    }
+    setDirtyIndicateurs(false);
+    toast.success("Indicateurs recalculés depuis les enfants et conjoints");
   };
 
-  // ── Sauvegarde des valeurs forcées (au blur) ────────────────────────────
-  const saveValue = async (field: string, value: number | null) => {
+  // ── Sauvegarde explicite des 3 indicateurs forcés (bouton "Enregistrer") ─
+  const handleSaveIndicateurs = async () => {
     if (!forceValeurs) return;
-    const { error } = await supabase.from("collaborateurs" as never)
-      .update({ [field]: value } as never).eq("id" as never, collaborateurId as never);
-    if (error) toast.error(error.message);
+    setSavingIndicateurs(true);
+    const { data: updated, error } = await supabase.from("collaborateurs" as never)
+      .update({
+        nb_enfants_a_charge: nbEnfants ?? 0,
+        nb_personnes_a_charge: nbPersonnes ?? 0,
+        nb_deductions_fiscales: nbDeductions ?? 0,
+      } as never)
+      .eq("id" as never, collaborateurId as never)
+      .select("id");
+    setSavingIndicateurs(false);
+    if (error) { toast.error(error.message); return; }
+    if (!updated || updated.length === 0) {
+      toast.error("Écriture refusée par la base (droits insuffisants). La modification n'a pas été enregistrée.");
+      loadAll();
+      return;
+    }
+    setDirtyIndicateurs(false);
+    toast.success("Indicateurs famille enregistrés");
   };
 
-  // Composant interne : section accordéon
+  // ── Sauvegarde de la situation matrimoniale (RG-COLLAB-SITFAM-01) ───────
+  const handleSaveSitFam = async () => {
+    const code = sitFamCodeDraft.trim().toUpperCase();
+    const dateVal = code === "C" ? null : (sitFamDateDraft || null);
+    setSavingSitFam(true);
+    const { data: updated, error } = await supabase.from("collaborateurs" as never)
+      .update({ code_situation_familiale: code || null, date_situation_familiale: dateVal } as never)
+      .eq("id" as never, collaborateurId as never)
+      .select("id");
+    setSavingSitFam(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (!updated || updated.length === 0) {
+      toast.error("Écriture refusée par la base (droits insuffisants). La modification n'a pas été enregistrée.");
+      loadAll();
+      return;
+    }
+    setCodeSituationFamiliale(code || null);
+    setDateSituationFamiliale(dateVal);
+    setEditingSitFam(false);
+    toast.success("Situation matrimoniale mise à jour");
+  };
+
+
   const AccordionSection: React.FC<{
     sectionKey: keyof typeof openSections;
     title: string;
@@ -897,8 +1011,83 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
     </span>
   );
 
+  const situationLabel = codeSituationFamiliale
+    ? (sitFamMap[String(codeSituationFamiliale).trim().toUpperCase()] || codeSituationFamiliale)
+    : null;
+
   return (
     <div className="space-y-3">
+      {/* 0. Rappel + édition de la situation matrimoniale (RG-COLLAB-SITFAM-01) — même donnée que l'onglet Identité */}
+      <div className="rounded-xl border px-4 py-3"
+        style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.3)" }}>
+        {editingSitFam ? (
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            <div className="flex-1 min-w-[180px]">
+              <RefSelect
+                table="ref_situation_familiale"
+                value={sitFamCodeDraft}
+                onChange={v => {
+                  setSitFamCodeDraft(v);
+                  if (v === "C") setSitFamDateDraft("");
+                }}
+                label="Situation matrimoniale"
+              />
+            </div>
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-xs font-medium mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Depuis le</label>
+              <input type="date" value={sitFamDateDraft}
+                onChange={e => setSitFamDateDraft(e.target.value)}
+                min="1900-01-01" max="2099-12-31"
+                disabled={!sitFamCodeDraft || sitFamCodeDraft === "C"}
+                title={sitFamCodeDraft === "C" ? "Non applicable pour Célibataire" : ""}
+                className="w-full px-2 py-1.5 rounded-lg border text-sm disabled:opacity-50"
+                style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))", color: "hsl(var(--foreground))" }} />
+            </div>
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={() => {
+                  setEditingSitFam(false);
+                  setSitFamCodeDraft(String(codeSituationFamiliale || "").trim().toUpperCase());
+                  setSitFamDateDraft(dateSituationFamiliale || "");
+                }}
+                className="p-1.5 rounded text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                <X size={14} />
+              </button>
+              <button onClick={handleSaveSitFam} disabled={savingSitFam}
+                className="px-3 py-1 rounded text-xs font-semibold" style={{ background: "hsl(var(--accent))", color: "white" }}>
+                {savingSitFam ? "…" : <><Check size={12} className="inline mr-1" />Enregistrer</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Heart size={15} style={{ color: "hsl(var(--accent))" }} />
+                <div>
+                  <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Situation matrimoniale</p>
+                  <p className="text-sm font-semibold" style={{ color: situationLabel ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground) / 0.4)" }}>
+                    {situationLabel || "—"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Calendar size={15} style={{ color: "hsl(var(--accent))" }} />
+                <div>
+                  <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Depuis le</p>
+                  <p className="text-sm font-semibold" style={{ color: dateSituationFamiliale ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground) / 0.4)" }}>
+                    {dateSituationFamiliale ? fmtDate(dateSituationFamiliale) : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <button onClick={() => setEditingSitFam(true)} className="p-1.5 rounded hover:bg-blue-50 transition-all" style={{ color: "hsl(var(--accent))" }}>
+              <Pencil size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* 1. Indicateurs famille (RG-FAM-INDIC-01) */}
       <AccordionSection
         sectionKey="indicateurs"
@@ -914,6 +1103,13 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
         }
         action={
           <div className="flex items-center gap-2">
+            {forceValeurs && dirtyIndicateurs && (
+              <button onClick={handleSaveIndicateurs} disabled={savingIndicateurs}
+                className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold disabled:opacity-50"
+                style={{ background: "hsl(var(--accent))", color: "white" }}>
+                {savingIndicateurs ? "…" : <><Check size={12} className="inline mr-1" />Enregistrer</>}
+              </button>
+            )}
             {forceValeurs && (
               <button onClick={handleRecalculer} disabled={saving}
                 className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold border disabled:opacity-50"
@@ -943,8 +1139,7 @@ const TabFamille: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) 
               </p>
               {forceValeurs ? (
                 <input type="number" min="0" max="20" value={it.val ?? 0}
-                  onChange={e => it.setter(Number(e.target.value))}
-                  onBlur={e => saveValue(it.field, Number(e.target.value))}
+                  onChange={e => { it.setter(Number(e.target.value)); setDirtyIndicateurs(true); }}
                   className="w-20 text-2xl font-bold px-2 py-1 rounded border" style={{
                     borderColor: "hsl(var(--accent) / 0.4)",
                     background: "hsl(var(--background))",
@@ -1041,6 +1236,7 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
   }>>([]);
   const [regles, setRegles] = useState<Array<{
     code: string; libelle: string; nb_composantes: number;
+    code_bareme_taux: string | null;
   }>>([]);
 
   // ─── Données collaborateur ──────────────────────────────────────────────
@@ -1054,8 +1250,23 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
     date_affiliation: string | null;
     date_radiation: string | null;
     actif: boolean;
+    valeur_bareme_taux: number | null;
+    code_variante_regime: string | null;
+    code_categorie_base: number | null;
   }
   const [rows, setRows] = useState<CollabRegime[]>([]);
+  // Options de taux par code de barème (ex. "TAUX_CIMR"), résolues dynamiquement
+  // depuis bareme_ligne — aucune valeur codée en dur côté frontend.
+  const [baremeOptions, setBaremeOptions] = useState<
+    Record<string, Array<{ valeur: number; patronal: number | null }>>
+  >({});
+  // Variantes de catégorie (ref_categorie_regime), groupées par code_regime —
+  // générique : n'importe quel régime peut porter des variantes (CIMR aujourd'hui,
+  // potentiellement CNOPS/RCAR demain), sans changement de code ici.
+  const [categoriesParRegime, setCategoriesParRegime] = useState<Record<string, Array<{
+    code_variante: string; libelle: string; borne_min: number; borne_max: number;
+    gere_tranche: boolean; offset_tranche2: number | null;
+  }>>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
@@ -1089,13 +1300,77 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
 
     // Joindre nb_composantes — il faut récupérer l'id de la règle depuis son code
     const { data: reglesAvecId } = await supabase.from("regle_calcul_cotisation" as never)
-      .select("id,code,libelle")
+      .select("id,code,libelle,code_bareme_taux")
       .eq("archive" as never, false as never);
     const enrichedRegles = ((reglesAvecId || []) as any[]).map((r: any) => ({
       code: r.code, libelle: r.libelle,
       nb_composantes: composByRegle[r.id] || 0,
+      code_bareme_taux: r.code_bareme_taux || null,
     }));
     setRegles(enrichedRegles);
+
+    // ─── Résolution dynamique des taux variables (ex. TAUX_CIMR) ──────────
+    // Toute règle portant un code_bareme_taux propose un sélecteur alimenté
+    // depuis bareme/bareme_ligne — générique, pas spécifique à la CIMR.
+    const codesBareme = Array.from(
+      new Set(enrichedRegles.map(r => r.code_bareme_taux).filter(Boolean))
+    ) as string[];
+
+    if (codesBareme.length > 0) {
+      const { data: baremesTrouves } = await supabase.from("bareme" as never)
+        .select("id,code")
+        .in("code" as never, codesBareme as never)
+        .eq("actif" as never, true as never)
+        .eq("archive" as never, false as never);
+
+      const idVersCode: Record<string, string> = {};
+      ((baremesTrouves || []) as any[]).forEach(b => { idVersCode[b.id] = b.code; });
+      const baremeIds = Object.keys(idVersCode);
+
+      if (baremeIds.length > 0) {
+        const { data: lignesBareme } = await supabase.from("bareme_ligne" as never)
+          .select("bareme_id,valeurs_cles,valeurs_sorties,ordre")
+          .in("bareme_id" as never, baremeIds as never)
+          .order("ordre" as never);
+
+        const options: Record<string, Array<{ valeur: number; patronal: number | null }>> = {};
+        ((lignesBareme || []) as any[]).forEach(l => {
+          const codeBareme = idVersCode[l.bareme_id];
+          const valeur = l.valeurs_cles?.taux_salarial;
+          if (codeBareme === undefined || valeur === undefined) return;
+          if (!options[codeBareme]) options[codeBareme] = [];
+          options[codeBareme].push({
+            valeur: Number(valeur),
+            patronal: l.valeurs_sorties?.taux_patronal != null ? Number(l.valeurs_sorties.taux_patronal) : null,
+          });
+        });
+        setBaremeOptions(options);
+      }
+    } else {
+      setBaremeOptions({});
+    }
+
+    // ─── Référentiel des variantes de catégorie, par régime ────────────────
+    // Table générique : groupée par code_regime pour que n'importe quelle
+    // affectation (CIMR aujourd'hui, d'autres régimes demain) trouve ses
+    // variantes sans logique spécifique câblée ici.
+    const { data: categoriesData } = await supabase.from("ref_categorie_regime" as never)
+      .select("code_regime,code_variante,libelle,borne_min,borne_max,gere_tranche,offset_tranche2" as never)
+      .eq("actif" as never, true as never)
+      .order("ordre" as never);
+    const groupees: Record<string, Array<{
+      code_variante: string; libelle: string; borne_min: number; borne_max: number;
+      gere_tranche: boolean; offset_tranche2: number | null;
+    }>> = {};
+    ((categoriesData || []) as any[]).forEach(c => {
+      if (!groupees[c.code_regime]) groupees[c.code_regime] = [];
+      groupees[c.code_regime].push({
+        code_variante: c.code_variante, libelle: c.libelle,
+        borne_min: c.borne_min, borne_max: c.borne_max,
+        gere_tranche: c.gere_tranche, offset_tranche2: c.offset_tranche2,
+      });
+    });
+    setCategoriesParRegime(groupees);
 
     setRows(((lignes || []) as any[]).map((l: any) => ({
       _id: l.id, id: l.id,
@@ -1105,6 +1380,9 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
       date_affiliation: l.date_affiliation || "",
       date_radiation: l.date_radiation || "",
       actif: l.actif !== false,
+      valeur_bareme_taux: l.valeur_bareme_taux ?? null,
+      code_variante_regime: l.code_variante_regime || null,
+      code_categorie_base: l.code_categorie_base ?? null,
     })));
     setDeletedIds([]);
     setLoading(false);
@@ -1136,6 +1414,9 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
       date_affiliation: "",
       date_radiation: "",
       actif: true,
+      valeur_bareme_taux: null,
+      code_variante_regime: null,
+      code_categorie_base: null,
     }]);
   };
 
@@ -1160,6 +1441,28 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
       toast.error("Toutes les lignes doivent avoir un régime sélectionné.");
       return;
     }
+    // Un régime dont la règle porte un barème de taux (ex. CIMR) exige un taux choisi
+    const ligneSansTaux = rows.find(r => {
+      const regle = labelRegle(r.code_regime);
+      return regle?.code_bareme_taux && (r.valeur_bareme_taux === null || r.valeur_bareme_taux === undefined);
+    });
+    if (ligneSansTaux) {
+      toast.error("Un taux de cotisation doit être choisi pour ce régime.");
+      return;
+    }
+    // Tout régime portant des variantes de catégorie (ex. CIMR) exige un choix complet
+    const ligneCategorieIncomplete = rows.find(r => {
+      const variantes = categoriesParRegime[r.code_regime];
+      if (!variantes || variantes.length === 0) return false;
+      if (!r.code_variante_regime || r.code_categorie_base === null || r.code_categorie_base === undefined) return true;
+      const variante = variantes.find(c => c.code_variante === r.code_variante_regime);
+      if (!variante) return true;
+      return r.code_categorie_base < variante.borne_min || r.code_categorie_base > variante.borne_max;
+    });
+    if (ligneCategorieIncomplete) {
+      toast.error("La catégorie (variante + code) est incomplète ou hors plage autorisée.");
+      return;
+    }
 
     setSaving(true);
 
@@ -1179,6 +1482,9 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
         date_affiliation: r.date_affiliation || null,
         date_radiation: r.date_radiation || null,
         actif: r.actif,
+        valeur_bareme_taux: r.valeur_bareme_taux ?? null,
+        code_variante_regime: categoriesParRegime[r.code_regime]?.length ? (r.code_variante_regime || null) : null,
+        code_categorie_base: categoriesParRegime[r.code_regime]?.length ? (r.code_categorie_base ?? null) : null,
       };
       if (r.isNew || !r.id) {
         const { error } = await supabase.from("collaborateur_regime" as never)
@@ -1253,6 +1559,10 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
                     style={{ color: "hsl(var(--muted-foreground))" }}>Date fin</th>
                   <th className="text-left text-xs font-semibold uppercase tracking-wide py-2 px-2"
                     style={{ color: "hsl(var(--muted-foreground))" }}>Règle de cotisation</th>
+                  <th className="text-left text-xs font-semibold uppercase tracking-wide py-2 px-2"
+                    style={{ color: "hsl(var(--muted-foreground))" }}>Taux</th>
+                  <th className="text-left text-xs font-semibold uppercase tracking-wide py-2 px-2"
+                    style={{ color: "hsl(var(--muted-foreground))" }}>Catégorie</th>
                   <th className="text-center text-xs font-semibold uppercase tracking-wide py-2 px-2"
                     style={{ color: "hsl(var(--muted-foreground))" }}>Actif</th>
                   <th className="w-10"></th>
@@ -1311,6 +1621,62 @@ const TabImmatriculation: React.FC<{ collaborateurId: string; collab: Collaborat
                           <span className="text-xs italic" style={{ color: "hsl(var(--muted-foreground))" }}>
                             {r.code_regime ? "Aucune règle liée" : "—"}
                           </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2">
+                        {regle?.code_bareme_taux ? (
+                          <select
+                            value={r.valeur_bareme_taux ?? ""}
+                            onChange={e => updateRow(r._id, {
+                              valeur_bareme_taux: e.target.value ? Number(e.target.value) : null,
+                            })}
+                            className="w-full px-2 py-1.5 rounded-lg border text-sm" style={inputStyle}>
+                            <option value="">— Taux —</option>
+                            {(baremeOptions[regle.code_bareme_taux] || []).map(opt => (
+                              <option key={opt.valeur} value={opt.valeur}>
+                                {opt.valeur.toFixed(2)}%{opt.patronal != null ? ` sal. / ${opt.patronal.toFixed(2)}% pat.` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs italic" style={{ color: "hsl(var(--muted-foreground))" }}>—</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2">
+                        {(categoriesParRegime[r.code_regime]?.length ?? 0) > 0 ? (
+                          <div className="flex gap-1">
+                            <select
+                              value={r.code_variante_regime ?? ""}
+                              onChange={e => updateRow(r._id, {
+                                code_variante_regime: e.target.value || null,
+                                code_categorie_base: null, // la plage change, on réinitialise
+                              })}
+                              className="w-full px-2 py-1.5 rounded-lg border text-sm" style={inputStyle}>
+                              <option value="">— Variante —</option>
+                              {categoriesParRegime[r.code_regime].map(c => (
+                                <option key={c.code_variante} value={c.code_variante}>{c.libelle}</option>
+                              ))}
+                            </select>
+                            {r.code_variante_regime && (() => {
+                              const variante = categoriesParRegime[r.code_regime]?.find(c => c.code_variante === r.code_variante_regime);
+                              if (!variante) return null;
+                              return (
+                                <input type="number"
+                                  min={variante.borne_min} max={variante.borne_max}
+                                  value={r.code_categorie_base ?? ""}
+                                  onChange={e => updateRow(r._id, {
+                                    code_categorie_base: e.target.value ? Number(e.target.value) : null,
+                                  })}
+                                  placeholder={`${String(variante.borne_min).padStart(2, "0")}-${String(variante.borne_max).padStart(2, "0")}`}
+                                  title={variante.gere_tranche
+                                    ? `Code tranche basse. Tranche haute = code + ${variante.offset_tranche2}, calculé automatiquement au-delà du seuil.`
+                                    : "Code attribué par l'organisme pour cette variante"}
+                                  className="w-20 px-2 py-1.5 rounded-lg border text-sm" style={inputStyle} />
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <span className="text-xs italic" style={{ color: "hsl(var(--muted-foreground))" }}>—</span>
                         )}
                       </td>
                       <td className="py-2 px-2 text-center">
@@ -1590,11 +1956,17 @@ const TabDivers: React.FC<{ collaborateurId: string }> = ({ collaborateurId }) =
 };
 
 /* ──────────────── HEADER AVEC PHOTO ──────────────── */
+const STATUT_LABELS: Record<string, string> = { ACTIF: "Actif", EN_DEPART: "En départ", SORTI: "Sorti" };
+
 const CollabHeader: React.FC<{
   collab: Collaborateur;
   statutStyle: { bg: string; color: string };
   onPhotoUpdated: () => void;
-}> = ({ collab, statutStyle, onPhotoUpdated }) => {
+  visibleTabs: { id: string; label: string; icon: React.ReactNode }[];
+  tabCounts: Record<string, number>;
+  activeTab: string;
+  onSelectTab: (id: string) => void;
+}> = ({ collab, statutStyle, onPhotoUpdated, visibleTabs, tabCounts, activeTab, onSelectTab }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -1643,50 +2015,55 @@ const CollabHeader: React.FC<{
   };
 
   const initials = `${collab.prenom?.[0] || ""}${collab.nom?.[0] || ""}`.toUpperCase();
+  const statutLabel = STATUT_LABELS[collab.statut_collaborateur] || collab.statut_collaborateur;
 
   return (
-    <div className="rounded-2xl overflow-hidden mb-5 relative"
+    <div className="overflow-hidden mb-0 relative"
       style={{
         background: "hsl(var(--card))",
         border: "1px solid hsl(var(--border))",
-        boxShadow: "0 1px 3px hsl(var(--foreground) / 0.04), 0 12px 32px -8px hsl(var(--foreground) / 0.08)",
+        borderBottom: "none",
+        borderRadius: "var(--radius)",
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
       }}>
-      {/* Liseré supérieur très fin, couleur accent — touche "premium" */}
-      <div className="absolute left-0 right-0 top-0 h-[3px]"
-        style={{ background: `linear-gradient(90deg, hsl(var(--accent)) 0%, hsl(var(--accent) / 0.4) 60%, transparent 100%)` }} />
+      {/* Bandeau d'ambiance — dégradé très subtil dérivé de la couleur de statut, purement décoratif */}
+      <div className="absolute inset-x-0 top-0 h-24 pointer-events-none"
+        style={{ background: `linear-gradient(180deg, ${statutStyle.bg}, transparent)`, opacity: 0.6 }} />
 
-      <div className="px-8 py-7 flex items-center gap-7">
-        {/* Avatar — plus grand, avec double ring + ombre douce */}
+      <div className="relative px-6 py-5 flex items-start gap-6 flex-wrap">
+        {/* Avatar avec anneau de statut */}
         <div className="relative flex-shrink-0 group cursor-pointer" onClick={handlePhotoClick} title="Changer la photo">
-          {collab.photo_path ? (
-            <img
-              src={collab.photo_path}
-              alt={`${collab.prenom} ${collab.nom}`}
-              className="w-28 h-28 rounded-full object-cover"
-              style={{
-                border: "4px solid hsl(var(--card))",
-                boxShadow: "0 0 0 1px hsl(var(--border)), 0 8px 24px -6px hsl(var(--foreground) / 0.15)",
-              }}
-            />
-          ) : (
-            <div className="w-28 h-28 rounded-full flex items-center justify-center text-[34px] font-bold"
-              style={{
-                background: "linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--card)) 100%)",
-                color: "hsl(var(--foreground) / 0.55)",
-                border: "4px solid hsl(var(--card))",
-                boxShadow: "0 0 0 1px hsl(var(--border)), 0 8px 24px -6px hsl(var(--foreground) / 0.15)",
-                letterSpacing: "-0.04em",
-              }}>
-              {initials}
-            </div>
-          )}
-          {/* Overlay caméra au hover */}
-          <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ background: "hsl(var(--foreground) / 0.55)" }}>
+          <div className="rounded-[calc(var(--radius)+4px)] p-[3px] transition-transform duration-200 group-hover:scale-[1.03]"
+            style={{ background: `linear-gradient(135deg, ${statutStyle.color}, ${statutStyle.color} 40%, hsl(var(--border)) 100%)` }}>
+            {collab.photo_path ? (
+              <img
+                src={collab.photo_path}
+                alt={`${collab.prenom} ${collab.nom}`}
+                className="w-[88px] h-[88px] object-cover"
+                style={{ borderRadius: "var(--radius)", background: "hsl(var(--card))" }}
+              />
+            ) : (
+              <div className="w-[88px] h-[88px] flex items-center justify-center text-[28px] font-bold"
+                style={{
+                  background: "hsl(var(--muted))",
+                  color: "hsl(var(--foreground) / 0.55)",
+                  borderRadius: "var(--radius)",
+                }}>
+                {initials}
+              </div>
+            )}
+          </div>
+          {/* Pastille de statut, à l'ancre inférieure droite de l'avatar */}
+          <span className="absolute -bottom-1 -right-1 flex items-center justify-center w-6 h-6 rounded-full shadow-sm"
+            style={{ background: "hsl(var(--card))", border: "2px solid hsl(var(--card))" }}>
+            <span className="w-3.5 h-3.5 rounded-full" style={{ background: statutStyle.color }} />
+          </span>
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: "hsl(var(--foreground) / 0.55)", borderRadius: "calc(var(--radius) + 4px)" }}>
             {uploading
-              ? <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
-                  style={{ borderColor: "white", borderTopColor: "transparent" }} />
-              : <Camera size={20} style={{ color: "white" }} />
+              ? <div className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "white", borderTopColor: "transparent" }} />
+              : <Camera size={18} style={{ color: "white" }} />
             }
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
@@ -1694,91 +2071,90 @@ const CollabHeader: React.FC<{
 
         {/* Bloc identité + infos */}
         <div className="flex-1 min-w-0">
-          {/* Civilité en surtitre discret */}
           {collab.civilite && (
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1.5"
-              style={{ color: "hsl(var(--muted-foreground) / 0.8)" }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>
               {collab.civilite}
             </p>
           )}
-
-          {/* Nom complet + badge statut */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-[26px] font-bold leading-none"
-              style={{
-                color: "hsl(var(--foreground))",
-                letterSpacing: "-0.02em",
-              }}>
-              {collab.prenom} <span style={{ fontWeight: 800 }}>{collab.nom?.toUpperCase()}</span>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-[23px] font-bold leading-none tracking-tight" style={{ color: "hsl(var(--foreground))" }}>
+              {collab.prenom} {collab.nom?.toUpperCase()}
             </h1>
-            <span className="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-md font-bold uppercase tracking-[0.1em]"
-              style={{ background: statutStyle.bg, color: statutStyle.color }}>
-              {collab.statut_collaborateur === "ACTIF" && (
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: statutStyle.color }} />
-              )}
-              {collab.statut_collaborateur}
-            </span>
-          </div>
-
-          {/* Matricule + ancien matricule */}
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[13px] font-mono font-semibold"
-              style={{ color: "hsl(var(--muted-foreground))" }}>
+            <span className="text-[12px] font-mono px-1.5 py-0.5 rounded" style={{ color: "hsl(var(--muted-foreground))", background: "hsl(var(--muted) / 0.6)" }}>
               #{collab.matricule}
             </span>
-            {collab.ancien_matricule && (
-              <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded font-mono"
-                style={{
-                  background: "hsl(var(--muted) / 0.5)",
-                  color: "hsl(var(--muted-foreground))",
-                  border: "1px dashed hsl(var(--border))",
-                }}
-                title="Ancien matricule">
-                ← {collab.ancien_matricule}
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide px-2 py-1 rounded-full"
+              style={{ background: statutStyle.bg, color: statutStyle.color }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: statutStyle.color }} />
+              {statutLabel}
+            </span>
           </div>
 
-          {/* Contacts — texte sobre, icônes discrètes (style enterprise) */}
-          <div className="flex items-center gap-5 mt-4 flex-wrap">
+          <div className="flex items-center gap-2 mt-3.5 flex-wrap text-[12.5px]" style={{ color: "hsl(var(--muted-foreground))" }}>
             {collab.email_professionnel && (
               <a href={`mailto:${collab.email_professionnel}`}
-                className="inline-flex items-center gap-1.5 text-[13px] hover:underline transition-colors"
-                style={{ color: "hsl(var(--muted-foreground))" }}
-                onMouseEnter={e => e.currentTarget.style.color = "hsl(var(--foreground))"}
-                onMouseLeave={e => e.currentTarget.style.color = "hsl(var(--muted-foreground))"}>
-                <Mail size={13} />
-                <span>{collab.email_professionnel}</span>
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-colors"
+                style={{ background: "hsl(var(--muted) / 0.5)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "hsl(var(--primary) / 0.1)"; e.currentTarget.style.color = "hsl(var(--primary))"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "hsl(var(--muted) / 0.5)"; e.currentTarget.style.color = ""; }}>
+                <Mail size={12.5} /><span>{collab.email_professionnel}</span>
               </a>
             )}
             {collab.gsm && (
               <a href={`tel:${collab.gsm}`}
-                className="inline-flex items-center gap-1.5 text-[13px] hover:underline transition-colors"
-                style={{ color: "hsl(var(--muted-foreground))" }}
-                onMouseEnter={e => e.currentTarget.style.color = "hsl(var(--foreground))"}
-                onMouseLeave={e => e.currentTarget.style.color = "hsl(var(--muted-foreground))"}>
-                <Phone size={13} />
-                <span>{collab.gsm}</span>
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-colors"
+                style={{ background: "hsl(var(--muted) / 0.5)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "hsl(var(--primary) / 0.1)"; e.currentTarget.style.color = "hsl(var(--primary))"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "hsl(var(--muted) / 0.5)"; e.currentTarget.style.color = ""; }}>
+                <Phone size={12.5} /><span>{collab.gsm}</span>
               </a>
             )}
             {collab.date_naissance && (() => {
               const age = Math.floor((Date.now() - new Date(collab.date_naissance!).getTime()) / (365.25 * 24 * 3600 * 1000));
               return (
-                <span className="inline-flex items-center gap-1.5 text-[13px]"
-                  style={{ color: "hsl(var(--muted-foreground))" }}>
-                  <Calendar size={13} />
-                  <span>
-                    Né(e) le {fmtDate(collab.date_naissance)}
-                    <span style={{ opacity: 0.6, marginLeft: 6 }}>· {age} ans</span>
-                  </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: "hsl(var(--muted) / 0.5)" }}>
+                  <Calendar size={12.5} />
+                  <span>Né(e) le {fmtDate(collab.date_naissance)}<span style={{ opacity: 0.65, marginLeft: 5 }}>· {age} ans</span></span>
                 </span>
               );
             })()}
           </div>
         </div>
-      </div>
 
+        {/* Smart buttons façon Odoo : compteurs cliquables, ouvrent l'onglet correspondant */}
+        <div className="flex items-stretch flex-wrap" style={{ borderLeft: "1px solid hsl(var(--border))", paddingLeft: 20, marginLeft: "auto" }}>
+          {visibleTabs
+            .filter(t => tabCounts[t.id] !== undefined)
+            .slice(0, 5)
+            .map(t => {
+              const isActive = activeTab === t.id;
+              const accent = TAB_BADGE_COLORS[t.id] ?? "var(--primary)";
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onSelectTab(t.id)}
+                  className="relative flex flex-col items-center justify-center px-3.5 py-1 min-w-[64px] transition-all duration-150"
+                  style={{
+                    borderRight: "1px solid hsl(var(--border))",
+                    background: isActive ? `hsl(${accent} / 0.08)` : "transparent",
+                  }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "hsl(var(--muted) / 0.4)"; }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span className="text-[18px] font-bold tabular-nums" style={{ color: isActive ? `hsl(${accent})` : "hsl(var(--foreground))" }}>
+                    {tabCounts[t.id]}
+                  </span>
+                  <span className="text-[10.5px] font-medium text-center leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    {t.label}
+                  </span>
+                  {isActive && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[2px] w-6 rounded-full" style={{ background: `hsl(${accent})` }} />
+                  )}
+                </button>
+              );
+            })}
+        </div>
+      </div>
     </div>
   );
 };
@@ -1934,39 +2310,47 @@ const FicheCollaborateur: React.FC = () => {
           : { bg: "hsl(215 16% 60% / 0.15)", color: "hsl(215 16% 50%)" };
 
   return (
-    <div className="p-6 md:p-8 max-w-[1400px] mx-auto">
-      {/* Breadcrumb & Back */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(isManager ? "/dashboard" : "/collaborateurs")} className="flex items-center gap-1.5 text-sm hover:underline" style={{ color: "hsl(var(--accent))" }}>
-            <ArrowLeft size={15} />{isManager ? "Retour au tableau de bord" : "Retour à la liste"}
-          </button>
+    <div className="max-w-[1400px] mx-auto">
+      {/* Fil d'Ariane façon Odoo */}
+      <div className="flex items-center gap-1.5 px-6 md:px-8 pt-4 pb-2 text-[13px]"
+        style={{ color: "hsl(var(--muted-foreground))" }}>
+        <button onClick={() => navigate(isManager ? "/dashboard" : "/collaborateurs")} className="hover:underline">
+          {isManager ? "Tableau de bord" : "Collaborateurs"}
+        </button>
+        <ChevronRight size={12} />
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+          {collab.prenom} {collab.nom}
+        </span>
 
-          {/* Navigation Précédent/Suivant — RG-NAV-CTX-01 */}
-          {nav.hasContext && (
-            <div className="flex items-center gap-1 pl-3 border-l" style={{ borderColor: "hsl(var(--border))" }}>
-              <button
-                onClick={nav.goPrev}
-                disabled={!nav.prevId}
-                title="Collaborateur précédent (←)"
-                className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                style={{ color: "hsl(var(--accent))" }}>
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-xs font-mono px-2 select-none" style={{ color: "hsl(var(--muted-foreground))" }}>
-                {nav.current} / {nav.total}
-              </span>
-              <button
-                onClick={nav.goNext}
-                disabled={!nav.nextId}
-                title="Collaborateur suivant (→)"
-                className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                style={{ color: "hsl(var(--accent))" }}>
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Navigation Précédent/Suivant — RG-NAV-CTX-01 */}
+        {nav.hasContext && (
+          <div className="flex items-center gap-1 pl-3 ml-1 border-l" style={{ borderColor: "hsl(var(--border))" }}>
+            <button
+              onClick={nav.goPrev}
+              disabled={!nav.prevId}
+              title="Collaborateur précédent (←)"
+              className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              style={{ color: "hsl(var(--primary))" }}>
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-xs font-mono px-1 select-none">
+              {nav.current} / {nav.total}
+            </span>
+            <button
+              onClick={nav.goNext}
+              disabled={!nav.nextId}
+              title="Collaborateur suivant (→)"
+              className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              style={{ color: "hsl(var(--primary))" }}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Barre d'actions façon Odoo : boutons à gauche, statusbar à droite */}
+      <div className="px-6 md:px-8 pb-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           {isManager && (
             <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md font-semibold uppercase tracking-wider"
@@ -1979,11 +2363,12 @@ const FicheCollaborateur: React.FC = () => {
               {/* Saisir un congé — action discrète, gris dominant */}
               <button
                 onClick={() => navigate(`/absences/saisie?collaborateur=${collab.id}`)}
-                className="inline-flex items-center gap-2 text-[12px] font-medium px-3.5 py-2 rounded-lg transition-all"
+                className="inline-flex items-center gap-2 text-[12px] font-medium px-3 py-1.5 transition-all"
                 style={{
                   background: "hsl(var(--card))",
                   color: "hsl(var(--foreground))",
                   border: "1px solid hsl(var(--border))",
+                  borderRadius: "var(--radius)",
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = "hsl(var(--muted) / 0.5)";
@@ -1998,19 +2383,20 @@ const FicheCollaborateur: React.FC = () => {
                 Saisir un congé
               </button>
 
-              {/* Départ provisoire — bordure orange subtile */}
+              {/* Départ provisoire — bordure warning subtile */}
               <button
                 onClick={() => navigate(`/departs-provisoires?collaborateur=${collab.id}`)}
-                className="inline-flex items-center gap-2 text-[12px] font-medium px-3.5 py-2 rounded-lg transition-all"
+                className="inline-flex items-center gap-2 text-[12px] font-medium px-3 py-1.5 transition-all"
                 style={{
                   background: "hsl(var(--card))",
                   color: "hsl(var(--foreground))",
                   border: "1px solid hsl(var(--border))",
+                  borderRadius: "var(--radius)",
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = "hsl(35 95% 55% / 0.08)";
-                  e.currentTarget.style.borderColor = "hsl(35 95% 55% / 0.4)";
-                  e.currentTarget.style.color = "hsl(35 95% 42%)";
+                  e.currentTarget.style.background = "hsl(var(--warning) / 0.08)";
+                  e.currentTarget.style.borderColor = "hsl(var(--warning) / 0.4)";
+                  e.currentTarget.style.color = "hsl(var(--warning))";
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = "hsl(var(--card))";
@@ -2018,23 +2404,24 @@ const FicheCollaborateur: React.FC = () => {
                   e.currentTarget.style.color = "hsl(var(--foreground))";
                 }}
               >
-                <Clock size={13} style={{ color: "hsl(35 95% 50%)" }} />
+                <Clock size={13} style={{ color: "hsl(var(--warning))" }} />
                 Départ provisoire
               </button>
 
-              {/* Enregistrer un départ — bordure rouge subtile */}
+              {/* Enregistrer un départ — bordure destructive subtile */}
               <button
                 onClick={() => setShowDepartForm(true)}
-                className="inline-flex items-center gap-2 text-[12px] font-medium px-3.5 py-2 rounded-lg transition-all"
+                className="inline-flex items-center gap-2 text-[12px] font-medium px-3 py-1.5 transition-all"
                 style={{
                   background: "hsl(var(--card))",
                   color: "hsl(var(--foreground))",
                   border: "1px solid hsl(var(--border))",
+                  borderRadius: "var(--radius)",
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = "hsl(0 70% 50% / 0.08)";
-                  e.currentTarget.style.borderColor = "hsl(0 70% 50% / 0.4)";
-                  e.currentTarget.style.color = "hsl(0 70% 45%)";
+                  e.currentTarget.style.background = "hsl(var(--destructive) / 0.08)";
+                  e.currentTarget.style.borderColor = "hsl(var(--destructive) / 0.4)";
+                  e.currentTarget.style.color = "hsl(var(--destructive))";
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = "hsl(var(--card))";
@@ -2042,60 +2429,97 @@ const FicheCollaborateur: React.FC = () => {
                   e.currentTarget.style.color = "hsl(var(--foreground))";
                 }}
               >
-                <DoorOpen size={13} style={{ color: "hsl(0 70% 50%)" }} />
+                <DoorOpen size={13} style={{ color: "hsl(var(--destructive))" }} />
                 {collab.statut_collaborateur === "EN_DEPART" ? "Voir le départ" : "Enregistrer un départ"}
               </button>
             </div>
           )}
         </div>
+
+        {/* Statusbar façon Odoo : véritables chevrons en flèche, l'étape active en surbrillance */}
+        <div className="flex items-center text-[11px] font-semibold uppercase tracking-wide">
+          {["ACTIF", "EN_DEPART", "SORTI"].map((etape, i, arr) => {
+            const isCurrent = collab.statut_collaborateur === etape
+              || (etape === "ACTIF" && !["EN_DEPART", "SORTI"].includes(collab.statut_collaborateur));
+            const passed = arr.indexOf(collab.statut_collaborateur) > i;
+            const isFirst = i === 0;
+            const isLast = i === arr.length - 1;
+            // Découpe en pointe de flèche : plat à gauche pour la 1ʳᵉ étape, pointu partout ailleurs
+            const clip = isLast
+              ? (isFirst ? "none" : "polygon(0 0, 12px 50%, 0 100%, 100% 100%, 100% 0)")
+              : (isFirst
+                  ? "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%)"
+                  : "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)");
+            return (
+              <span
+                key={etape}
+                className="relative flex items-center justify-center transition-all duration-200"
+                style={{
+                  padding: isFirst ? "7px 18px 7px 16px" : "7px 18px",
+                  marginLeft: isFirst ? 0 : -11,
+                  clipPath: clip,
+                  background: isCurrent ? "hsl(var(--primary))" : passed ? "hsl(var(--muted))" : "hsl(var(--card))",
+                  color: isCurrent ? "hsl(var(--primary-foreground, 0 0% 100%))" : "hsl(var(--muted-foreground))",
+                  border: "1px solid hsl(var(--border))",
+                  boxShadow: isCurrent ? "0 2px 6px hsl(var(--primary) / 0.35)" : "none",
+                  zIndex: isCurrent ? 1 : 0,
+                }}
+              >
+                {STATUT_LABELS[etape]}
+              </span>
+            );
+          })}
+        </div>
+      </div>
       </div>
 
+      <div className="px-6 md:px-8 pb-8">
       {/* Bandeau EN_DEPART */}
       {collab.statut_collaborateur === "EN_DEPART" && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl mb-4"
-          style={{ background: "hsl(45 100% 50% / 0.10)", border: "1px solid hsl(45 100% 50% / 0.25)" }}>
-          <DoorOpen size={15} style={{ color: "hsl(45 100% 30%)", flexShrink: 0 }} />
-          <p className="text-xs font-medium" style={{ color: "hsl(45 100% 30%)" }}>
+        <div className="flex items-center gap-2 px-4 py-2.5 mb-4"
+          style={{ background: "hsl(var(--warning) / 0.10)", border: "1px solid hsl(var(--warning) / 0.25)", borderRadius: "var(--radius)" }}>
+          <DoorOpen size={15} style={{ color: "hsl(var(--warning))", flexShrink: 0 }} />
+          <p className="text-xs font-medium" style={{ color: "hsl(var(--warning))" }}>
             Ce collaborateur est en phase de départ. Le traitement automatique s'exécutera à la date de départ planifiée.
           </p>
         </div>
       )}
 
-      {/* Header fiche */}
-      <CollabHeader collab={collab} statutStyle={statutStyle} onPhotoUpdated={isManager ? () => {} : loadCollab} />
+      {/* Header fiche + smart buttons (façon Odoo) */}
+      <CollabHeader collab={collab} statutStyle={statutStyle} onPhotoUpdated={isManager ? () => {} : loadCollab}
+        visibleTabs={visibleTabs} tabCounts={tabCounts} activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      {/* Onglets — underline minimaliste, style Linear/Stripe */}
-      <div className="flex gap-1 overflow-x-auto mb-6 relative"
-        style={{ borderBottom: "1px solid hsl(var(--border) / 0.6)" }}>
+      {/* Onglets façon "notebook" Odoo : boîtes connectées au panneau de contenu */}
+      <div className="flex flex-wrap gap-0.5 relative -mb-px z-[1]">
         {visibleTabs.map(tab => {
           const isActive = activeTab === tab.id;
           const count = tabCounts[tab.id];
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-2 px-4 py-3 text-[13px] whitespace-nowrap transition-all duration-200 relative"
+              className="relative flex items-center gap-2 px-4 py-2.5 text-[13px] whitespace-nowrap transition-all duration-150"
               style={{
-                color: isActive ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                color: isActive ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
                 fontWeight: isActive ? 600 : 500,
-                marginBottom: "-1px",
-                borderBottom: isActive
-                  ? "2px solid hsl(var(--accent))"
-                  : "2px solid transparent",
+                background: isActive ? "hsl(var(--card))" : "hsl(var(--muted) / 0.5)",
+                border: "1px solid hsl(var(--border))",
+                borderBottom: isActive ? "1px solid hsl(var(--card))" : "1px solid hsl(var(--border))",
+                borderTopLeftRadius: "var(--radius)",
+                borderTopRightRadius: "var(--radius)",
+                transform: isActive ? "translateY(-1px)" : "none",
               }}
-              onMouseEnter={e => {
-                if (!isActive) e.currentTarget.style.color = "hsl(var(--foreground))";
-              }}
-              onMouseLeave={e => {
-                if (!isActive) e.currentTarget.style.color = "hsl(var(--muted-foreground))";
-              }}>
-              <span style={{ color: isActive ? "hsl(var(--accent))" : "currentColor" }}>
-                {tab.icon}
-              </span>
+              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.color = "hsl(var(--foreground))"; e.currentTarget.style.background = "hsl(var(--muted) / 0.8)"; } }}
+              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.color = "hsl(var(--muted-foreground))"; e.currentTarget.style.background = "hsl(var(--muted) / 0.5)"; } }}>
+              {isActive && (
+                <span className="absolute top-0 left-0 right-0 h-[2px]"
+                  style={{ background: `hsl(${TAB_BADGE_COLORS[tab.id] ?? "var(--primary)"})`, borderTopLeftRadius: "var(--radius)", borderTopRightRadius: "var(--radius)" }} />
+              )}
+              <span style={{ color: isActive ? `hsl(${TAB_BADGE_COLORS[tab.id] ?? "var(--primary)"})` : "currentColor" }}>{tab.icon}</span>
               <span>{tab.label}</span>
               {count !== undefined && count > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-md text-[10px] font-bold tabular-nums"
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[16px] px-1 text-[10px] font-bold tabular-nums rounded"
                   style={{
-                    background: isActive ? "hsl(var(--accent) / 0.12)" : "hsl(var(--muted))",
-                    color: isActive ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))",
+                    background: `hsl(${TAB_BADGE_COLORS[tab.id] ?? "var(--muted-foreground)"} / ${isActive ? 0.18 : 0.12})`,
+                    color: `hsl(${TAB_BADGE_COLORS[tab.id] ?? "var(--muted-foreground)"})`,
                   }}>
                   {count}
                 </span>
@@ -2104,6 +2528,7 @@ const FicheCollaborateur: React.FC = () => {
           );
         })}
       </div>
+      <div style={{ border: "1px solid hsl(var(--border))", borderTopLeftRadius: activeTab === visibleTabs[0]?.id ? 0 : "var(--radius)", borderRadius: "var(--radius)", background: "hsl(var(--card))" }} className="p-5">
 
       {/* Contenu onglet — manager : lecture seule via pointer-events-none */}
       <div className={isManager ? "pointer-events-none select-none opacity-90" : ""}>
@@ -2118,6 +2543,8 @@ const FicheCollaborateur: React.FC = () => {
         {!isManager && activeTab === "immatriculation" && <TabImmatriculation collaborateurId={collab.id} collab={collab} onSave={loadCollab} />}
         {!isManager && activeTab === "syndical" && <TabSyndical collaborateurId={collab.id} />}
         {!isManager && activeTab === "divers" && <TabDivers collaborateurId={collab.id} />}
+      </div>
+      </div>
       </div>
 
       {/* Modal départ */}

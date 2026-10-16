@@ -388,29 +388,24 @@ export default function HabilitationsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* En-tête */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-            Périmètres de gestion
-          </h1>
-          <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-            Définissez la population de collaborateurs que chaque gestionnaire peut traiter.
-            Une règle <strong>globale</strong> donne accès à tous les collaborateurs. Sinon, une règle
-            combine plusieurs critères en <strong>ET</strong> ; à l'intérieur d'un critère, plusieurs
-            valeurs se combinent en <strong>OU</strong>. Plusieurs règles sur un même gestionnaire se
-            cumulent (OU).
-          </p>
-        </div>
+    <div className="max-w-5xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px] text-muted-foreground">
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold text-foreground">Périmètres de gestion</span>
+      </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap border-b border-border bg-card">
         <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm(); }}>
           <DialogTrigger asChild>
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-2" />
+            <button onClick={openCreate}
+              className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+              style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+              <Plus className="h-3.5 w-3.5" />
               Ajouter une règle
-            </Button>
+            </button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
@@ -503,6 +498,15 @@ export default function HabilitationsPage() {
         </Dialog>
       </div>
 
+      <div className="p-6 space-y-6">
+      <p className="text-muted-foreground max-w-2xl text-sm">
+        Définissez la population de collaborateurs que chaque gestionnaire peut traiter.
+        Une règle <strong>globale</strong> donne accès à tous les collaborateurs. Sinon, une règle
+        combine plusieurs critères en <strong>ET</strong> ; à l'intérieur d'un critère, plusieurs
+        valeurs se combinent en <strong>OU</strong>. Plusieurs règles sur un même gestionnaire se
+        cumulent (OU).
+      </p>
+
       {/* Contenu */}
       {loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
@@ -591,6 +595,7 @@ export default function HabilitationsPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

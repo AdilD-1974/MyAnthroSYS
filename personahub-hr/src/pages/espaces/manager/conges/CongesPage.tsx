@@ -28,11 +28,10 @@ const TITLES: Record<SubView, { title: string; sub: string }> = {
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ msg, type }: { msg: string; type: 'success' | 'info' }) {
-  const cls = type === 'success'
-    ? 'bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]'
-    : 'bg-[#E6F1FB] text-[#185FA5] border-[#A8CCEE]'
+  const token = type === 'success' ? 'success' : 'info'
   return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl border text-[13px] shadow-lg ${cls}`}>
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 text-[13px]"
+      style={{ background: `hsl(var(--${token}) / 0.12)`, color: `hsl(var(--${token}))`, border: `1px solid hsl(var(--${token}) / 0.3)`, borderRadius: "var(--radius)" }}>
       <i className={`ti ${type === 'success' ? 'ti-circle-check' : 'ti-info-circle'} text-[16px]`} />
       {msg}
     </div>
@@ -78,24 +77,34 @@ export default function CongesPage({ initialView }: CongesPageProps = {}) {
   const { title, sub } = TITLES[activeView]
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
+    <div className="flex flex-col h-full" style={{ background: "hsl(var(--background))" }}>
+
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-5 pt-3 pb-1 text-[13px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Mon équipe</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>{title}</span>
+      </div>
 
       {/* Topbar */}
-      <div className="bg-white dark:bg-gray-900 px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between flex-shrink-0">
+      <div className="px-5 py-2.5 flex items-center justify-between flex-shrink-0"
+        style={{ background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" }}>
         <div>
-          <h1 className="text-[18px] font-medium text-gray-900 dark:text-gray-100">{title}</h1>
-          <p className="text-[12px] text-gray-400 mt-0.5">{sub}</p>
+          <h1 className="text-[16px] font-semibold" style={{ color: "hsl(var(--foreground))" }}>{title}</h1>
+          <p className="text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{sub}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => showToastMsg('Export Excel en cours…', 'info')}
-            className="text-[12px] px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-500 flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors font-medium">
+            className="text-[12px] h-8 px-3 flex items-center gap-1.5 font-medium transition-colors"
+            style={{ color: "hsl(var(--muted-foreground))" }}>
             <i className="ti ti-download text-[14px]" />
             Excel
           </button>
           <button
             onClick={() => setShowForm(true)}
-            className="text-[12px] px-3 py-2 rounded-lg bg-[#4B6FE4] text-white flex items-center gap-1.5 hover:bg-[#3A5DD4] transition-colors font-medium">
+            className="text-[13px] h-8 px-3 flex items-center gap-1.5 font-medium transition-colors"
+            style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
             <i className="ti ti-plus text-[14px]" />
             Nouvelle demande
           </button>

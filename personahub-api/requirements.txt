@@ -1,14 +1,53 @@
+# requirements.txt — personahub-api (régénéré le 16/10/2026, Adil DAIA)
+# Source : paquets réellement installés dans venv312 (lot 0, plateforme d'éditions).
+# Ne liste que les dépendances directes ; pip résout les autres.
+# bcrypt reste en 3.x : passlib 1.7.4 est incompatible avec bcrypt >= 4.0.
+# psycopg2 : sous Windows, pip installe la roue binaire ; sur un serveur sans
+# compilateur, utiliser psycopg2-binary à la même version.
+
+# Socle API
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 sqlalchemy==2.0.36
 alembic==1.14.0
-
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.12
+psycopg2==2.9.12
 pydantic==2.10.3
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
+python-multipart==0.0.12
+email-validator==2.3.0
 httpx==0.28.0
+
+# Sécurité
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+bcrypt==3.2.2
+cryptography==49.0.0
+
+# Tâches planifiées
+apscheduler==3.11.2
+tzlocal==5.3.1
+
+# Éditions : PDF, Excel, arabe, montants en lettres
+reportlab==4.5.1
+pypdf==6.14.2
+pyhanko==0.35.2
+openpyxl==3.1.5
+arabic-reshaper==3.0.1
+python-bidi==0.6.11
+num2words==0.5.14
+pillow==12.3.0
+svglib==2.0.2
+
+# Éditions : moteur actuel, à retirer au lot 4
+xhtml2pdf==0.2.17
+weasyprint==69.0
+jinja2==3.1.6
+
+# IA (assistant, tâches)
+anthropic==0.109.1
+requests==2.34.2
+
+# Tests
 pytest==8.3.4
 pytest-asyncio==0.24.0

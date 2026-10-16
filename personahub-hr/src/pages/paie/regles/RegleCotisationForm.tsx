@@ -10,7 +10,7 @@
  * (part salariale et part patronale).
  */
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,25 +97,11 @@ const RegleCotisationForm: React.FC<Props> = ({ editId, regimes, onBack }) => {
       //   - Famille COT_PAT = Cotisations patronales → "Rubrique part Pat."
       //   - Type ASS = Assiettes de calcul → "Assiette (rubrique)"
       //   - Toutes rubriques actives → bases de calcul (Nb paie, Nb jours, etc.)
-      const [{ data: rubsCotis }, { data: rubsAssiettes }, { data: rubsAll }, { data: bars }] = await Promise.all([
-        supabase.from("rubrique_paie" as never)
-          .select("code,libelle,code_famille,code_type")
-          .eq("archive" as never, false as never)
-          .in("code_famille" as never, ["COT_SAL", "COT_PAT"] as never)
-          .order("code" as never),
-        supabase.from("rubrique_paie" as never)
-          .select("code,libelle,code_famille,code_type")
-          .eq("archive" as never, false as never)
-          .eq("code_type" as never, "ASS" as never)
-          .order("code" as never),
-        supabase.from("rubrique_paie" as never)
-          .select("code,libelle,code_famille,code_type")
-          .eq("archive" as never, false as never)
-          .order("code" as never),
-        supabase.from("bareme" as never)
-          .select("code,libelle")
-          .eq("archive" as never, false as never)
-          .order("code" as never),
+      const [rubsCotis, rubsAssiettes, rubsAll, bars] = await Promise.all([
+        db.list<Rubrique>("rubrique_paie", { archive: false, code_famille: "in.(COT_SAL,COT_PAT)", select: "code,libelle,code_famille,code_type", order: "code" }),
+        db.list<Rubrique>("rubrique_paie", { archive: false, code_type: "ASS", select: "code,libelle,code_famille,code_type", order: "code" }),
+        db.list<Rubrique>("rubrique_paie", { archive: false, select: "code,libelle,code_famille,code_type", order: "code" }),
+        db.list<any>("bareme", { archive: false, select: "code,libelle", order: "code" }),
       ]);
       // Fusion (en évitant les doublons si une rubrique est à la fois ASS et COT_*)
       const merged: Rubrique[] = [...((rubsCotis || []) as Rubrique[])];
@@ -128,11 +114,9 @@ const RegleCotisationForm: React.FC<Props> = ({ editId, regimes, onBack }) => {
       setBaremes((bars || []) as Array<{ code: string; libelle: string }>);
 
       if (editId) {
-        const [{ data: regle }, { data: compos }] = await Promise.all([
-          supabase.from("regle_calcul_cotisation" as never)
-            .select("*").eq("id" as never, editId as never).single(),
-          supabase.from("regle_calcul_cotisation_composante" as never)
-            .select("*").eq("id_regle" as never, editId as never).order("ordre" as never),
+        const [regle, compos] = await Promise.all([
+          db.findOne<any>("regle_calcul_cotisation", { id: editId, select: "*" }),
+          db.list<any>("regle_calcul_cotisation_composante", { id_regle: editId, select: "*", order: "ordre" }),
         ]);
         if (regle) {
           const d = regle as any;
@@ -239,17 +223,11 @@ const RegleCotisationForm: React.FC<Props> = ({ editId, regimes, onBack }) => {
     try {
       let regleId = editId;
       if (editId) {
-        const { error: e } = await supabase.from("regle_calcul_cotisation" as never)
-          .update(headerPayload as never).eq("id" as never, editId as never);
-        if (e) throw e;
-        await supabase.from("regle_calcul_cotisation_composante" as never)
-          .delete().eq("id_regle" as never, editId as never);
+        await db.update("regle_calcul_cotisation", { id: editId }, headerPayload);
+        await db.remove("regle_calcul_cotisation_composante", { id_regle: editId });
       } else {
-        const { data, error: e } = await supabase.from("regle_calcul_cotisation" as never)
-          .insert({ ...headerPayload, code: form.code.toUpperCase().trim() } as never)
-          .select("id" as never).single();
-        if (e) throw e;
-        regleId = (data as any).id;
+        const created: any = await db.create("regle_calcul_cotisation", { ...headerPayload, code: form.code.toUpperCase().trim() });
+        regleId = Array.isArray(created) ? created[0]?.id : created?.id;
       }
 
       if (regleId && composantes.length > 0) {
@@ -266,9 +244,7 @@ const RegleCotisationForm: React.FC<Props> = ({ editId, regimes, onBack }) => {
           code_rubrique_part_patronale: c.code_rubrique_part_patronale,
           actif: c.actif,
         }));
-        const { error: e } = await supabase.from("regle_calcul_cotisation_composante" as never)
-          .insert(payload as never);
-        if (e) throw e;
+        await db.create("regle_calcul_cotisation_composante", payload);
       }
 
       toast({ title: editId ? "Règle mise à jour" : "Règle créée" });

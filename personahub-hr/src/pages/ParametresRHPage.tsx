@@ -136,62 +136,68 @@ const ParametresRHPage: React.FC = () => {
   const categories = ["all", ...Array.from(new Set(params.map(p => p.categorie)))];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl" style={{ background: "hsl(var(--accent) / 0.1)" }}>
-            <Settings2 size={20} style={{ color: "hsl(var(--accent))" }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Paramètres RH</h1>
-            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Valeurs configurables utilisées dans les calculs (âge de retraite, durées légales...)</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              const exportData = filtered.map(p => ({
-                Code: p.code, Libellé: p.libelle, Valeur: p.valeur,
-                Type: p.type_valeur, Unité: p.unite || "", Catégorie: CATEGORIES[p.categorie] || p.categorie,
-                Description: p.description || "", Actif: p.actif ? "Oui" : "Non",
-              }));
-              const ws = XLSX.utils.json_to_sheet(exportData);
-              const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "Paramètres RH");
-              XLSX.writeFile(wb, "parametres_rh_export.xlsx");
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors border"
-            style={{ borderColor: "hsl(84 55% 46% / 0.3)", background: "hsl(84 55% 46% / 0.1)", color: "hsl(84 55% 36%)" }}
-          >
-            <Download size={14} /> Exporter
-          </button>
-          <button
-            onClick={() => { setShowNew(true); setEditId(null); setError(null); setNewForm(EMPTY); }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-            style={{ background: "hsl(var(--accent))", color: "white" }}
-          >
-            <Plus size={14} /> Nouveau paramètre
-          </button>
-        </div>
+    <div className="max-w-5xl mx-auto">
+      {/* Fil d'Ariane façon Odoo */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Paramètres RH</span>
       </div>
 
-      {/* Catégorie filter */}
-      <div className="flex gap-2 flex-wrap mb-5">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => setActiveCategorie(cat)}
-            className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-            style={{
-              background: activeCategorie === cat ? "hsl(var(--accent))" : "hsl(var(--muted) / 0.5)",
-              color: activeCategorie === cat ? "white" : "hsl(var(--muted-foreground))",
-            }}
-          >
-            {cat === "all" ? "Tous" : (CATEGORIES[cat] || cat)}
-          </button>
-        ))}
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button
+          onClick={() => { setShowNew(true); setEditId(null); setError(null); setNewForm(EMPTY); }}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}
+        >
+          <Plus size={14} /> Nouveau
+        </button>
+        <button
+          onClick={() => {
+            const exportData = filtered.map(p => ({
+              Code: p.code, Libellé: p.libelle, Valeur: p.valeur,
+              Type: p.type_valeur, Unité: p.unite || "", Catégorie: CATEGORIES[p.categorie] || p.categorie,
+              Description: p.description || "", Actif: p.actif ? "Oui" : "Non",
+            }));
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Paramètres RH");
+            XLSX.writeFile(wb, "parametres_rh_export.xlsx");
+          }}
+          className="flex items-center gap-1.5 h-8 px-2.5 text-[13px] font-medium transition-colors"
+          style={{ color: "hsl(var(--muted-foreground))" }}
+        >
+          <Download size={14} /> Export
+        </button>
+
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+
+        {/* Regrouper par catégorie — chips façon facette Odoo */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-[11px] font-medium mr-1" style={{ color: "hsl(var(--muted-foreground))" }}>Catégorie :</span>
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategorie(cat)}
+              className="px-2 py-1 text-[12px] font-medium transition-colors"
+              style={{
+                color: activeCategorie === cat ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                borderBottom: activeCategorie === cat ? "2px solid hsl(var(--primary))" : "2px solid transparent",
+              }}
+            >
+              {cat === "all" ? "Tous" : (CATEGORIES[cat] || cat)}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1" />
+        <span className="text-[12px] whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {loading ? "…" : `${filtered.length} paramètre(s)`}
+        </span>
       </div>
+
+      <div className="p-6">
 
       {/* Affichage category → dedicated UI */}
       {activeCategorie === "affichage" ? (
@@ -200,7 +206,7 @@ const ParametresRHPage: React.FC = () => {
       <>
       {/* Error */}
       {error && (
-        <div className="mb-4 px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(0 84% 55% / 0.1)", color: "hsl(0 84% 45%)", border: "1px solid hsl(0 84% 55% / 0.3)" }}>
+        <div className="mb-4 px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(var(--destructive) / 0.1)", color: "hsl(var(--destructive))", border: "1px solid hsl(var(--destructive) / 0.3)" }}>
           {error}
         </div>
       )}
@@ -256,17 +262,17 @@ const ParametresRHPage: React.FC = () => {
           <Loader2 className="animate-spin" style={{ color: "hsl(var(--accent))" }} />
         </div>
       ) : (
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
-          <table className="w-full text-sm">
+        <div style={{ border: "1px solid hsl(var(--border))" }}>
+          <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: "hsl(var(--muted) / 0.4)", borderBottom: "1px solid hsl(var(--border))" }}>
-                <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>Code</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>Libellé</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>Valeur</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>Unité</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>Catégorie</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>Description</th>
-                <th className="px-4 py-3 w-20" />
+              <tr style={{ background: "hsl(var(--muted) / 0.6)", borderBottom: "1px solid hsl(var(--border))" }}>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>Code</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>Libellé</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>Valeur</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>Unité</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>Catégorie</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>Description</th>
+                <th className="px-3 py-2 w-20" />
               </tr>
             </thead>
             <tbody>
@@ -368,6 +374,7 @@ const ParametresRHPage: React.FC = () => {
       )}
       </>
       )}
+      </div>
     </div>
   );
 };

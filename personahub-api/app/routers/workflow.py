@@ -11,6 +11,7 @@ Endpoints :
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional, Any
 from uuid import UUID
 
@@ -157,6 +158,15 @@ class DecideIn(BaseModel):
     type_decision: str = Field(..., description="VALIDER | REJETER | RENVOYER | DELEGUER | VISER")
     commentaire: Optional[str] = None
     pieces_jointes: Optional[list[dict]] = None
+    cible_id: Optional[UUID] = None  # délégataire (collaborateur) si DELEGUER
+
+
+class DecideBatchIn(BaseModel):
+    instance_etape_ids: list[UUID]
+    acteur_id: UUID
+    type_decision: str = Field(..., description="VALIDER | REJETER | RENVOYER | DELEGUER")
+    commentaire: Optional[str] = None
+    cible_id: Optional[UUID] = None
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -185,13 +195,36 @@ def decide(payload: DecideIn, db: Session = Depends(get_db)):
             type_decision=payload.type_decision,
             commentaire=payload.commentaire,
             pieces_jointes=payload.pieces_jointes,
+            cible_id=payload.cible_id,
         )
         return result
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
-@router.post("/resubmit/{instance_id}")
+@router.post("/decide-batch")
+def decide_batch(payload: DecideBatchIn, db: Session = Depends(get_db)):
+    """Applique la même décision à plusieurs tâches. Ne s'arrête pas au premier
+    échec : renvoie le détail par tâche."""
+    engine = WorkflowEngine(db)
+    results = []
+    ok, ko = 0, 0
+    for ie_id in payload.instance_etape_ids:
+        try:
+            engine.decide(
+                instance_etape_id=ie_id,
+                acteur_id=payload.acteur_id,
+                type_decision=payload.type_decision,
+                commentaire=payload.commentaire,
+                cible_id=payload.cible_id,
+            )
+            results.append({"instance_etape_id": str(ie_id), "ok": True})
+            ok += 1
+        except Exception as e:  # noqa
+            db.rollback()
+            results.append({"instance_etape_id": str(ie_id), "ok": False, "erreur": str(e)})
+            ko += 1
+    return {"traitees": ok, "echecs": ko, "resultats": results}
 def resubmit(instance_id: UUID, db: Session = Depends(get_db)):
     """Le demandeur a modifié sa demande après un RENVOYER. On relance l'étape courante."""
     engine = WorkflowEngine(db)
@@ -447,7 +480,9 @@ def get_inbox(user_id: UUID, db: Session = Depends(get_db)):
                    i.type_objet, i.id_objet, i.demandeur_id,
                    c.nom AS demandeur_nom, c.prenom AS demandeur_prenom,
                    c.matricule AS demandeur_matricule,
-                   w.code AS workflow_code, w.libelle AS workflow_libelle
+                   w.code AS workflow_code, w.libelle AS workflow_libelle,
+                   (SELECT d.table_source FROM ref_workflow_declencheur d
+                     WHERE d.type_objet = i.type_objet LIMIT 1) AS table_source
             FROM wf_instance_etape ie
             JOIN wf_instance i ON i.id = ie.id_instance AND i.statut = 'EN_COURS'
             JOIN ref_workflow w ON w.id = i.id_workflow
@@ -460,31 +495,202 @@ def get_inbox(user_id: UUID, db: Session = Depends(get_db)):
         )
         SELECT b.*
         FROM base b
-        WHERE EXISTS (
-            SELECT 1
-            FROM ref_workflow_acteur a
-            WHERE a.id_etape = b.id_etape_def AND a.actif = true
-              AND (
-                  -- 1) Utilisateur nommé explicitement
-                  (a.type_acteur = 'UTILISATEUR_FIXE' AND a.valeur::uuid = :u)
+        WHERE
+            -- (A) ACTEUR DIRECT (règles d'origine, par user_id) ET n'a pas délégué cette tâche
+            (
+                EXISTS (
+                    SELECT 1
+                    FROM ref_workflow_acteur a
+                    WHERE a.id_etape = b.id_etape_def AND a.actif = true
+                      AND (
+                          (a.type_acteur = 'UTILISATEUR_FIXE' AND a.valeur::uuid = :u)
+                          OR (a.type_acteur = 'ROLE'
+                              AND EXISTS (SELECT 1 FROM user_roles ur
+                                          WHERE ur.user_id = :u AND ur.role = a.valeur)
+                              AND wf_collaborateur_dans_perimetre(:u, a.valeur, b.demandeur_id))
+                          OR (a.type_acteur IN ('HIERARCHIE_N1','HIERARCHIE_N2',
+                                                'UO_RESPONSABLE','UO_PARENTE_RESPONSABLE',
+                                                'UO_GRAND_PARENTE_RESPONSABLE','UO_RACINE_RESPONSABLE')
+                              AND EXISTS (
+                                  SELECT 1
+                                  FROM wf_resolve_acteur(a.id, b.demandeur_id) ra
+                                  JOIN moi ON moi.collaborateur_id = ra.collaborateur_id
+                              ))
+                      )
+                )
+                -- pas de délégation PONCTUELLE active émise par moi sur cette tâche
+                AND NOT EXISTS (
+                    SELECT 1 FROM wf_instance_delegation wid
+                    WHERE wid.id_instance_etape = b.ie_id AND wid.actif = true
+                      AND wid.delegant_id = (SELECT collaborateur_id FROM moi)
+                      AND wid.date_debut <= CURRENT_DATE
+                      AND (wid.date_fin IS NULL OR wid.date_fin >= CURRENT_DATE)
+                )
+                -- pas de délégation PERMANENTE active émise par moi couvrant cette tâche
+                AND NOT EXISTS (
+                    SELECT 1 FROM wf_delegation d
+                    WHERE d.delegant_id = (SELECT collaborateur_id FROM moi) AND d.actif = true
+                      AND d.date_debut <= CURRENT_DATE
+                      AND (d.date_fin IS NULL OR d.date_fin >= CURRENT_DATE)
+                      AND (d.scope_type_objet IS NULL OR d.scope_type_objet = b.type_objet)
+                      AND (d.scope_workflow_code IS NULL OR d.scope_workflow_code = b.workflow_code)
+                )
+            )
 
-                  -- 2) Rôle + périmètre de gestion (GLOBAL = sans restriction)
-                  OR (a.type_acteur = 'ROLE'
-                      AND EXISTS (SELECT 1 FROM user_roles ur
-                                  WHERE ur.user_id = :u AND ur.role = a.valeur)
-                      AND wf_collaborateur_dans_perimetre(:u, a.valeur, b.demandeur_id))
+            -- (B) DÉLÉGATION PONCTUELLE reçue
+            OR EXISTS (
+                SELECT 1 FROM wf_instance_delegation wid
+                WHERE wid.id_instance_etape = b.ie_id AND wid.actif = true
+                  AND wid.delegue_id = (SELECT collaborateur_id FROM moi)
+                  AND wid.date_debut <= CURRENT_DATE
+                  AND (wid.date_fin IS NULL OR wid.date_fin >= CURRENT_DATE)
+            )
 
-                  -- 3) Hiérarchie / responsables d'UO : acteur réel pour ce demandeur
-                  OR (a.type_acteur IN ('HIERARCHIE_N1','HIERARCHIE_N2',
-                                        'UO_RESPONSABLE','UO_PARENTE_RESPONSABLE',
-                                        'UO_GRAND_PARENTE_RESPONSABLE','UO_RACINE_RESPONSABLE')
-                      AND EXISTS (
-                          SELECT 1
-                          FROM wf_resolve_acteur(a.id, b.demandeur_id) ra
-                          JOIN moi ON moi.collaborateur_id = ra.collaborateur_id
-                      ))
-              )
-        )
+            -- (C) DÉLÉGATION PERMANENTE reçue (du délégant qui aurait eu la tâche)
+            OR EXISTS (
+                SELECT 1 FROM wf_delegation d
+                WHERE d.delegue_id = (SELECT collaborateur_id FROM moi) AND d.actif = true
+                  AND d.date_debut <= CURRENT_DATE
+                  AND (d.date_fin IS NULL OR d.date_fin >= CURRENT_DATE)
+                  AND (d.scope_type_objet IS NULL OR d.scope_type_objet = b.type_objet)
+                  AND (d.scope_workflow_code IS NULL OR d.scope_workflow_code = b.workflow_code)
+                  AND wf_collab_matches_etape(d.delegant_id, b.id_etape_def, b.demandeur_id)
+            )
         ORDER BY b.date_echeance ASC NULLS LAST
     """), {"u": str(user_id)}).mappings().all()
     return [dict(r) for r in rows]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  DÉLÉGATIONS PERMANENTES (wf_delegation) — gestion par l'utilisateur et le RH
+# ════════════════════════════════════════════════════════════════════════════
+
+def _collab_of_user(db: Session, user_id) -> Optional[UUID]:
+    """Collaborateur lié au compte authentifié (profiles.user_id)."""
+    return db.execute(text("""
+        SELECT collaborateur_id FROM profiles
+        WHERE user_id = :u AND collaborateur_id IS NOT NULL
+        LIMIT 1
+    """), {"u": str(user_id)}).scalar()
+
+
+def _peut_gerer_autrui(db: Session, user_id) -> bool:
+    """RH ou administrateur : peut créer/voir des délégations pour autrui."""
+    return bool(db.execute(text("""
+        SELECT 1 FROM user_roles
+        WHERE user_id = :u AND role IN ('administrateur', 'gestionnaire_rh')
+        LIMIT 1
+    """), {"u": str(user_id)}).scalar())
+
+
+class DelegationIn(BaseModel):
+    delegue_id: UUID                              # collaborateur délégataire
+    date_debut: Optional[date] = None
+    date_fin: Optional[date] = None               # NULL = sans fin
+    scope_type_objet: Optional[str] = None        # NULL = tous
+    scope_workflow_code: Optional[str] = None     # NULL = tous
+    motif: Optional[str] = None
+    delegant_id: Optional[UUID] = None            # RH/admin uniquement : pour le compte d'autrui
+
+
+@router.post("/delegations")
+def creer_delegation(payload: DelegationIn, db: Session = Depends(get_db),
+                     auth: dict = Depends(get_current_user_payload)):
+    moi = _collab_of_user(db, auth.get("sub"))
+    if not moi:
+        raise HTTPException(400, "Aucun collaborateur lié à votre compte.")
+
+    # Délégant : soi-même par défaut ; autrui réservé RH/admin
+    delegant = payload.delegant_id or moi
+    if str(delegant) != str(moi) and not _peut_gerer_autrui(db, auth.get("sub")):
+        raise HTTPException(403, "Seul un RH/administrateur peut déléguer pour autrui.")
+
+    if str(delegant) == str(payload.delegue_id):
+        raise HTTPException(400, "Le délégant et le délégataire doivent être différents.")
+    if payload.date_fin and payload.date_debut and payload.date_fin < payload.date_debut:
+        raise HTTPException(400, "La date de fin doit être postérieure à la date de début.")
+
+    new_id = db.execute(text("""
+        INSERT INTO wf_delegation
+            (delegant_id, delegue_id, date_debut, date_fin,
+             scope_type_objet, scope_workflow_code, motif, created_by)
+        VALUES
+            (:del, :due, COALESCE(:dd, CURRENT_DATE), :df,
+             :sto, :swc, :motif, :cb)
+        RETURNING id
+    """), {
+        "del": str(delegant), "due": str(payload.delegue_id),
+        "dd": payload.date_debut, "df": payload.date_fin,
+        "sto": payload.scope_type_objet, "swc": payload.scope_workflow_code,
+        "motif": payload.motif, "cb": str(moi),
+    }).scalar()
+    db.commit()
+    return {"id": str(new_id), "status": "ok"}
+
+
+@router.get("/delegations")
+def lister_delegations(delegant_id: Optional[UUID] = None,
+                       db: Session = Depends(get_db),
+                       auth: dict = Depends(get_current_user_payload)):
+    """Délégations émises. Par défaut les miennes ; un RH/admin peut filtrer
+    sur un autre délégant (ou tout voir sans filtre)."""
+    moi = _collab_of_user(db, auth.get("sub"))
+    admin = _peut_gerer_autrui(db, auth.get("sub"))
+
+    if delegant_id:
+        if str(delegant_id) != str(moi) and not admin:
+            raise HTTPException(403, "Accès réservé au RH/administrateur.")
+        where, params = "d.delegant_id = :f", {"f": str(delegant_id)}
+    elif admin:
+        where, params = "TRUE", {}
+    else:
+        where, params = "d.delegant_id = :f", {"f": str(moi)}
+
+    rows = db.execute(text(f"""
+        SELECT d.*,
+               da.nom AS delegant_nom, da.prenom AS delegant_prenom, da.matricule AS delegant_matricule,
+               de.nom AS delegue_nom,  de.prenom AS delegue_prenom,  de.matricule AS delegue_matricule
+        FROM wf_delegation d
+        LEFT JOIN collaborateurs da ON da.id = d.delegant_id
+        LEFT JOIN collaborateurs de ON de.id = d.delegue_id
+        WHERE {where}
+        ORDER BY d.actif DESC, d.date_debut DESC
+    """), params).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/delegations/recues")
+def delegations_recues(db: Session = Depends(get_db),
+                       auth: dict = Depends(get_current_user_payload)):
+    """Délégations dont je suis le délégataire (actives)."""
+    moi = _collab_of_user(db, auth.get("sub"))
+    if not moi:
+        return []
+    rows = db.execute(text("""
+        SELECT d.*,
+               da.nom AS delegant_nom, da.prenom AS delegant_prenom, da.matricule AS delegant_matricule
+        FROM wf_delegation d
+        LEFT JOIN collaborateurs da ON da.id = d.delegant_id
+        WHERE d.delegue_id = :m AND d.actif = true
+          AND d.date_debut <= CURRENT_DATE
+          AND (d.date_fin IS NULL OR d.date_fin >= CURRENT_DATE)
+        ORDER BY d.date_debut DESC
+    """), {"m": str(moi)}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.delete("/delegations/{delegation_id}")
+def revoquer_delegation(delegation_id: UUID, db: Session = Depends(get_db),
+                        auth: dict = Depends(get_current_user_payload)):
+    """Révoque (désactive) une délégation. Réservé au délégant ou au RH/admin."""
+    moi = _collab_of_user(db, auth.get("sub"))
+    deleg = db.execute(text("SELECT delegant_id FROM wf_delegation WHERE id = :i"),
+                       {"i": str(delegation_id)}).scalar()
+    if not deleg:
+        raise HTTPException(404, "Délégation introuvable.")
+    if str(deleg) != str(moi) and not _peut_gerer_autrui(db, auth.get("sub")):
+        raise HTTPException(403, "Action réservée au délégant ou au RH/administrateur.")
+    db.execute(text("UPDATE wf_delegation SET actif = false, updated_at = now() WHERE id = :i"),
+               {"i": str(delegation_id)})
+    db.commit()
+    return {"status": "revoked"}

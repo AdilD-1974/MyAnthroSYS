@@ -235,27 +235,30 @@ const CalendrierPage: React.FC = () => {
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
-          <CalendarDays className="inline mr-2 mb-1" size={24} /> Calendrier
-        </h1>
-        <div className="flex items-center gap-3">
-          <button onClick={prev} className="p-2 rounded-lg hover:bg-muted transition-colors"><ChevronLeft size={18} /></button>
-          <span className="text-lg font-semibold min-w-[180px] text-center" style={{ color: "hsl(var(--foreground))" }}>
-            {MONTHS_FR[month]} {year}
-          </span>
-          <button onClick={next} className="p-2 rounded-lg hover:bg-muted transition-colors"><ChevronRight size={18} /></button>
-          <button
-            onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}
-            className="text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors"
-            style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
-          >
-            Aujourd'hui
-          </button>
-        </div>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Calendrier</span>
       </div>
 
+      {/* Barre d'outils : navigation mois */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button
+          onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}
+          className="text-[13px] h-8 px-3 font-medium transition-colors"
+          style={{ color: "hsl(var(--muted-foreground))" }}
+        >
+          Aujourd'hui
+        </button>
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+        <button onClick={prev} className="p-1.5 rounded transition-colors" style={{ color: "hsl(var(--muted-foreground))" }}><ChevronLeft size={16} /></button>
+        <span className="text-[14px] font-semibold min-w-[160px] text-center" style={{ color: "hsl(var(--foreground))" }}>
+          {MONTHS_FR[month]} {year}
+        </span>
+        <button onClick={next} className="p-1.5 rounded transition-colors" style={{ color: "hsl(var(--muted-foreground))" }}><ChevronRight size={16} /></button>
+      </div>
+
+      <div className="p-6">
       {/* Légende */}
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex gap-4 flex-wrap">
@@ -282,7 +285,7 @@ const CalendrierPage: React.FC = () => {
       </div>
 
       {/* Calendar grid */}
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+      <div className="border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
         <div className="grid grid-cols-7">
           {DAYS_FR.map(d => (
             <div key={d} className="px-2 py-2 text-center text-xs font-bold uppercase" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
@@ -374,6 +377,7 @@ const CalendrierPage: React.FC = () => {
             );
           })}
         </div>
+      </div>
       </div>
     </div>
   );

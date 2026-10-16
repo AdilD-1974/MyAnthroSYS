@@ -148,7 +148,7 @@ const WorkflowManagerForm: React.FC<Props> = ({ collaborateurId }) => {
 
   // ── Styles alignés sur le reste de la fiche ─────────────────────────────
   const labelStyle: React.CSSProperties = {
-    fontSize: 11,
+    fontSize: "calc(11px * var(--font-scale))",
     fontWeight: 600,
     color: "hsl(var(--muted-foreground))",
     marginBottom: 4,
@@ -157,7 +157,7 @@ const WorkflowManagerForm: React.FC<Props> = ({ collaborateurId }) => {
     width: "100%",
     padding: "6px 10px",
     borderRadius: 8,
-    fontSize: 13,
+    fontSize: "calc(13px * var(--font-scale))",
     border: "1px solid hsl(var(--border))",
     background: "hsl(var(--background))",
     color: "hsl(var(--foreground))",

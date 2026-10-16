@@ -26,6 +26,8 @@ interface UO {
   libelle: string;
   type_uo: string | null;
   niveau: number | null;
+  // RG-PST-SOC-01 (Adil DAIA) : établissement de rattachement, pour résoudre la société de l'UO
+  etablissement_id: string | null;
 }
 
 interface Compteur {
@@ -43,10 +45,13 @@ export interface UOTreeSelection {
 interface Props {
   selection: UOTreeSelection;
   onChange: (sel: UOTreeSelection) => void;
+  // RG-PST-SOC-01 (Adil DAIA) : restreint l'arbre + les compteurs aux UO de cette société (null/undefined = toutes)
+  societeId?: string | null;
 }
 
-const UOTreePanel: React.FC<Props> = ({ selection, onChange }) => {
+const UOTreePanel: React.FC<Props> = ({ selection, onChange, societeId }) => {
   const [uos, setUos] = useState<UO[]>([]);
+  const [etabs, setEtabs] = useState<{ id: string; societe_id: string }[]>([]);
   const [comptDirects, setComptDirects] = useState<Record<string, Compteur>>({});
   const [comptDescendants, setComptDescendants] = useState<Record<string, Compteur>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -57,19 +62,21 @@ const UOTreePanel: React.FC<Props> = ({ selection, onChange }) => {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [{ data: uoData }, { data: dDirects }, { data: dDescendants }] = await Promise.all([
+      const [{ data: uoData }, { data: dDirects }, { data: dDescendants }, { data: etabData }] = await Promise.all([
         supabase.from("unites_organisationnelles" as never)
-          .select("id,parent_id,code,libelle,type_uo,niveau")
+          .select("id,parent_id,code,libelle,type_uo,niveau,etablissement_id")
           .eq("actif" as never, true as never)
           .order("niveau" as never, { ascending: true }),
         supabase.from("v_uo_compteurs_postes_directs" as never)
           .select("unite_id,nb_total_instances,nb_occupes,nb_vacants"),
         supabase.from("v_uo_compteurs_postes_descendants" as never)
           .select("unite_id,nb_total_instances,nb_occupes,nb_vacants"),
+        supabase.from("etablissements" as never).select("id,societe_id"),
       ]);
 
       const uoList = (uoData || []) as UO[];
       setUos(uoList);
+      setEtabs(((etabData || []) as any[]).map(e => ({ id: e.id, societe_id: e.societe_id })));
 
       const mapDir: Record<string, Compteur> = {};
       ((dDirects || []) as Compteur[]).forEach(c => { mapDir[c.unite_id] = c; });
@@ -87,30 +94,54 @@ const UOTreePanel: React.FC<Props> = ({ selection, onChange }) => {
     load();
   }, []);
 
+  // ─── RG-PST-SOC-01 (Adil DAIA) : résolution UO -> société + périmètre visible ─────
+  const uoSocieteMap = useMemo(() => {
+    const etabToSoc: Record<string, string> = {};
+    etabs.forEach(e => { etabToSoc[e.id] = e.societe_id; });
+    const m: Record<string, string> = {};
+    uos.forEach(u => { if (u.etablissement_id && etabToSoc[u.etablissement_id]) m[u.id] = etabToSoc[u.etablissement_id]; });
+    return m;
+  }, [uos, etabs]);
+
+  const visibleUos = useMemo(() => {
+    if (!societeId) return uos;
+    return uos.filter(u => uoSocieteMap[u.id] === societeId);
+  }, [uos, societeId, uoSocieteMap]);
+
+  // Si la société filtrée change et que l'UO sélectionnée n'en fait plus partie, on réinitialise la sélection
+  useEffect(() => {
+    if (societeId && selection.unite_id && !visibleUos.find(u => u.id === selection.unite_id)) {
+      onChange({ ...selection, unite_id: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [societeId]);
+
   // ─── Index : enfants par parent_id ─────────────────────────────────────
   const childrenMap = useMemo(() => {
+    const idsSet = new Set(visibleUos.map(u => u.id));
     const m: Record<string, UO[]> = { ROOT: [] };
-    uos.forEach(u => {
-      const k = u.parent_id || "ROOT";
+    visibleUos.forEach(u => {
+      // Si le parent réel est hors du périmètre (filtré par société), l'UO devient une racine visible
+      const k = (u.parent_id && idsSet.has(u.parent_id)) ? u.parent_id : "ROOT";
       if (!m[k]) m[k] = [];
       m[k].push(u);
     });
     Object.keys(m).forEach(k => m[k].sort((a, b) => a.libelle.localeCompare(b.libelle)));
     return m;
-  }, [uos]);
+  }, [visibleUos]);
 
   // ─── Recherche : si actif, déplier tous les ancêtres des matchs ────────
   const matchedIds = useMemo(() => {
     if (!search.trim()) return null;
     const s = search.toLowerCase();
     const matches = new Set<string>();
-    uos.forEach(u => {
+    visibleUos.forEach(u => {
       if (u.libelle.toLowerCase().includes(s) || (u.code || "").toLowerCase().includes(s)) {
         matches.add(u.id);
       }
     });
     // Ajouter tous les ancêtres
-    const byId = new Map(uos.map(u => [u.id, u]));
+    const byId = new Map(visibleUos.map(u => [u.id, u]));
     const expand = new Set(matches);
     matches.forEach(id => {
       let cur = byId.get(id);
@@ -120,7 +151,7 @@ const UOTreePanel: React.FC<Props> = ({ selection, onChange }) => {
       }
     });
     return { matches, expand };
-  }, [search, uos]);
+  }, [search, visibleUos]);
 
   // ─── Toggle expand ─────────────────────────────────────────────────────
   const toggle = (id: string) => {
@@ -134,13 +165,16 @@ const UOTreePanel: React.FC<Props> = ({ selection, onChange }) => {
 
   // ─── Compteurs globaux (pour la racine "Tous") ─────────────────────────
   const totalGlobal = useMemo(() => {
-    const all = Object.values(comptDirects);
+    const ids = new Set(visibleUos.map(u => u.id));
+    const all = Object.entries(comptDirects)
+      .filter(([id]) => !societeId || ids.has(id))
+      .map(([, c]) => c);
     return {
       nb_total: all.reduce((s, c) => s + c.nb_total_instances, 0),
       nb_occupes: all.reduce((s, c) => s + c.nb_occupes, 0),
       nb_vacants: all.reduce((s, c) => s + c.nb_vacants, 0),
     };
-  }, [comptDirects]);
+  }, [comptDirects, visibleUos, societeId]);
 
   // ─── Rendu récursif d'un nœud ──────────────────────────────────────────
   const renderNode = (uo: UO, depth: number): React.ReactNode => {

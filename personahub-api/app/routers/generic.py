@@ -21,7 +21,12 @@ from app.core.security import get_current_user_payload
 router = APIRouter(prefix="/db", tags=["Base de données générique"])
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-FORBIDDEN_TABLES = {"users", "user_roles", "alembic_version"}
+# RG-MULTISOCIETE-06 (migration 057) : "user_societes" ajoutée aux tables
+# interdites -- sans ça, n'importe quel utilisateur pourrait s'auto-attribuer
+# l'accès à n'importe quelle société via un simple POST /db/user_societes.
+# La gestion des accès société passe exclusivement par des endpoints dédiés
+# côté administration (hors de ce proxy générique).
+FORBIDDEN_TABLES = {"users", "user_roles", "user_societes", "alembic_version"}
 RESERVED_PARAMS = {"select", "order", "limit", "offset", "count"}
 
 VALID_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -73,6 +78,35 @@ def get_table_columns(db: Session, table_name: str) -> list[str]:
     return [r.column_name for r in result]
 
 
+def get_table_column_types(db: Session, table_name: str) -> dict[str, str]:
+    """
+    RG-DB-GENERIC-ARRAY-CAST-01 (Adil DAIA) : colonne -> udt_name Postgres.
+    Pour un tableau, udt_name est le nom du type élément préfixé d'un
+    underscore (ex. '_uuid' pour uuid[], '_text' pour text[]). Sans ce cast
+    explicite, psycopg2 envoie une liste Python de chaînes comme text[] par
+    défaut — ce qui échoue (DatatypeMismatch) dès que la colonne réelle est
+    un tableau d'un autre type (uuid[], int[], etc.). C'est ce qui bloquait
+    l'écriture de element_variable.source_ids (uuid[]).
+    """
+    result = db.execute(text("""
+        SELECT column_name, udt_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = :t
+    """), {"t": table_name})
+    return {r.column_name: r.udt_name for r in result}
+
+
+def placeholder_avec_cast(col: str, bind_name: str, col_types: dict[str, str]) -> str:
+    """':bind_name', ou 'CAST(:bind_name AS uuid[])' si la colonne cible est un
+    tableau typé. CAST(...) plutôt que ':bind_name::uuid[]' : SQLAlchemy ne
+    reconnaît pas correctement un bind param immédiatement suivi de '::'
+    (l'opérateur de cast Postgres) — le nom partait alors tel quel jusqu'à
+    psycopg2 (qui ne comprend pas la syntaxe ':nom'), d'où un SyntaxError."""
+    udt = col_types.get(col, "")
+    if udt.startswith("_") and len(udt) > 1:
+        return f"CAST(:{bind_name} AS {udt[1:]}[])"
+    return f":{bind_name}"
+
+
 def get_table_pk(db: Session, table_name: str) -> str:
     result = db.execute(text("""
         SELECT kcu.column_name
@@ -108,6 +142,70 @@ def get_foreign_key(db: Session, main_table: str, referenced_table: str):
         LIMIT 1
     """), {"main": main_table, "ref": referenced_table}).fetchone()
     return (result.fk_column, result.referenced_column) if result else (None, None)
+
+
+# ── RG-MULTISOCIETE-06 (migration 057) : cloisonnement société ───────────────
+#
+# Portée : uniquement les tables possédant une colonne "societe_id" en
+# propre (catégorie B du cadrage -- bareme, ref_constante_paie, rubrique_paie,
+# ref_categorie_regime, regle_calcul_specifique, calendrier_paie,
+# cnss_declarations, cimr_declarations, population_paie). Les tables
+# catégorie A (bulletin, cong_demandes, prets, ordre_virement...), qui
+# héritent la société via une relation (collaborateur_contrats, période,
+# compte bancaire émetteur), ne sont PAS filtrées ici -- ce proxy générique
+# n'a aucune connaissance métier des chemins de jointure à suivre pour
+# chaque table. C'est un residual risk documenté (MODULE_MULTISOCIETE.md,
+# RG-06) : ces tables doivent être protégées par des endpoints dédiés
+# (non génériques) qui, eux, connaissent le bon chemin de jointure.
+
+def get_societe_id_info(db: Session, table: str) -> tuple[bool, bool]:
+    """(a_societe_id, nullable) pour la colonne societe_id de `table`.
+    (False, False) si la colonne n'existe pas sur cette table."""
+    row = db.execute(text("""
+        SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = :t AND column_name = 'societe_id'
+    """), {"t": table}).first()
+    if not row:
+        return False, False
+    return True, (row.is_nullable == "YES")
+
+
+def clause_lecture_societe(nullable: bool, societe_active: Optional[str], alias: Optional[str] = None) -> tuple[str, str]:
+    """
+    Condition SQL de cloisonnement pour une LECTURE (GET/PATCH-where/DELETE-where) :
+      - colonne nullable (catégorie B "générique/surcharge") : la société
+        active voit le générique (societe_id NULL) ET son propre spécifique ;
+      - colonne NOT NULL (catégorie B "opérationnelle") : uniquement les
+        lignes de la société active, jamais de repli implicite.
+    Lève 403 si aucune société active sur le token -- pas de comportement
+    "toutes sociétés visibles" par défaut en cas d'anomalie côté JWT.
+    """
+    if not societe_active:
+        raise HTTPException(403, detail="Aucune société active sur ce token — reconnexion requise")
+    col = f'{alias}."societe_id"' if alias else '"societe_id"'
+    if nullable:
+        return f"({col} IS NULL OR {col} = :_societe_active)", societe_active
+    return f"{col} = :_societe_active", societe_active
+
+
+def valider_societe_ecriture(nullable: bool, societe_active: Optional[str], valeur) -> None:
+    """
+    Valide une valeur de societe_id fournie en ÉCRITURE (POST/PATCH) :
+      - None : accepté seulement si la colonne est nullable (création d'une
+        ligne générique/mutualisée, geste explicite) ;
+      - une valeur : doit être EXACTEMENT la société active -- interdit de
+        créer/déplacer une ligne vers une autre société que celle en cours,
+        même une société à laquelle l'utilisateur a par ailleurs accès (il
+        doit d'abord y basculer via POST /auth/societe-active).
+    """
+    if not societe_active:
+        raise HTTPException(403, detail="Aucune société active sur ce token — reconnexion requise")
+    if valeur is None:
+        if not nullable:
+            raise HTTPException(400, detail="societe_id est obligatoire sur cette table")
+        return
+    if str(valeur) != str(societe_active):
+        raise HTTPException(403, detail="societe_id ne correspond pas à la société active de la session")
 
 
 # ── Parseur du paramètre select ──────────────────────────────────────────────
@@ -316,6 +414,11 @@ async def select_table(
         else:
             cols_clause = ", ".join(f'"{safe_ident(c)}"' for c in main_cols)
         conditions, bind_params = parse_filters(params)
+        a_sid, nullable = get_societe_id_info(db, table)
+        if a_sid:
+            clause, val = clause_lecture_societe(nullable, payload.get("societe_active_id"))
+            conditions.append(clause)
+            bind_params["_societe_active"] = val
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         order_clause = build_order_clause(params.get("order", ""), None, {})
         limit = int(params.get("limit", "1000"))
@@ -382,6 +485,11 @@ async def select_table(
 
     # WHERE
     conditions, bind_params = parse_filters(params, main_alias, embed_aliases)
+    a_sid, nullable = get_societe_id_info(db, table)
+    if a_sid:
+        clause, val = clause_lecture_societe(nullable, payload.get("societe_active_id"), main_alias)
+        conditions.append(clause)
+        bind_params["_societe_active"] = val
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     # ORDER / LIMIT / OFFSET
@@ -419,15 +527,31 @@ async def insert_table(
 
     body = await request.json()
     rows = body if isinstance(body, list) else [body]
+    col_types = get_table_column_types(db, table)
+    a_sid, nullable = get_societe_id_info(db, table)
+    societe_active = payload.get("societe_active_id")
 
     inserted = []
     for row in rows:
         if not row:
             continue
+        # RG-MULTISOCIETE-06 : societe_id fourni -> doit être la société
+        # active (ou NULL si la colonne l'autorise) ; absent -> auto-rempli
+        # avec la société active UNIQUEMENT si la colonne est obligatoire
+        # (catégorie B opérationnelle) -- une colonne nullable reste NULL par
+        # défaut (création générique), l'appelant doit expliciter s'il veut
+        # une surcharge société.
+        if a_sid:
+            if "societe_id" in row:
+                valider_societe_ecriture(nullable, societe_active, row["societe_id"])
+            elif not nullable:
+                if not societe_active:
+                    raise HTTPException(403, detail="Aucune société active sur ce token — reconnexion requise")
+                row["societe_id"] = societe_active
         for k in row.keys():
             safe_ident(k)
         cols = [f'"{k}"' for k in row.keys()]
-        placeholders = [f":{k}" for k in row.keys()]
+        placeholders = [placeholder_avec_cast(k, k, col_types) for k in row.keys()]
         sql = (
             f'INSERT INTO "{table}" ({", ".join(cols)}) '
             f'VALUES ({", ".join(placeholders)}) RETURNING *'
@@ -461,12 +585,27 @@ async def update_table(
     if not body:
         raise HTTPException(400, detail="Corps de la requête vide")
 
+    a_sid, nullable = get_societe_id_info(db, table)
+    societe_active = payload.get("societe_active_id")
+    # RG-MULTISOCIETE-06 : si le corps tente de (dé)placer la ligne vers une
+    # autre société, même validation qu'à la création.
+    if a_sid and "societe_id" in body:
+        valider_societe_ecriture(nullable, societe_active, body["societe_id"])
+
     for k in body.keys():
         safe_ident(k)
-    set_parts = [f'"{k}" = :set_{k}' for k in body.keys()]
+    col_types = get_table_column_types(db, table)
+    set_parts = [f'"{k}" = {placeholder_avec_cast(k, f"set_{k}", col_types)}' for k in body.keys()]
     set_params = {f"set_{k}": serialize_value(v) for k, v in body.items()}
 
     conditions, where_params = parse_filters(params)
+    if a_sid:
+        # RG-MULTISOCIETE-06 : même sans toucher societe_id dans le corps, un
+        # PATCH ne doit jamais pouvoir modifier une ligne HORS de la société
+        # active -- filtre injecté dans le WHERE, pas seulement validé en écriture.
+        clause, val = clause_lecture_societe(nullable, societe_active)
+        conditions.append(clause)
+        where_params["_societe_active"] = val
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     all_params = {**set_params, **where_params}
@@ -500,6 +639,17 @@ async def delete_table(
     conditions, bind_params = parse_filters(params)
     if not conditions:
         raise HTTPException(400, detail="DELETE sans filtre refusé par sécurité")
+    a_sid, nullable = get_societe_id_info(db, table)
+    if a_sid:
+        # RG-MULTISOCIETE-06 : DELETE toujours borné à la société active en
+        # PLUS du filtre client (le contrôle "au moins un filtre" ci-dessus
+        # reste sur le filtre du client, pas sur ce filtre ajouté ensuite --
+        # sinon un DELETE sans aucun filtre client supprimerait TOUTES les
+        # lignes de la société active, la clause société seule ne suffit pas
+        # comme garde-fou).
+        clause, val = clause_lecture_societe(nullable, payload.get("societe_active_id"))
+        conditions.append(clause)
+        bind_params["_societe_active"] = val
 
     where_clause = f"WHERE {' AND '.join(conditions)}"
     sql = f'DELETE FROM "{table}" {where_clause} RETURNING *'

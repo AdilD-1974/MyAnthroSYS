@@ -55,6 +55,21 @@ export function useWorkflows() {
   return { workflows: data || [], loading: isLoading, refetch };
 }
 
+// ── Objets métier disponibles pour un workflow — table de référence
+// ref_type_objet_workflow (remplace la liste TYPES_OBJET codée en dur ;
+// celle-ci reste comme repli si la table est vide ou inaccessible, pour ne
+// jamais casser le sélecteur "Objet métier" du Concepteur de workflows). ──
+export function useTypesObjet() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["ref-type-objet-workflow"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () =>
+      (await api.get("/db/ref_type_objet_workflow?actif=eq.true&order=ordre&select=code,libelle").catch(() => [])) as { code: string; libelle: string }[],
+  });
+  const typesObjet = data && data.length > 0 ? data : TYPES_OBJET.map((c) => ({ code: c, libelle: c }));
+  return { typesObjet, loading: isLoading };
+}
+
 // ── Catalogues globaux (variables) pour aider à la saisie des conditions ──
 export function useWorkflowVariables() {
   const { data } = useQuery({

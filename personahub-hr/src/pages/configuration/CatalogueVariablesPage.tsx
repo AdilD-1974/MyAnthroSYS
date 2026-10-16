@@ -61,20 +61,33 @@ export default function CatalogueVariablesPage() {
   };
 
   return (
-    <div className="p-5 space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}><Hash size={20} /> Catalogue de variables</h1>
-          <p className="text-sm mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Jetons <code className="px-1 rounded bg-muted text-xs">{"{{code}}"}</code> insérables dans les modèles de notification et de documents.</p>
+    <div className="max-w-4xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-5 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Catalogue de variables</span>
+      </div>
+
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-5 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={() => setDraft(empty((variables.at(-1)?.ordre ?? 0) + 1))}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouvelle variable
+        </button>
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+        <div className="flex items-center flex-1 min-w-[180px] h-8 px-2.5" style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))", maxWidth: 280 }}>
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0 mr-1.5" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher…"
+            className="flex-1 text-[13px] outline-none bg-transparent" style={{ color: "hsl(var(--foreground))" }} />
         </div>
-        <Button onClick={() => setDraft(empty((variables.at(-1)?.ordre ?? 0) + 1))} className="gap-1.5"><Plus size={15} /> Nouvelle variable</Button>
+        <span className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+          Jetons <code className="px-1 rounded bg-muted text-xs">{"{{code}}"}</code> insérables dans les modèles
+        </span>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher…" className="pl-8" />
-      </div>
-
+      <div className="p-5 space-y-5">
       {loading ? (
         <div className="flex items-center justify-center py-16" style={{ color: "hsl(var(--muted-foreground))" }}><Loader2 className="animate-spin mr-2" size={20} /> Chargement…</div>
       ) : filtered.length === 0 ? (
@@ -137,7 +150,7 @@ export default function CatalogueVariablesPage() {
             <Field label="Source SQL (résolution par le moteur)"><Input value={draft.source_sql || ""} onChange={(e) => setDraft({ ...draft, source_sql: e.target.value })} placeholder="SELECT nom FROM collaborateurs WHERE id = :collaborateur_id" /></Field>
             <Field label="Description"><Input value={draft.description || ""} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></Field>
             <div className="flex items-center justify-between pt-1">
-              <button type="button" onClick={() => setDraft({ ...draft, actif: !draft.actif })} className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: draft.actif ? "hsl(142 64% 32%)" : "hsl(var(--muted-foreground))" }}><Power size={13} /> {draft.actif ? "Active" : "Inactive"}</button>
+              <button type="button" onClick={() => setDraft({ ...draft, actif: !draft.actif })} className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: draft.actif ? "hsl(var(--success))" : "hsl(var(--muted-foreground))" }}><Power size={13} /> {draft.actif ? "Active" : "Inactive"}</button>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setDraft(null)}>Annuler</Button>
                 <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer</Button>
@@ -146,6 +159,7 @@ export default function CatalogueVariablesPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

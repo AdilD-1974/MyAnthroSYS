@@ -5,10 +5,12 @@ Auteur : Adil DAIA
 Expose la liste des demandes (en-tête générique `demande`) enrichie de :
   - le libellé du type (ref_type_demande)
   - le demandeur (nom / prénom / matricule)
-  - un résumé métier selon le type (pour CONGE : dates, jours, type de congé)
+  - un résumé métier selon le type (CONGE : dates/jours/type ; DEPART : motif/dates)
 
 Endpoints :
   GET /api/v1/demandes/mes/{collaborateur_id}   — mes demandes (demandeur)
+                                                  ⚠ exclut les DEPART (saisis par le RH,
+                                                    non destinés au self-service du collaborateur)
   GET /api/v1/demandes/perimetre/{user_id}      — demandes du périmètre d'un gestionnaire/manager
                                                   (périmètre de gestion OU hiérarchie), tous statuts
 
@@ -50,9 +52,30 @@ def _resume_conge(db: Session, ids: list[str]) -> dict[str, dict]:
     return {str(r["id"]): dict(r) for r in rows}
 
 
+def _resume_depart(db: Session, ids: list[str]) -> dict[str, dict]:
+    """Détail complet des départs indexé par id_objet
+    (toutes les colonnes + identité du collaborateur concerné, pour la fiche /
+    le résumé affiché dans le registre côté manager)."""
+    if not ids:
+        return {}
+    placeholders = ", ".join(f":id{i}" for i in range(len(ids)))
+    params = {f"id{i}": str(v) for i, v in enumerate(ids)}
+    rows = db.execute(text(f"""
+        SELECT cd.*,
+               c.nom        AS collaborateur_nom,
+               c.prenom     AS collaborateur_prenom,
+               c.matricule  AS collaborateur_matricule
+        FROM collaborateur_departs cd
+        LEFT JOIN collaborateurs c ON c.id = cd.collaborateur_id
+        WHERE cd.id IN ({placeholders})
+    """), params).mappings().all()
+    return {str(r["id"]): dict(r) for r in rows}
+
+
 # Table métier → fonction de résumé (générique, extensible)
 _RESUME_PAR_TABLE = {
-    "cong_demandes": _resume_conge,
+    "cong_demandes":        _resume_conge,
+    "collaborateur_departs": _resume_depart,
 }
 
 
@@ -96,8 +119,18 @@ def mes_demandes(
     db: Session = Depends(get_db),
     _payload: dict = Depends(get_current_user_payload),
 ):
-    """Demandes dont le collaborateur est le demandeur (tous types, tous statuts)."""
-    sql = _BASE_SELECT + " WHERE d.demandeur_id = :cid AND d.archive = false"
+    """Demandes dont le collaborateur est le demandeur (tous types, tous statuts).
+
+    RG : les DÉPARTS sont exclus du self-service. Un départ est saisi par le RH
+    et n'a pas vocation à apparaître dans l'espace du collaborateur concerné.
+    Pour autoriser un jour le collaborateur à voir son propre départ, retirer la
+    clause « AND d.type_demande <> 'DEPART' » (ou la conditionner à un statut).
+    """
+    sql = _BASE_SELECT + """
+        WHERE d.demandeur_id = :cid
+          AND d.archive = false
+          AND d.type_demande <> 'DEPART'
+    """
     params: dict[str, Any] = {"cid": str(collaborateur_id)}
     if type_demande:
         sql += " AND d.type_demande = :t"; params["t"] = type_demande
@@ -124,6 +157,11 @@ def demandes_perimetre(
         pour l'un de ses rôles), OU
       - il relève de la HIÉRARCHIE du user (N+1/N+2/responsable d'UO), c.-à-d.
         le user (via son collaborateur) est manager du demandeur.
+
+    Les DÉPARTS soumis à un processus (donc présents dans le registre) y remontent
+    naturellement : le demandeur d'un départ est le collaborateur concerné, et le
+    filtrage périmètre/hiérarchie s'applique à lui comme pour tout autre type.
+    Les départs en Saisie directe n'ont pas d'en-tête `demande` → invisibles ici.
     """
     # RG : l'administrateur a accès à l'intégralité des demandes, sans restriction
     est_admin = db.execute(text("""

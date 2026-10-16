@@ -17,7 +17,9 @@ import {
   ArrowRight, Bell, Mail, MessageSquare, FileText,
   Zap, Globe, Users, User, Building2, Network,
   Clock, AlertTriangle, Settings, PlayCircle,
+  Workflow as WorkflowIcon, List as ListIcon,
 } from "lucide-react";
+import WorkflowCanvas from "./WorkflowCanvas";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,8 @@ interface WfDecision {
   _id: string; id?: string;
   code: string; libelle: string; type_decision: string;
   obligatoire_commentaire: boolean; couleur: string; icone: string; ordre: number;
+  cible_type: "ETAPE_SUIVANTE" | "ETAPE_PRECEDENTE" | "ETAPE_SPECIFIQUE" | "FIN_PROCESSUS";
+  cible_etape_code: string | null;
 }
 
 interface WfAction {
@@ -75,6 +79,12 @@ const TYPES_ACTEUR = [
 const TYPES_DECISION = ["VALIDER","REJETER","RENVOYER","DELEGUER","VISER","DEMANDER_INFO","ACCUSER_RECEPTION"];
 const DECLENCHEURS = ["ENTREE","VALIDATION","REJET","TIMEOUT","RELANCE","COMMENTAIRE","DELEGATION","FINALISATION"];
 const TYPES_ACTION = ["NOTIFICATION_INTERNE","EMAIL","SMS","WHATSAPP","GENERER_DOCUMENT","TACHE_SYSTEME","WEBHOOK","PUSH_MOBILE"];
+const TYPES_CIBLE: { value: WfDecision["cible_type"]; label: string }[] = [
+  { value: "ETAPE_SUIVANTE", label: "Étape suivante (défaut)" },
+  { value: "ETAPE_PRECEDENTE", label: "Étape précédente" },
+  { value: "ETAPE_SPECIFIQUE", label: "Étape spécifique…" },
+  { value: "FIN_PROCESSUS", label: "Fin du processus" },
+];
 
 const ACTION_ICONS: Record<string, React.ReactNode> = {
   NOTIFICATION_INTERNE: <Bell size={12} />,
@@ -127,6 +137,7 @@ const WorkflowBuilderPage: React.FC = () => {
   const [etapes, setEtapes] = useState<WfEtape[]>([]);
   const [etapeOuverte, setEtapeOuverte] = useState<string | null>(null);
   const [sousOnglet, setSousOnglet] = useState<Record<string, string>>({});
+  const [vue, setVue] = useState<"schema" | "liste">("schema");
 
   // Formulaire workflow
   const EMPTY_WF = { code: "", libelle: "", description: "", type_objet: "CONGE",
@@ -197,9 +208,11 @@ const WorkflowBuilderPage: React.FC = () => {
       condition_sql: null, couleur: "#3B82F6", auto_skip_si_deja_decide: false,
       acteurs: [], decisions: [
         { _id: uid(), code: "APPROUVER", libelle: "Approuver", type_decision: "VALIDER",
-          obligatoire_commentaire: false, couleur: "#10B981", icone: "check", ordre: 1 },
+          obligatoire_commentaire: false, couleur: "#10B981", icone: "check", ordre: 1,
+          cible_type: "ETAPE_SUIVANTE", cible_etape_code: null },
         { _id: uid(), code: "REFUSER", libelle: "Refuser", type_decision: "REJETER",
-          obligatoire_commentaire: true, couleur: "#EF4444", icone: "x", ordre: 2 },
+          obligatoire_commentaire: true, couleur: "#EF4444", icone: "x", ordre: 2,
+          cible_type: "FIN_PROCESSUS", cible_etape_code: null },
       ],
       actions: [
         { _id: uid(), declencheur: "ENTREE", type_action: "NOTIFICATION_INTERNE",
@@ -212,6 +225,11 @@ const WorkflowBuilderPage: React.FC = () => {
   const removeEtape = (id: string) => setEtapes(prev => prev.filter(e => e._id !== id));
   const updateEtape = (id: string, patch: Partial<WfEtape>) =>
     setEtapes(prev => prev.map(e => e._id === id ? { ...e, ...patch } : e));
+  const reorderEtapes = (orderedIds: string[]) =>
+    setEtapes(prev => {
+      const byId = Object.fromEntries(prev.map(e => [e._id, e]));
+      return orderedIds.map((id, idx) => ({ ...byId[id], ordre: idx + 1 }));
+    });
 
   // Acteurs
   const addActeur = (eid: string) => updateEtape(eid, {
@@ -231,7 +249,8 @@ const WorkflowBuilderPage: React.FC = () => {
     decisions: [...(etapes.find(e => e._id === eid)?.decisions || []),
       { _id: uid(), code: "NOUVELLE_DECISION", libelle: "Nouvelle décision",
         type_decision: "VALIDER", obligatoire_commentaire: false,
-        couleur: "#10B981", icone: "check", ordre: 99 }]
+        couleur: "#10B981", icone: "check", ordre: 99,
+        cible_type: "ETAPE_SUIVANTE", cible_etape_code: null }]
   });
   const updateDecision = (eid: string, did: string, patch: Partial<WfDecision>) =>
     updateEtape(eid, { decisions: etapes.find(e => e._id === eid)!.decisions.map(d => d._id === did ? { ...d, ...patch } : d) });
@@ -301,6 +320,7 @@ const WorkflowBuilderPage: React.FC = () => {
               id_etape: etpId, code: d.code, libelle: d.libelle,
               type_decision: d.type_decision, obligatoire_commentaire: d.obligatoire_commentaire,
               couleur: d.couleur, icone: d.icone, ordre: d.ordre,
+              cible_type: d.cible_type, cible_etape_code: d.cible_etape_code,
             }))
           );
         }
@@ -486,28 +506,52 @@ const WorkflowBuilderPage: React.FC = () => {
             {sous === "decisions" && (
               <div>
                 {etape.decisions.map(dec => (
-                  <div key={dec._id} className="flex items-center gap-2 mb-2 p-2 rounded-lg"
+                  <div key={dec._id} className="mb-2 p-2 rounded-lg"
                     style={{ background: dec.couleur + "08", border: `0.5px solid ${dec.couleur}40` }}>
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: dec.couleur }} />
-                    <input className={inp} style={{ ...inpStyle, width: 140 }}
-                      value={dec.libelle}
-                      onChange={e => updateDecision(etape._id, dec._id, { libelle: e.target.value })} />
-                    <select className={inp} style={{ ...inpStyle, width: 160 }}
-                      value={dec.type_decision}
-                      onChange={e => updateDecision(etape._id, dec._id, {
-                        type_decision: e.target.value,
-                        couleur: DECISION_COLORS[e.target.value] || "#64748B"
-                      })}>
-                      {TYPES_DECISION.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                    <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
-                      <input type="checkbox" checked={dec.obligatoire_commentaire}
-                        onChange={e => updateDecision(etape._id, dec._id, { obligatoire_commentaire: e.target.checked })} />
-                      Commentaire requis
-                    </label>
-                    <button onClick={() => removeDecision(etape._id, dec._id)} className="p-1 rounded hover:bg-muted ml-auto">
-                      <X size={11} style={{ color: "hsl(0 84% 55%)" }} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: dec.couleur }} />
+                      <input className={inp} style={{ ...inpStyle, width: 140 }}
+                        value={dec.libelle}
+                        onChange={e => updateDecision(etape._id, dec._id, { libelle: e.target.value })} />
+                      <select className={inp} style={{ ...inpStyle, width: 160 }}
+                        value={dec.type_decision}
+                        onChange={e => updateDecision(etape._id, dec._id, {
+                          type_decision: e.target.value,
+                          couleur: DECISION_COLORS[e.target.value] || "#64748B"
+                        })}>
+                        {TYPES_DECISION.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                      <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
+                        <input type="checkbox" checked={dec.obligatoire_commentaire}
+                          onChange={e => updateDecision(etape._id, dec._id, { obligatoire_commentaire: e.target.checked })} />
+                        Commentaire requis
+                      </label>
+                      <button onClick={() => removeDecision(etape._id, dec._id)} className="p-1 rounded hover:bg-muted ml-auto">
+                        <X size={11} style={{ color: "hsl(0 84% 55%)" }} />
+                      </button>
+                    </div>
+                    {/* Transition déclenchée par cette décision (alimente les flèches du schéma) */}
+                    <div className="flex items-center gap-2 mt-2 pl-5">
+                      <ArrowRight size={11} style={{ color: "hsl(var(--muted-foreground))" }} />
+                      <select className={inp} style={{ ...inpStyle, width: 200 }}
+                        value={dec.cible_type}
+                        onChange={e => updateDecision(etape._id, dec._id, {
+                          cible_type: e.target.value as WfDecision["cible_type"],
+                          cible_etape_code: e.target.value === "ETAPE_SPECIFIQUE" ? dec.cible_etape_code : null,
+                        })}>
+                        {TYPES_CIBLE.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                      {dec.cible_type === "ETAPE_SPECIFIQUE" && (
+                        <select className={inp} style={{ ...inpStyle, width: 180 }}
+                          value={dec.cible_etape_code || ""}
+                          onChange={e => updateDecision(etape._id, dec._id, { cible_etape_code: e.target.value || null })}>
+                          <option value="">— Choisir l'étape —</option>
+                          {etapes.filter(e2 => e2._id !== etape._id).map(e2 => (
+                            <option key={e2._id} value={e2.code}>{e2.libelle}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   </div>
                 ))}
                 <button onClick={() => addDecision(etape._id)}
@@ -688,11 +732,31 @@ const WorkflowBuilderPage: React.FC = () => {
         <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>
           Étapes du circuit ({etapes.length})
         </p>
-        <button onClick={addEtape}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "hsl(var(--accent))", color: "white" }}>
-          <Plus size={12} /> Ajouter une étape
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+            <button onClick={() => setVue("schema")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium"
+              style={{
+                background: vue === "schema" ? "hsl(var(--accent))" : "transparent",
+                color: vue === "schema" ? "white" : "hsl(var(--muted-foreground))",
+              }}>
+              <WorkflowIcon size={12} /> Schéma
+            </button>
+            <button onClick={() => setVue("liste")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium"
+              style={{
+                background: vue === "liste" ? "hsl(var(--accent))" : "transparent",
+                color: vue === "liste" ? "white" : "hsl(var(--muted-foreground))",
+              }}>
+              <ListIcon size={12} /> Liste
+            </button>
+          </div>
+          <button onClick={addEtape}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+            style={{ background: "hsl(var(--accent))", color: "white" }}>
+            <Plus size={12} /> Ajouter une étape
+          </button>
+        </div>
       </div>
 
       {etapes.length === 0 ? (
@@ -700,6 +764,22 @@ const WorkflowBuilderPage: React.FC = () => {
           style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
           <PlayCircle size={32} strokeWidth={1} className="mx-auto mb-2" />
           <p className="text-sm">Aucune étape — cliquez "+ Ajouter une étape" pour commencer</p>
+        </div>
+      ) : vue === "schema" ? (
+        <div>
+          <WorkflowCanvas
+            etapes={etapes}
+            selectedId={etapeOuverte}
+            onSelect={id => setEtapeOuverte(prev => prev === id ? null : id)}
+            onReorder={reorderEtapes}
+            onAddEtape={addEtape}
+          />
+          {/* Panneau d'édition de l'étape sélectionnée dans le schéma */}
+          {etapeOuverte && etapes.find(e => e._id === etapeOuverte) && (
+            <div className="mt-4">
+              {renderEtape(etapes.find(e => e._id === etapeOuverte)!, etapes.findIndex(e => e._id === etapeOuverte))}
+            </div>
+          )}
         </div>
       ) : (
         <div>

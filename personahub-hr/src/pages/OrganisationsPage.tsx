@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useContext } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ManagerReadOnlyContext } from "@/contexts/ManagerContext";
 import {
@@ -6,6 +7,7 @@ import {
   ChevronRight, ChevronDown, Check, X, AlertTriangle,
   ArrowLeft, CreditCard, FileText, Landmark, Shield, Link2, ExternalLink,
   List, GitBranch, GripVertical, MoveRight, Eye, Download,
+  ZoomIn, ZoomOut, Maximize2, ArrowLeftRight, ArrowUpDown, RotateCcw, Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -466,6 +468,21 @@ const SocieteFiche: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  // RG-SOC-UOCOUNT-01 (Adil DAIA) : Nombre d'UO rattachées à la société, affiché sur la fiche
+  const [uoCount, setUoCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!societe?.id) { setUoCount(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: etabs } = await supabase.from("etablissements").select("id").eq("societe_id", societe.id);
+      const etabIds = (etabs || []).map(e => e.id);
+      if (etabIds.length === 0) { if (!cancelled) setUoCount(0); return; }
+      const { count } = await supabase.from("unites_organisationnelles").select("id", { count: "exact", head: true }).in("etablissement_id", etabIds);
+      if (!cancelled) setUoCount(count ?? 0);
+    })();
+    return () => { cancelled = true; };
+  }, [societe?.id]);
 
   const uploadLogo = async (file: File) => {
     if (!file) return;
@@ -644,9 +661,15 @@ const SocieteFiche: React.FC<{
         {societe && (
           <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-medium"
             style={societe.actif
-              ? { background: "hsl(142 71% 45% / 0.12)", color: "hsl(142 71% 35%)" }
+              ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" }
               : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
             {societe.actif ? "Active" : "Inactive"}
+          </span>
+        )}
+        {societe && (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+            style={{ background: "hsl(var(--warning) / 0.12)", color: "hsl(var(--warning))" }}>
+            <Network size={11} /> {uoCount == null ? "…" : `${uoCount} UO${uoCount > 1 ? "s" : ""}`}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -699,11 +722,11 @@ const SocieteFiche: React.FC<{
               <div className="flex items-center gap-4 mb-2">
                 <div
                   className="h-20 w-20 rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden cursor-pointer transition-colors hover:border-primary"
-                  style={{ borderColor: form.logo_path ? "hsl(var(--border))" : "hsl(var(--border))", background: "hsl(var(--muted) / 0.4)" }}
+                  style={{ borderColor: "hsl(var(--border))", background: form.logo_path ? "#FFFFFF" : "hsl(var(--muted) / 0.4)" }}
                   onClick={() => logoInputRef.current?.click()}
                 >
                   {form.logo_path ? (
-                    <img src={form.logo_path} alt="Logo" className="h-full w-full object-contain p-1" />
+                    <img src={form.logo_path} alt="Logo" className="h-full w-full object-contain p-2" />
                   ) : (
                     <div className="flex flex-col items-center gap-1" style={{ color: "hsl(var(--muted-foreground))" }}>
                       <Building2 size={24} className="opacity-40" />
@@ -1165,17 +1188,19 @@ const SocietesTab: React.FC<{
                   >
                     <td className="px-3 py-2.5">
                       {r.logo_path ? (
-                        <img
-                          src={r.logo_path}
-                          alt={r.raison_sociale}
-                          className="h-8 w-8 rounded object-contain border"
-                          style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.4)" }}
-                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        />
+                        <div className="h-12 w-12 rounded-lg overflow-hidden border shadow-sm flex items-center justify-center"
+                          style={{ borderColor: "hsl(var(--border))", background: "#FFFFFF" }}>
+                          <img
+                            src={r.logo_path}
+                            alt={r.raison_sociale}
+                            className="h-full w-full object-contain p-1.5"
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                          />
+                        </div>
                       ) : (
-                        <div className="h-8 w-8 rounded flex items-center justify-center border"
+                        <div className="h-12 w-12 rounded-lg flex items-center justify-center border"
                           style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.4)" }}>
-                          <Building2 size={14} style={{ color: "hsl(var(--muted-foreground))" }} />
+                          <Building2 size={18} style={{ color: "hsl(var(--muted-foreground))" }} />
                         </div>
                       )}
                     </td>
@@ -1195,7 +1220,7 @@ const SocietesTab: React.FC<{
                     <td className="px-3 py-2.5">
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium"
                         style={r.actif
-                          ? { background: "hsl(142 71% 45% / 0.12)", color: "hsl(142 71% 35%)" }
+                          ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" }
                           : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
                         {r.actif ? "Active" : "Inactive"}
                       </span>
@@ -1280,11 +1305,13 @@ const OrganigrammeGraphique: React.FC<{
   onReload: () => Promise<void>;
   onSetRootUo?: (id: string | null) => void;
 }> = ({ uos, etabs, typesUo, collaborateursMap, filterSociete, rootUoId, onEdit, onReload, onSetRootUo }) => {
-  const [pan, setPan] = useState({ x: 40, y: 40 });
   const [scale, setScale] = useState(0.85);
   const isPanning = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  // RG-ORG-UX-01 (Adil DAIA) : survol d'un noeud → mise en évidence de ses arêtes connectées
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   // Modale d'export
   const [showExport, setShowExport] = useState(false);
   const [exportFormat, setExportFormat] = useState<"png" | "pdf">("png");
@@ -1304,7 +1331,7 @@ const OrganigrammeGraphique: React.FC<{
   const [savingDrop, setSavingDrop] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
 
-  const NODE_W = 230; const NODE_H = 94; const H_GAP = 72; const V_GAP = 18;
+  const NODE_W = 238; const NODE_H = 102; const H_GAP = 72; const V_GAP = 20;
 
   // ────────────────────────────────────────────────────────────
   // EXPORT (PNG / PDF) — utilise le SVG existant
@@ -1499,6 +1526,7 @@ const OrganigrammeGraphique: React.FC<{
       return root ? [{ uo: root, children: build(root.id, depth + 1), x: 0, y: 0 }] : [];
     }
     return filtered.filter(u => (u.parent_id || undefined) === parentId)
+      .sort((a, b) => { const na = a.niveau ?? 999, nb = b.niveau ?? 999; return na !== nb ? na - nb : a.libelle.localeCompare(b.libelle); })
       .map(u => ({ uo: u, children: build(u.id, depth + 1), x: 0, y: 0 }));
   };
 
@@ -1526,11 +1554,11 @@ const OrganigrammeGraphique: React.FC<{
     nodes.flatMap(n => [...n.children.map(c => ({ f: n, t: c })), ...getEdges(n.children)]);
   const edges = getEdges(roots);
 
-  // Convert screen coords to SVG space
+  // Convert screen coords to SVG space (getBoundingClientRect tient déjà compte du scroll natif)
   const toSVG = (clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
-    return { x: (clientX - rect.left - pan.x) / scale, y: (clientY - rect.top - pan.y) / scale };
+    return { x: (clientX - rect.left) / scale, y: (clientY - rect.top) / scale };
   };
 
   // isDescendant check to prevent cycles
@@ -1629,8 +1657,9 @@ const OrganigrammeGraphique: React.FC<{
       setDragNode(d => d ? { ...d, ghostX: svgPos.x - NODE_W / 2, ghostY: svgPos.y - NODE_H / 2 } : null);
       const hit = hitTest(svgPos.x, svgPos.y);
       setDropTargetId(hit && hit.uo.id !== dragNode.uo.id && isValidDrop(dragNode.uo, hit.uo) ? hit.uo.id : null);
-    } else if (isPanning.current) {
-      setPan(p => ({ x: p.x + e.clientX - lastMouse.current.x, y: p.y + e.clientY - lastMouse.current.y }));
+    } else if (isPanning.current && viewportRef.current) {
+      viewportRef.current.scrollLeft -= (e.clientX - lastMouse.current.x);
+      viewportRef.current.scrollTop -= (e.clientY - lastMouse.current.y);
       lastMouse.current = { x: e.clientX, y: e.clientY };
     }
   };
@@ -1670,6 +1699,20 @@ const OrganigrammeGraphique: React.FC<{
     ? Math.max(...allNodes.map(n => n.y + NODE_H)) + 80
     : 600;
 
+  // RG-ORG-UX-02 (Adil DAIA) : "Ajuster à l'écran" — recalcule zoom + centre le scroll pour que l'arbre entier tienne dans le viewport visible
+  const fitToView = () => {
+    const vp = viewportRef.current;
+    if (!vp || !allNodes.length) return;
+    const vw = vp.clientWidth, vh = vp.clientHeight;
+    const s = Math.max(0.25, Math.min(1.4, Math.min((vw - 48) / svgWidth, (vh - 48) / svgHeight)));
+    setScale(s);
+    requestAnimationFrame(() => {
+      if (!viewportRef.current) return;
+      viewportRef.current.scrollLeft = Math.max(0, (svgWidth * s - vw) / 2);
+      viewportRef.current.scrollTop = 0;
+    });
+  };
+
   if (!allNodes.length) return (
     <div className="text-sm text-center py-12" style={{ color: "hsl(var(--muted-foreground))" }}>
       <Network size={32} className="mx-auto mb-2 opacity-30" />Aucune UO
@@ -1680,7 +1723,7 @@ const OrganigrammeGraphique: React.FC<{
 
   return (
     <>
-      <div style={{ position: "relative", width: "100%", height: 560,
+      <div style={{ position: "relative", width: "100%", height: 600,
           background: "hsl(var(--muted) / 0.12)", borderRadius: "var(--border-radius-lg)",
           border: "0.5px solid hsl(var(--border))",
           cursor: dragNode ? "grabbing" : "default", overflow: "hidden" }}
@@ -1688,102 +1731,117 @@ const OrganigrammeGraphique: React.FC<{
         onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
 
         {/* Conteneur scrollable autour du SVG */}
-        <div style={{ position: "absolute", inset: 0, overflow: "auto" }}>
+        <div ref={viewportRef} style={{ position: "absolute", inset: 0, overflow: "auto" }}>
 
-        {/* Controles zoom + actions */}
-        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 10, display: "flex", gap: 6, alignItems: "center" }}>
+        {/* Barre d'outils flottante */}
+        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
           {rootUoId && onSetRootUo && (
             <button
               onClick={() => onSetRootUo(null)}
-              style={{ height: 30, padding: "0 12px", borderRadius: 6,
-                border: "0.5px solid hsl(var(--accent))",
-                background: "hsl(var(--accent) / 0.1)",
-                color: "hsl(var(--accent))", cursor: "pointer",
-                fontSize: 11, fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 4 }}
+              style={{ height: 32, padding: "0 12px", borderRadius: 8,
+                border: "1px solid hsl(var(--primary) / 0.3)",
+                background: "hsl(var(--primary) / 0.1)",
+                color: "hsl(var(--primary))", cursor: "pointer",
+                fontSize: "calc(11.5px * var(--font-scale))", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 5,
+                boxShadow: "0 1px 2px hsl(var(--foreground) / 0.06)" }}
               title="Remonter au sommet de l'organigramme"
             >
-              ↑ Remonter
+              <Crown size={13} /> Remonter
             </button>
           )}
 
-          {/* Toggle orientation Horizontal / Vertical */}
-          <div style={{ display: "flex", height: 30, borderRadius: 6, border: "0.5px solid hsl(var(--border))", overflow: "hidden" }}>
-            {([
-              { v: "horizontal" as const, label: "→", title: "Affichage horizontal" },
-              { v: "vertical" as const, label: "↓", title: "Affichage vertical" },
-            ]).map(o => (
-              <button
-                key={o.v}
-                onClick={() => setOrientation(o.v)}
-                title={o.title}
-                style={{
-                  width: 32, fontSize: 14, fontWeight: 700, cursor: "pointer",
-                  background: orientation === o.v ? "hsl(var(--accent))" : "hsl(var(--background))",
-                  color: orientation === o.v ? "white" : "hsl(var(--foreground))",
-                  border: "none",
-                  borderRight: o.v === "horizontal" ? "0.5px solid hsl(var(--border))" : "none",
-                }}
-              >
-                {o.label}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4, borderRadius: 10,
+            background: "hsl(var(--background) / 0.95)", backdropFilter: "blur(6px)",
+            border: "1px solid hsl(var(--border))", boxShadow: "0 2px 8px hsl(var(--foreground) / 0.08)" }}>
+
+            {/* Orientation */}
+            <div style={{ display: "flex", height: 28, borderRadius: 7, overflow: "hidden", border: "1px solid hsl(var(--border))" }}>
+              {([
+                { v: "horizontal" as const, Icon: ArrowLeftRight, title: "Affichage horizontal" },
+                { v: "vertical" as const, Icon: ArrowUpDown, title: "Affichage vertical" },
+              ]).map(o => (
+                <button
+                  key={o.v}
+                  onClick={() => setOrientation(o.v)}
+                  title={o.title}
+                  style={{
+                    width: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                    background: orientation === o.v ? "hsl(var(--primary))" : "transparent",
+                    color: orientation === o.v ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))",
+                    border: "none", transition: "all .15s",
+                  }}
+                >
+                  <o.Icon size={13} />
+                </button>
+              ))}
+            </div>
+
+            <div style={{ width: 1, height: 18, background: "hsl(var(--border))" }} />
+
+            {/* Profondeur */}
+            <select
+              value={maxDepth}
+              onChange={e => setMaxDepth(parseInt(e.target.value, 10))}
+              title="Limiter la profondeur affichée"
+              style={{
+                height: 28, padding: "0 6px", borderRadius: 7,
+                border: "1px solid hsl(var(--border))",
+                background: "hsl(var(--background))",
+                color: "hsl(var(--foreground))",
+                fontSize: "calc(11px * var(--font-scale))", cursor: "pointer",
+              }}
+            >
+              <option value={0}>Tous niveaux</option>
+              <option value={1}>Niv. 1</option>
+              <option value={2}>Niv. 1-2</option>
+              <option value={3}>Niv. 1-3</option>
+              <option value={4}>Niv. 1-4</option>
+              <option value={5}>Niv. 1-5</option>
+            </select>
+
+            <div style={{ width: 1, height: 18, background: "hsl(var(--border))" }} />
+
+            {/* Zoom */}
+            {[{ Icon: ZoomOut, fn: () => setScale(s => Math.max(0.25, s * 0.85)), title: "Zoom arrière" },
+              { Icon: ZoomIn, fn: () => setScale(s => Math.min(2, s * 1.15)), title: "Zoom avant" },
+              { Icon: Maximize2, fn: fitToView, title: "Ajuster à l'écran" },
+              { Icon: RotateCcw, fn: () => { setScale(0.85); if (viewportRef.current) { viewportRef.current.scrollLeft = 0; viewportRef.current.scrollTop = 0; } }, title: "Réinitialiser" },
+            ].map((btn, i) => (
+              <button key={i} onClick={btn.fn} title={btn.title} style={{ height: 28, width: 28, borderRadius: 7,
+                border: "1px solid hsl(var(--border))", background: "hsl(var(--background))",
+                color: "hsl(var(--foreground))", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s" }}>
+                <btn.Icon size={13} />
               </button>
             ))}
+            <span style={{ height: 28, padding: "0 8px", borderRadius: 7,
+              background: "hsl(var(--muted) / 0.6)",
+              color: "hsl(var(--muted-foreground))", fontSize: "calc(10.5px * var(--font-scale))", fontWeight: 600,
+              display: "flex", alignItems: "center", minWidth: 40, justifyContent: "center" }}>{Math.round(scale * 100)}%</span>
+
+            <div style={{ width: 1, height: 18, background: "hsl(var(--border))" }} />
+
+            <button
+              onClick={() => setShowExport(true)}
+              title="Exporter l'organigramme"
+              style={{ height: 28, padding: "0 10px", borderRadius: 7,
+                border: "1px solid hsl(var(--border))",
+                background: "hsl(var(--background))",
+                color: "hsl(var(--foreground))", cursor: "pointer",
+                fontSize: "calc(11px * var(--font-scale))", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 5 }}
+            >
+              <Download size={13} /> Exporter
+            </button>
           </div>
-
-          {/* Dropdown profondeur */}
-          <select
-            value={maxDepth}
-            onChange={e => setMaxDepth(parseInt(e.target.value, 10))}
-            title="Limiter la profondeur affichée"
-            style={{
-              height: 30, padding: "0 8px", borderRadius: 6,
-              border: "0.5px solid hsl(var(--border))",
-              background: "hsl(var(--background))",
-              color: "hsl(var(--foreground))",
-              fontSize: 11, cursor: "pointer",
-            }}
-          >
-            <option value={0}>Tous niveaux</option>
-            <option value={1}>Niv. 1</option>
-            <option value={2}>Niv. 1-2</option>
-            <option value={3}>Niv. 1-3</option>
-            <option value={4}>Niv. 1-4</option>
-            <option value={5}>Niv. 1-5</option>
-          </select>
-
-          {[{ label: "+", fn: () => setScale(s => Math.min(2, s * 1.2)) },
-            { label: "-", fn: () => setScale(s => Math.max(0.25, s * 0.8)) },
-            { label: "Reset", fn: () => { setScale(0.85); } },
-          ].map(btn => (
-            <button key={btn.label} onClick={btn.fn} style={{ height: 30, minWidth: 30, padding: "0 8px", borderRadius: 6,
-              border: "0.5px solid hsl(var(--border))", background: "hsl(var(--background))",
-              color: "hsl(var(--foreground))", cursor: "pointer",
-              fontSize: btn.label.length === 1 ? 18 : 11,
-              display: "flex", alignItems: "center", justifyContent: "center" }}>{btn.label}</button>
-          ))}
-          <span style={{ height: 30, padding: "0 10px", borderRadius: 6,
-            border: "0.5px solid hsl(var(--border))", background: "hsl(var(--background))",
-            color: "hsl(var(--muted-foreground))", fontSize: 11,
-            display: "flex", alignItems: "center" }}>{Math.round(scale * 100)}%</span>
-          <button
-            onClick={() => setShowExport(true)}
-            style={{ height: 30, padding: "0 12px", borderRadius: 6,
-              border: "0.5px solid hsl(var(--border))",
-              background: "hsl(var(--background))",
-              color: "hsl(var(--foreground))", cursor: "pointer",
-              fontSize: 11, fontWeight: 600,
-              display: "flex", alignItems: "center", gap: 4 }}
-            title="Exporter l'organigramme"
-          >
-            ⬇ Exporter
-          </button>
         </div>
 
         {/* Banniere drag en cours */}
         {dragNode && (
           <div style={{ position: "absolute", top: 12, left: 12, zIndex: 10,
             display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
-            borderRadius: 6, fontSize: 12, fontWeight: 500,
+            borderRadius: 6, fontSize: "calc(12px * var(--font-scale))", fontWeight: 500,
             background: "hsl(var(--primary) / 0.1)",
             border: "1px dashed hsl(var(--primary) / 0.4)",
             color: "hsl(var(--primary))" }}>
@@ -1793,12 +1851,26 @@ const OrganigrammeGraphique: React.FC<{
         )}
 
         <svg ref={svgRef} width={svgWidth * scale} height={svgHeight * scale} viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ userSelect: "none", display: "block" }}>
+          <defs>
+            <pattern id="orgGridDots" width="22" height="22" patternUnits="userSpaceOnUse">
+              <circle cx="1.4" cy="1.4" r="1.1" fill="hsl(var(--border))" opacity="0.6" />
+            </pattern>
+          </defs>
+          {/* Fond canevas — grille de points façon tableau blanc */}
+          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="url(#orgGridDots)" />
           <g>
             {/* Edges */}
-            {edges.map((e, i) => (
-              <path key={i} d={curve(e.f, e.t)} fill="none"
-                stroke="hsl(var(--border))" strokeWidth={1.5} />
-            ))}
+            {edges.map((e, i) => {
+              const isHL = !!hoveredId && (e.f.uo.id === hoveredId || e.t.uo.id === hoveredId);
+              return (
+                <path key={i} d={curve(e.f, e.t)} fill="none"
+                  stroke={isHL ? "hsl(var(--primary))" : "hsl(var(--border))"}
+                  strokeWidth={isHL ? 2.5 : 1.5}
+                  strokeLinecap="round"
+                  opacity={hoveredId && !isHL ? 0.35 : 1}
+                  style={{ transition: "stroke .15s, opacity .15s, stroke-width .15s" }} />
+              );
+            })}
 
             {/* Nodes */}
             {allNodes.map(node => {
@@ -1809,56 +1881,91 @@ const OrganigrammeGraphique: React.FC<{
               const isTemp = node.uo.responsable_temporaire === true;
               const isDragging = dragNode?.uo.id === node.uo.id;
               const isDropTarget = dropTargetId === node.uo.id;
-              const isInvalidTarget = dragNode && dragNode.uo.id !== node.uo.id && dropTargetId !== node.uo.id && !isValidDrop(dragNode.uo, node.uo) && !isDragging;
+              const isHovered = hoveredId === node.uo.id;
+              const isRootNode = roots.some(r => r.uo.id === node.uo.id);
+              const titleX = isRootNode ? 34 : 18;
 
               return (
                 <g key={node.uo.id} transform={`translate(${node.x},${node.y})`}
                   style={{ cursor: dragNode ? (isDropTarget ? "copy" : "not-allowed") : "grab" }}
                   onMouseDown={e => onNodeMouseDown(e, node)}
+                  onMouseEnter={() => { if (!dragNode) setHoveredId(node.uo.id); }}
+                  onMouseLeave={() => setHoveredId(h => h === node.uo.id ? null : h)}
                   onClick={e => { if (!dragNode) { e.stopPropagation(); onEdit(node.uo); } }}
                   onDoubleClick={e => { e.stopPropagation(); onSetRootUo?.(node.uo.id); }}>
 
-                  {/* Ombre */}
-                  {!isDragging && <rect x={3} y={3} width={NODE_W} height={NODE_H} rx={10} fill="rgba(0,0,0,0.07)" />}
+                  {/* Ombre portée douce (tons neutres du thème, 2 couches) */}
+                  {!isDragging && (
+                    <>
+                      <rect x={0} y={3} width={NODE_W} height={NODE_H} rx={13} fill="hsl(var(--foreground) / 0.05)" />
+                      <rect x={0} y={1.5} width={NODE_W} height={NODE_H} rx={13}
+                        fill={isHovered ? "hsl(var(--foreground) / 0.08)" : "hsl(var(--foreground) / 0.06)"}
+                        style={{ transition: "fill .15s" }} />
+                    </>
+                  )}
 
-                  {/* Fond */}
-                  <rect width={NODE_W} height={NODE_H} rx={10}
-                    fill={isDragging ? "hsl(var(--muted) / 0.3)" : "hsl(var(--background))"}
-                    stroke={isDropTarget ? "#22c55e" : isDragging ? "hsl(var(--border))" : c}
-                    strokeWidth={isDropTarget ? 2.5 : 1.5}
+                  {/* Fond de carte */}
+                  <rect width={NODE_W} height={NODE_H} rx={13}
+                    fill={isDragging ? "hsl(var(--muted) / 0.3)" : "hsl(var(--card))"}
+                    stroke={isDropTarget ? "hsl(var(--success))" : isDragging ? "hsl(var(--border))" : (isHovered || isRootNode) ? c : "hsl(var(--border))"}
+                    strokeWidth={isDropTarget ? 2.5 : isHovered ? 2 : isRootNode ? 1.75 : 1}
                     strokeDasharray={isDragging ? "6,3" : "none"}
-                    opacity={isDragging ? 0.4 : 1} />
+                    opacity={isDragging ? 0.4 : 1}
+                    style={{ transition: "stroke .15s, stroke-width .15s" }} />
 
                   {!isDragging && (
                     <>
+                      {/* Accent gauche arrondi */}
                       <rect width={7} height={NODE_H} rx={5} fill={c} />
                       <rect x={4} width={4} height={NODE_H} fill={c} />
-                      <text x={18} y={24} fontSize={12.5} fontWeight={500}
+
+                      {/* Couronne — UO racine de l'arbre affiché */}
+                      {isRootNode && (
+                        <g transform="translate(16,10)">
+                          <Crown size={13} color={c} strokeWidth={2.2} />
+                        </g>
+                      )}
+
+                      <text x={titleX} y={24} fontSize={12.5} fontWeight={600}
                         fill="hsl(var(--foreground))" fontFamily="var(--font-sans)">
-                        {node.uo.libelle.length > 24 ? node.uo.libelle.slice(0, 24) + "..." : node.uo.libelle}
+                        {node.uo.libelle.length > (isRootNode ? 20 : 24) ? node.uo.libelle.slice(0, isRootNode ? 20 : 24) + "…" : node.uo.libelle}
                       </text>
                       {node.uo.code && (
                         <g>
-                          <rect x={18} y={30} width={Math.min(node.uo.code.length * 7.5 + 12, 90)} height={17} rx={4} fill={c + "28"} />
-                          <text x={23} y={43} fontSize={10} fontWeight={600} fill={c} fontFamily="var(--font-mono)">{node.uo.code}</text>
+                          <rect x={18} y={31} width={Math.min(node.uo.code.length * 7.5 + 12, 90)} height={17} rx={5} fill={c} fillOpacity={0.14} />
+                          <text x={23} y={44} fontSize={10} fontWeight={700} fill={c} fontFamily="var(--font-mono)">{node.uo.code}</text>
                         </g>
                       )}
-                      <text x={18} y={63} fontSize={10.5} fill="hsl(var(--muted-foreground))" fontFamily="var(--font-sans)">
-                        {(typeUo?.libelle || "-").slice(0, 26)}{node.uo.niveau != null ? ` - Niv. ${node.uo.niveau}` : ""}
+                      <text x={18} y={67} fontSize={10.5} fill="hsl(var(--muted-foreground))" fontFamily="var(--font-sans)">
+                        {(typeUo?.libelle || "-").slice(0, 26)}{node.uo.niveau != null ? ` · Niv. ${node.uo.niveau}` : ""}
                       </text>
-                      {respLabel && (
-                        <text x={18} y={80} fontSize={10}
-                          fill={isTemp ? "hsl(38 60% 40%)" : "hsl(var(--muted-foreground))"}
-                          fontFamily="var(--font-sans)" opacity={0.85}>
-                          {respLabel}{isTemp ? " (temp.)" : ""}
+                      {respLabel ? (
+                        <g>
+                          <circle cx={22} cy={85} r={2.2} fill={isTemp ? "hsl(var(--warning))" : "hsl(var(--muted-foreground))"} opacity={0.7} />
+                          <text x={28} y={88} fontSize={10}
+                            fill={isTemp ? "hsl(var(--warning))" : "hsl(var(--muted-foreground))"}
+                            fontFamily="var(--font-sans)" opacity={0.9}>
+                            {respLabel}{isTemp ? " (temp.)" : ""}
+                          </text>
+                        </g>
+                      ) : (
+                        <text x={18} y={88} fontSize={9.5} fill="hsl(var(--muted-foreground))" fontFamily="var(--font-sans)" opacity={0.5}>
+                          Aucun responsable
                         </text>
                       )}
-                      <circle cx={NODE_W - 14} cy={14} r={5} fill={node.uo.actif ? "#22c55e" : "#94a3b8"} />
+
+                      {/* Statut — pastille avec anneau clair */}
+                      <circle cx={NODE_W - 14} cy={14} r={6.5} fill="hsl(var(--card))" />
+                      <circle cx={NODE_W - 14} cy={14} r={5} fill={node.uo.actif ? "hsl(var(--success))" : "hsl(var(--muted-foreground))"} />
+
                       {isDropTarget && (
-                        <text x={NODE_W / 2} y={NODE_H + 16} fontSize={10} fontWeight={600}
-                          textAnchor="middle" fill="#22c55e" fontFamily="var(--font-sans)">
-                          Deposer ici
-                        </text>
+                        <g transform={`translate(${NODE_W / 2},${NODE_H + 18})`}>
+                          <rect x={-38} y={-13} width={76} height={20} rx={10} fill="hsl(var(--success))" />
+                          <text x={0} y={1} fontSize={10} fontWeight={700}
+                            textAnchor="middle" fill="hsl(var(--success-foreground, 0 0% 100%))" fontFamily="var(--font-sans)">
+                            Déposer ici
+                          </text>
+                        </g>
                       )}
                     </>
                   )}
@@ -1869,7 +1976,7 @@ const OrganigrammeGraphique: React.FC<{
             {/* Ghost node suivant la souris */}
             {dragNode && draggedNode && (
               <g transform={`translate(${dragNode.ghostX},${dragNode.ghostY})`} style={{ pointerEvents: "none" }}>
-                <rect width={NODE_W} height={NODE_H} rx={10}
+                <rect width={NODE_W} height={NODE_H} rx={13}
                   fill="hsl(var(--primary) / 0.15)"
                   stroke="hsl(var(--primary))" strokeWidth={2}
                   strokeDasharray="6,3" />
@@ -1879,12 +1986,12 @@ const OrganigrammeGraphique: React.FC<{
                   return (
                     <>
                       <rect width={7} height={NODE_H} rx={5} fill={c} opacity={0.6} />
-                      <text x={18} y={32} fontSize={12} fontWeight={500}
+                      <text x={18} y={32} fontSize={12} fontWeight={600}
                         fill="hsl(var(--primary))" fontFamily="var(--font-sans)">
-                        {dragNode.uo.libelle.length > 24 ? dragNode.uo.libelle.slice(0, 24) + "..." : dragNode.uo.libelle}
+                        {dragNode.uo.libelle.length > 24 ? dragNode.uo.libelle.slice(0, 24) + "…" : dragNode.uo.libelle}
                       </text>
                       {dragNode.uo.code && (
-                        <text x={18} y={52} fontSize={10} fontWeight={600}
+                        <text x={18} y={52} fontSize={10} fontWeight={700}
                           fill="hsl(var(--primary))" fontFamily="var(--font-mono)">{dragNode.uo.code}</text>
                       )}
                     </>
@@ -1898,19 +2005,20 @@ const OrganigrammeGraphique: React.FC<{
         {/* Legende */}
         </div>
 
-        <div style={{ position: "absolute", bottom: 12, left: 12, display: "flex", gap: 12, fontSize: 11,
-          color: "hsl(var(--muted-foreground))", background: "hsl(var(--background))",
-          padding: "4px 10px", borderRadius: 6, border: "0.5px solid hsl(var(--border))" }}>
-          {[{ color: "#22c55e", label: "Actif" }, { color: "#94a3b8", label: "Inactif" }].map(({ color, label }) => (
+        <div style={{ position: "absolute", bottom: 12, left: 12, display: "flex", alignItems: "center", gap: 10, fontSize: "calc(11px * var(--font-scale))",
+          color: "hsl(var(--muted-foreground))", background: "hsl(var(--background) / 0.95)", backdropFilter: "blur(6px)",
+          padding: "6px 12px", borderRadius: 9, border: "1px solid hsl(var(--border))", boxShadow: "0 2px 8px hsl(var(--foreground) / 0.06)" }}>
+          {[{ color: "hsl(var(--success))", label: "Actif" }, { color: "hsl(var(--muted-foreground))", label: "Inactif" }].map(({ color, label }) => (
             <span key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />{label}
             </span>
           ))}
-          <span>Clic = modifier</span>
-          <span>Double-clic = focus UO</span>
-          <span>Glisser fond = déplacer la vue</span>
-          <span>Glisser noeud = rattacher</span>
-          <span>Molette = zoom</span>
+          <span style={{ width: 1, height: 12, background: "hsl(var(--border))" }} />
+          <span className="hidden md:inline">Clic = modifier</span>
+          <span className="hidden md:inline">Double-clic = focus</span>
+          <span className="hidden lg:inline">Glisser fond = déplacer</span>
+          <span className="hidden lg:inline">Glisser noeud = rattacher</span>
+          <span className="hidden xl:inline">Molette = zoom</span>
         </div>
       </div>
 
@@ -2115,6 +2223,8 @@ const UOTab: React.FC<{
   regions: RefRegion[];
   villes: RefVille[];
 }> = ({ societes, typesUo, pays, regions, villes }) => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState<UniteOrg[]>([]);
   const [etabs, setEtabs] = useState<EtabMinimal[]>([]);
   const [collaborateursMap, setCollaborateursMap] = useState<Map<string, { matricule: string; nom: string; prenom: string }>>(new Map());
@@ -2210,6 +2320,18 @@ const UOTab: React.FC<{
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // RG-UO-DEEPLINK-01 (Adil DAIA) : ouverture directe de l'édition d'une UO via ?editUo=
+  // (utilisé par l'organigramme des postes : double-clic sur une UO sans responsable désigné)
+  const autoOpenedEditUo = useRef(false);
+  useEffect(() => {
+    if (autoOpenedEditUo.current || rows.length === 0) return;
+    const editUoId = searchParams.get("editUo");
+    if (!editUoId) return;
+    const target = rows.find(r => r.id === editUoId);
+    if (target) { openEdit(target); autoOpenedEditUo.current = true; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
   const loadRattachements = useCallback(async (uoId: string) => {
     const { data } = await supabase.from("uo_rattachement").select("*").or(`parent_uo_id.eq.${uoId},enfant_uo_id.eq.${uoId}`).order("date_debut", { ascending: false });
     setRattachements(data || []);
@@ -2227,8 +2349,15 @@ const UOTab: React.FC<{
     return matchSearch && matchSociete;
   });
 
-  const roots = filtered.filter(r => !r.parent_id || !filtered.find(p => p.id === r.parent_id));
-  const getChildren = (parentId: string) => filtered.filter(r => r.parent_id === parentId);
+  // RG-UO-TRI-01 (Adil DAIA) : tri de l'arborescence par niveau hiérarchique puis libellé
+  const byNiveauPuisLibelle = (a: UniteOrg, b: UniteOrg) => {
+    const na = a.niveau ?? 999, nb = b.niveau ?? 999;
+    if (na !== nb) return na - nb;
+    return a.libelle.localeCompare(b.libelle);
+  };
+
+  const roots = filtered.filter(r => !r.parent_id || !filtered.find(p => p.id === r.parent_id)).sort(byNiveauPuisLibelle);
+  const getChildren = (parentId: string) => filtered.filter(r => r.parent_id === parentId).sort(byNiveauPuisLibelle);
 
   const openCreate = () => {
     setEditing(null); setForm({ ...EMPTY_UO }); setFormSocieteId(filterSociete || "");
@@ -2355,7 +2484,7 @@ const UOTab: React.FC<{
       <>
         <tr className="border-t hover:bg-muted/30 transition-colors" style={{ borderColor: "hsl(var(--border))" }}>
           <td className="px-3 py-2.5">
-            <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
+            <div className="flex items-center gap-1" style={{ paddingLeft: (uo.niveau ?? depth) * 20 }}>
               {children.length > 0 ? (
                 <button onClick={() => toggleExpand(uo.id)} className="p-0.5 hover:bg-muted/60 rounded">
                   {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -2378,7 +2507,7 @@ const UOTab: React.FC<{
                   <span>{responsable.nom} {responsable.prenom}</span>
                 </span>
                 {uo.responsable_temporaire === true ? (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium w-fit" style={{ background: "hsl(38 92% 50% / 0.1)", color: "hsl(38 60% 40%)", border: "1px solid hsl(38 92% 50% / 0.25)" }}>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium w-fit" style={{ background: "hsl(var(--warning) / 0.1)", color: "hsl(var(--warning))", border: "1px solid hsl(var(--warning) / 0.25)" }}>
                     <AlertTriangle size={9} />Temporaire
                   </span>
                 ) : (
@@ -2390,7 +2519,7 @@ const UOTab: React.FC<{
             ) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
           </td>
           <td className="px-3 py-2.5">
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={uo.actif ? { background: "hsl(142 71% 45% / 0.12)", color: "hsl(142 71% 35%)" } : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={uo.actif ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" } : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
               {uo.actif ? "Active" : "Inactive"}
             </span>
           </td>
@@ -2492,7 +2621,7 @@ const UOTab: React.FC<{
           <div className="p-5 space-y-4">
             {formTab === "identification" && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <FieldSelect label="Société *" name="formSocieteId" value={formSocieteId} onChange={(_k, v) => setFormSocieteId(v)} required options={societes.map(s => ({ value: s.id, label: s.raison_sociale }))} />
+                <FieldSelect label="Société *" name="formSocieteId" value={formSocieteId} onChange={(_k, v) => { setFormSocieteId(v); if (v !== formSocieteId) setForm(f => ({ ...f, parent_id: undefined })); }} required options={societes.map(s => ({ value: s.id, label: s.raison_sociale }))} />
                 <FieldInput label="Code" name="code" value={form.code} onChange={setField} placeholder="Ex: DIR-GEN" />
                 <FieldInput label="Libellé *" name="libelle" value={form.libelle} onChange={setField} required />
                 <FieldSelectCreatable label="Type d'UO *" name="type_uo" value={form.type_uo ?? ""} onChange={setField} options={typesUo.map(t => ({ value: t.code, label: t.libelle }))} refTable="ref_type_uo" />
@@ -2504,7 +2633,13 @@ const UOTab: React.FC<{
                 </div>
                 <FieldSelect label="UO parente" name="parent_id" value={form.parent_id ?? ""}
                   onChange={(_k, v) => { const newParentId = v || undefined; setForm(f => ({ ...f, parent_id: newParentId })); if (!editing) loadPostesEligibles(newParentId); }}
-                  options={[{ value: "", label: "— Racine (aucune) —" }, ...rows.filter(r => { if (r.id === editing?.id) return false; if (form.niveau != null) { const pt = typesUo.find(t => t.code === r.type_uo); if (pt?.niveau != null && pt.niveau >= form.niveau) return false; } return true; }).map(r => ({ value: r.id, label: `${r.code ? `[${r.code}] ` : ""}${r.libelle}${r.niveau ? ` (Niv. ${r.niveau})` : ""}` }))]} />
+                  options={[{ value: "", label: "— Racine (aucune) —" }, ...rows.filter(r => {
+                    if (r.id === editing?.id) return false;
+                    // RG-UO-PARENT-01 (Adil DAIA) : l'UO parente doit obligatoirement appartenir à la même société
+                    if (formSocieteId && getSocieteIdForUo(r) !== formSocieteId) return false;
+                    if (form.niveau != null) { const pt = typesUo.find(t => t.code === r.type_uo); if (pt?.niveau != null && pt.niveau >= form.niveau) return false; }
+                    return true;
+                  }).map(r => ({ value: r.id, label: `${r.code ? `[${r.code}] ` : ""}${r.libelle}${r.niveau ? ` (Niv. ${r.niveau})` : ""}` }))]} />
                 <ToggleField label="Active" value={form.actif ?? true} onChange={v => setField("actif", v)} />
                 <div className="col-span-2 md:col-span-3 border-t pt-3" style={{ borderColor: "hsl(var(--border))" }}>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Poste Responsable de l'UO</p>
@@ -2528,7 +2663,7 @@ const UOTab: React.FC<{
                         : posteResponsableTitulaire ? <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium h-8" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.2)" }}><Check size={12} className="flex-shrink-0" /><span className="font-mono font-bold">{posteResponsableTitulaire.matricule}</span><span>—</span><span>{posteResponsableTitulaire.nom} {posteResponsableTitulaire.prenom}</span></div>
                         : posteVacantAlert ? (
                           <div className="space-y-1.5">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs" style={{ background: "hsl(38 92% 50% / 0.08)", color: "hsl(38 60% 40%)", border: "1px solid hsl(38 92% 50% / 0.25)" }}><AlertTriangle size={11} className="flex-shrink-0" /><span>Poste vacant — désignez un responsable temporaire</span></div>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs" style={{ background: "hsl(var(--warning) / 0.08)", color: "hsl(var(--warning))", border: "1px solid hsl(var(--warning) / 0.25)" }}><AlertTriangle size={11} className="flex-shrink-0" /><span>Poste vacant — désignez un responsable temporaire</span></div>
                             {manualResponsable ? (
                               <div className="flex items-center gap-2">
                                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium flex-1" style={{ background: "hsl(var(--muted) / 0.5)", color: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))" }}>
@@ -2624,7 +2759,7 @@ const UOTab: React.FC<{
                             <tr key={rat.id} className="border-t hover:bg-muted/20" style={{ borderColor: "hsl(var(--border))" }}>
                               <td className="px-3 py-2 font-medium">{rat.uo ? `${rat.uo.code ? `[${rat.uo.code}] ` : ""}${rat.uo.libelle}` : "—"}</td>
                               <td className="px-3 py-2">{rat.date_debut}</td><td className="px-3 py-2">{rat.date_fin || "—"}</td><td className="px-3 py-2">{rat.reference_decision || "—"}</td>
-                              <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded text-xs" style={rat.actif ? { background: "hsl(142 71% 45% / 0.12)", color: "hsl(142 71% 35%)" } : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{rat.actif ? "Actif" : "Inactif"}</span></td>
+                              <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded text-xs" style={rat.actif ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" } : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{rat.actif ? "Actif" : "Inactif"}</span></td>
                               <td className="px-3 py-2"><button onClick={() => deleteRattachement(rat.id)} className="p-1 rounded hover:bg-red-50 text-red-400"><Trash2 size={12} /></button></td>
                             </tr>
                           ))}
@@ -2651,7 +2786,7 @@ const UOTab: React.FC<{
               const socId = getSocieteIdForUo(editing);
               const sameSOcUOs = rows.filter(r => getSocieteIdForUo(r) === socId);
               const renderNode = (uo: UniteOrg, depth: number): React.ReactNode => {
-                const children = sameSOcUOs.filter(r => r.parent_id === uo.id);
+                const children = sameSOcUOs.filter(r => r.parent_id === uo.id).sort((a, b) => { const na = a.niveau ?? 999, nb = b.niveau ?? 999; return na !== nb ? na - nb : a.libelle.localeCompare(b.libelle); });
                 const typeUo = typesUo.find(t => t.code === uo.type_uo);
                 const typeColor = typeUo?.couleur || null;
                 const isCurrent = uo.id === editing.id;
@@ -2669,7 +2804,7 @@ const UOTab: React.FC<{
                         </div>
                         {typeUo && <span className="text-[10px]" style={{ color: typeColor ? `${typeColor}cc` : "hsl(var(--muted-foreground))" }}>{typeUo.libelle}{uo.niveau ? ` · Niveau ${uo.niveau}` : ""}</span>}
                       </div>
-                      <div className="ml-auto flex-shrink-0"><span className="text-[10px] px-1.5 rounded-full" style={uo.actif ? { background: "hsl(142 71% 45% / 0.12)", color: "hsl(142 71% 35%)" } : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{uo.actif ? "Actif" : "Inactif"}</span></div>
+                      <div className="ml-auto flex-shrink-0"><span className="text-[10px] px-1.5 rounded-full" style={uo.actif ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" } : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{uo.actif ? "Actif" : "Inactif"}</span></div>
                     </div>
                     {children.length > 0 && <div style={{ marginLeft: 20, borderLeft: `1px dashed ${typeColor || "hsl(var(--border))"}`, paddingLeft: 4 }}>{children.map(child => renderNode(child, depth + 1))}</div>}
                   </div>
@@ -2740,7 +2875,10 @@ const TABS = [
 type TabKey = typeof TABS[number]["key"];
 
 const OrganisationsPage: React.FC = () => {
-  const [tab, setTab] = useState<TabKey>("societes");
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // RG-UO-DEEPLINK-01 (Adil DAIA) : ouvre directement l'onglet UO si on arrive via ?tab=uo
+  const [tab, setTab] = useState<TabKey>(() => (searchParams.get("tab") === "uo" ? "uo" : "societes"));
   const [societes, setSocietes] = useState<Societe[]>([]);
   const [uoCount, setUoCount] = useState<number | null>(null);
   const [conventions, setConventions] = useState<RefItem[]>([]);
@@ -2790,28 +2928,51 @@ const OrganisationsPage: React.FC = () => {
   const isReadOnly = useContext(ManagerReadOnlyContext);
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "hsl(var(--primary) / 0.1)" }}>
-            <Building2 size={20} style={{ color: "hsl(var(--primary))" }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Organisations</h1>
-            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Gestion des sociétés et unités organisationnelles</p>
-          </div>
-        </div>
+    <div className="max-w-[1700px] mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        {searchParams.get("returnTo") && (
+          <button onClick={() => navigate(searchParams.get("returnTo")!)}
+            className="flex items-center gap-1 mr-1 px-2 py-1 rounded-lg transition-colors hover:bg-muted/60"
+            style={{ color: "hsl(var(--primary))" }}>
+            <ArrowLeft size={13} /> Retour à l'organigramme des postes
+          </button>
+        )}
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Organisations</span>
         {isReadOnly && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" }}>
-            <Eye size={12} /> Lecture seule
-          </div>
+          <span className="ml-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+            <Eye size={11} /> Lecture seule
+          </span>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {[{ label: "Sociétés", icon: Building2, color: "hsl(var(--primary))" }, { label: "Unités Org.", icon: Network, color: "hsl(38 92% 50%)" }].map(({ label, icon: Icon, color }) => (
-          <div key={label} className="rounded-xl border p-4 flex items-center gap-3" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: `${color}1a` }}><Icon size={18} style={{ color }} /></div>
+      {/* Onglets façon Odoo (boîtes connectées au panneau, comme la fiche collaborateur) */}
+      <div className="flex gap-0.5 px-6 -mb-px relative z-[1]">
+        {TABS.map(t => {
+          const Icon = t.icon; const active = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className="flex items-center gap-2 px-4 py-2.5 text-[13px] transition-all"
+              style={{
+                color: active ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                fontWeight: active ? 600 : 500,
+                background: active ? "hsl(var(--card))" : "hsl(var(--muted) / 0.5)",
+                border: "1px solid hsl(var(--border))",
+                borderBottom: active ? "1px solid hsl(var(--card))" : "1px solid hsl(var(--border))",
+                borderTopLeftRadius: "var(--radius)",
+                borderTopRightRadius: "var(--radius)",
+              }}>
+              <Icon size={15} />{t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--card))" }} className="p-5">
+      <div className="grid grid-cols-2 gap-4 mb-5">
+        {[{ label: "Sociétés", icon: Building2, token: "primary" }, { label: "Unités Org.", icon: Network, token: "warning" }].map(({ label, icon: Icon, token }) => (
+          <div key={label} className="rounded-xl border p-4 flex items-center gap-3" style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))" }}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: `hsl(var(--${token}) / 0.1)` }}><Icon size={18} style={{ color: `hsl(var(--${token}))` }} /></div>
             <div>
               <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</p>
               <p className="text-lg font-bold" style={{ color: "hsl(var(--foreground))" }}>{label === "Sociétés" ? societes.filter(s => s.actif).length : (uoCount ?? "—")}</p>
@@ -2820,22 +2981,8 @@ const OrganisationsPage: React.FC = () => {
         ))}
       </div>
 
-      <div className="rounded-2xl border overflow-hidden" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-        <div className="flex border-b" style={{ borderColor: "hsl(var(--border))" }}>
-          {TABS.map(t => {
-            const Icon = t.icon; const active = tab === t.key;
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)} className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
-                style={{ color: active ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))", borderBottom: active ? "2px solid hsl(var(--primary))" : "2px solid transparent", background: active ? "hsl(var(--primary) / 0.04)" : "transparent" }}>
-                <Icon size={15} />{t.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="p-5">
-          {tab === "societes" && <SocietesTab conventions={conventions} secteurs={secteurs} regions={regions} pays={pays} villes={villes} banques={banques} devises={devises} />}
-          {tab === "uo" && <UOTab societes={societes} typesUo={typesUo} pays={pays} regions={regions} villes={villes} />}
-        </div>
+      {tab === "societes" && <SocietesTab conventions={conventions} secteurs={secteurs} regions={regions} pays={pays} villes={villes} banques={banques} devises={devises} />}
+      {tab === "uo" && <UOTab societes={societes} typesUo={typesUo} pays={pays} regions={regions} villes={villes} />}
       </div>
     </div>
   );

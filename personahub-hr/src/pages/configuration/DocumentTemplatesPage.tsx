@@ -54,15 +54,28 @@ export default function DocumentTemplatesPage() {
   };
 
   return (
-    <div className="p-5 space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}><FileText size={20} /> Modèles de documents</h1>
-          <p className="text-sm mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Documents générés par les workflows (attestations, décisions…) avec variables et sortie PDF/Word/HTML.</p>
-        </div>
-        <Button onClick={() => setDraft(empty())} className="gap-1.5"><Plus size={15} /> Nouveau modèle</Button>
+    <div className="max-w-4xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-5 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Modèles de documents</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-5 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={() => setDraft(empty())}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouveau modèle
+        </button>
+        <div className="flex-1" />
+        <span className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+          Attestations, décisions… avec variables et sortie PDF/Word/HTML
+        </span>
+      </div>
+
+      <div className="p-5 space-y-5">
       {loading ? (
         <div className="flex items-center justify-center py-16" style={{ color: "hsl(var(--muted-foreground))" }}><Loader2 className="animate-spin mr-2" size={20} /> Chargement…</div>
       ) : templates.length === 0 ? (
@@ -84,7 +97,7 @@ export default function DocumentTemplatesPage() {
                     {t.description && <div className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>{t.description}</div>}
                   </div>
                   <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button onClick={() => toggle(t)} disabled={busy === t.id} className="p-1.5 rounded-lg hover:bg-muted/50" title={t.actif ? "Désactiver" : "Activer"} style={{ color: t.actif ? "hsl(142 64% 35%)" : "hsl(var(--muted-foreground))" }}>{busy === t.id ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}</button>
+                    <button onClick={() => toggle(t)} disabled={busy === t.id} className="p-1.5 rounded-lg hover:bg-muted/50" title={t.actif ? "Désactiver" : "Activer"} style={{ color: t.actif ? "hsl(var(--success))" : "hsl(var(--muted-foreground))" }}>{busy === t.id ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}</button>
                     <button onClick={() => setDraft({ ...t, description: t.description || "", contenu: t.contenu || "", chemin_fichier: t.chemin_fichier || "", nom_fichier_pattern: t.nom_fichier_pattern || "", type_objet: t.type_objet || "generique" })} className="p-1.5 rounded-lg hover:bg-muted/50" title="Modifier" style={{ color: "hsl(var(--muted-foreground))" }}><Pencil size={14} /></button>
                     <button onClick={() => remove(t)} disabled={busy === t.id} className="p-1.5 rounded-lg hover:bg-destructive/10" title="Supprimer" style={{ color: "hsl(var(--destructive))" }}><Trash2 size={14} /></button>
                   </div>
@@ -96,6 +109,7 @@ export default function DocumentTemplatesPage() {
       )}
 
       {draft && <Editor draft={draft} setDraft={setDraft} variables={variables} onSave={save} saving={saving} onClose={() => setDraft(null)} />}
+      </div>
     </div>
   );
 }

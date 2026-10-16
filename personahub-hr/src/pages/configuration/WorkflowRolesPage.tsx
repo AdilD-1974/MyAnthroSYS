@@ -55,15 +55,28 @@ export default function WorkflowRolesPage() {
   };
 
   return (
-    <div className="p-5 space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}><Users size={20} /> Rôles workflow</h1>
-          <p className="text-sm mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Rôles fonctionnels affectables dans les circuits (acteur « Rôle ») et leurs titulaires (collaborateur ou poste).</p>
-        </div>
-        <Button onClick={openNew} className="gap-1.5"><Plus size={15} /> Nouveau rôle</Button>
+    <div className="max-w-4xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-5 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Rôles workflow</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-5 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={openNew}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouveau rôle
+        </button>
+        <div className="flex-1" />
+        <span className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+          Rôles fonctionnels affectables dans les circuits et leurs titulaires
+        </span>
+      </div>
+
+      <div className="p-5 space-y-5">
       {loading ? (
         <div className="flex items-center justify-center py-16" style={{ color: "hsl(var(--muted-foreground))" }}><Loader2 className="animate-spin mr-2" size={20} /> Chargement…</div>
       ) : roles.length === 0 ? (
@@ -160,6 +173,7 @@ export default function WorkflowRolesPage() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }

@@ -73,6 +73,12 @@ class RegleCotisationBase(BaseModel):
     date_fin_validite: Optional[date] = None
     decision_reference: Optional[str] = None
     actif: bool = True
+    # RG-MULTISOCIETE-03 (migrations 059/060) : None = règle générique
+    # (visible/utilisée par toutes les sociétés), une valeur = surcharge
+    # propre à cette société uniquement. Jamais fourni par le client sur
+    # RegleCotisationUpdate (voir plus bas) -- une règle ne change pas de
+    # société après coup, elle se recrée.
+    societe_id: Optional[UUID] = None
 
     # Modalités
     mode_calcul: Literal["PERIODIQUE", "CUMUL", "GLISSANT"] = "PERIODIQUE"

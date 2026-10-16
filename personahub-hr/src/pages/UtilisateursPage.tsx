@@ -26,12 +26,12 @@ import { fr } from "date-fns/locale";
 
 type AppRole = "administrateur" | "gestionnaire_rh" | "gestionnaire_paie" | "manager" | "collaborateur";
 
-const ROLES: { value: AppRole; label: string; color: string; desc: string }[] = [
-  { value: "administrateur",    label: "Administrateur",    color: "hsl(213 73% 30%)", desc: "Accès total à toutes les fonctionnalités" },
-  { value: "gestionnaire_rh",   label: "Gestionnaire RH",   color: "hsl(197 100% 38%)", desc: "Gestion des collaborateurs et congés" },
-  { value: "gestionnaire_paie", label: "Gestionnaire Paie", color: "hsl(84 55% 38%)",  desc: "Gestion de la paie et déclarations" },
-  { value: "manager",           label: "Manager",           color: "hsl(39 95% 42%)",  desc: "Validation équipe et planning" },
-  { value: "collaborateur",     label: "Collaborateur",     color: "hsl(215 20% 45%)", desc: "Espace self-service collaborateur" },
+const ROLES: { value: AppRole; label: string; token: "primary" | "secondary" | "accent" | "warning" | "info"; desc: string }[] = [
+  { value: "administrateur",    label: "Administrateur",    token: "primary",   desc: "Accès total à toutes les fonctionnalités" },
+  { value: "gestionnaire_rh",   label: "Gestionnaire RH",   token: "info",      desc: "Gestion des collaborateurs et congés" },
+  { value: "gestionnaire_paie", label: "Gestionnaire Paie", token: "secondary", desc: "Gestion de la paie et déclarations" },
+  { value: "manager",           label: "Manager",           token: "warning",   desc: "Validation équipe et planning" },
+  { value: "collaborateur",     label: "Collaborateur",     token: "accent",    desc: "Espace self-service collaborateur" },
 ];
 
 const WORKSPACE_MAP: Record<AppRole, { label: string; icon: React.ReactNode; color: string }[]> = {
@@ -93,11 +93,11 @@ const RoleBadge: React.FC<{ role: AppRole; onRemove?: () => void; removing?: boo
   if (!info) return null;
   return (
     <span className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: `${info.color}20`, color: info.color, border: `1px solid ${info.color}40` }}>
+      style={{ background: `hsl(var(--${info.token}) / 0.15)`, color: `hsl(var(--${info.token}))`, border: `1px solid hsl(var(--${info.token}) / 0.35)` }}>
       <Shield size={9} />{info.label}
       {onRemove && (
         <button onClick={onRemove} disabled={removing}
-          className="ml-0.5 rounded-full p-0.5 hover:opacity-70" style={{ color: info.color }}>
+          className="ml-0.5 rounded-full p-0.5 hover:opacity-70" style={{ color: `hsl(var(--${info.token}))` }}>
           {removing
             ? <div className="w-2.5 h-2.5 rounded-full border border-t-transparent animate-spin" style={{ borderColor: info.color, borderTopColor: "transparent" }} />
             : <X size={9} />}
@@ -154,13 +154,13 @@ const AddRoleDropdown: React.FC<{ userId: string; currentRoles: AppRole[]; onAdd
             <button key={r.value} onClick={() => handleAdd(r.value)} disabled={!!adding}
               className="w-full flex items-start gap-2.5 px-3 py-2 hover:bg-muted/50 transition-colors text-left">
               <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
-                style={{ background: `${r.color}20`, color: r.color }}>
+                style={{ background: `hsl(var(--${r.token}) / 0.15)`, color: `hsl(var(--${r.token}))` }}>
                 {adding === r.value
-                  ? <div className="w-3 h-3 rounded-full border border-t-transparent animate-spin" style={{ borderColor: r.color, borderTopColor: "transparent" }} />
+                  ? <div className="w-3 h-3 rounded-full border border-t-transparent animate-spin" style={{ borderColor: `hsl(var(--${r.token}))`, borderTopColor: "transparent" }} />
                   : <Shield size={10} />}
               </div>
               <div>
-                <p className="text-xs font-semibold" style={{ color: r.color }}>{r.label}</p>
+                <p className="text-xs font-semibold" style={{ color: `hsl(var(--${r.token}))` }}>{r.label}</p>
                 <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground))" }}>{r.desc}</p>
               </div>
             </button>
@@ -476,19 +476,19 @@ const CreateUserDialog: React.FC<{ onClose: () => void; onCreated: () => void }>
                       <button key={r.value} type="button" onClick={() => toggleRole(r.value)}
                         className="w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all"
                         style={{
-                          borderColor: selected ? r.color : "hsl(var(--border))",
-                          background: selected ? `${r.color}0D` : "hsl(var(--background))",
+                          borderColor: selected ? `hsl(var(--${r.token}))` : "hsl(var(--border))",
+                          background: selected ? `hsl(var(--${r.token}) / 0.06)` : "hsl(var(--background))",
                         }}>
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ background: `${r.color}20`, color: r.color }}>
+                          style={{ background: `hsl(var(--${r.token}) / 0.15)`, color: `hsl(var(--${r.token}))` }}>
                           <Shield size={14} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold" style={{ color: r.color }}>{r.label}</p>
+                          <p className="text-xs font-semibold" style={{ color: `hsl(var(--${r.token}))` }}>{r.label}</p>
                           <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground))" }}>{r.desc}</p>
                         </div>
                         <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ background: selected ? r.color : "hsl(var(--muted))", border: `1.5px solid ${selected ? r.color : "hsl(var(--border))"}` }}>
+                          style={{ background: selected ? `hsl(var(--${r.token}))` : "hsl(var(--muted))", border: `1.5px solid ${selected ? `hsl(var(--${r.token}))` : "hsl(var(--border))"}` }}>
                           {selected && <Check size={9} color="white" />}
                         </div>
                       </button>
@@ -676,41 +676,55 @@ const UtilisateursPage: React.FC = () => {
   });
 
   return (
-    <div className="p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Gestion des accès</h1>
-          <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {users.length} compte{users.length > 1 ? "s" : ""} · Rôles, espaces de travail et mots de passe
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => refetch()}
-            className="p-2 rounded-lg border hover:opacity-70 transition-opacity"
-            style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-            <RefreshCw size={14} />
-          </button>
-          <button onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
-            style={{ background: "hsl(var(--primary))", color: "white" }}>
-            <UserPlus size={15} /> Créer un compte
-          </button>
-        </div>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Gestion des accès</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <UserPlus size={14} /> Créer un compte
+        </button>
+        <button onClick={() => refetch()}
+          className="p-1.5 rounded transition-colors" style={{ color: "hsl(var(--muted-foreground))" }}>
+          <RefreshCw size={14} />
+        </button>
+
+        <div className="w-px h-5 mx-1" style={{ background: "hsl(var(--border))" }} />
+
+        <div className="flex items-center flex-1 min-w-[200px] h-8 px-2.5" style={{ border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", background: "hsl(var(--background))", maxWidth: 320 }}>
+          <Search size={13} style={{ color: "hsl(var(--muted-foreground))" }} className="flex-shrink-0 mr-1.5" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher par nom, email, matricule…"
+            className="flex-1 text-[13px] outline-none bg-transparent" style={{ color: "hsl(var(--foreground))" }} />
+        </div>
+
+        <div className="flex-1" />
+        <span className="text-[12px] whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {users.length} compte{users.length > 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="p-6 space-y-5">
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {ROLES.map(r => {
           const count = users.filter(u => u.roles.includes(r.value)).length;
           return (
             <button key={r.value} onClick={() => setFilterRole(filterRole === r.value ? "all" : r.value)}
-              className="p-3 rounded-xl text-left transition-all hover:scale-105"
+              className="p-3 text-left transition-all"
               style={{
-                background: filterRole === r.value ? `${r.color}15` : "hsl(var(--card))",
-                border: `1px solid ${filterRole === r.value ? r.color + "40" : "hsl(var(--border))"}`,
+                background: filterRole === r.value ? `hsl(var(--${r.token}) / 0.1)` : "hsl(var(--card))",
+                border: `1px solid ${filterRole === r.value ? `hsl(var(--${r.token}) / 0.4)` : "hsl(var(--border))"}`,
+                borderRadius: "var(--radius)",
               }}>
-              <p className="text-lg font-bold leading-none" style={{ color: r.color }}>{count}</p>
+              <p className="text-lg font-bold leading-none" style={{ color: `hsl(var(--${r.token}))` }}>{count}</p>
               <p className="text-[11px] mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>{r.label}</p>
             </button>
           );
@@ -719,13 +733,6 @@ const UtilisateursPage: React.FC = () => {
 
       {/* Filtres */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher par nom, email, matricule…"
-            className="pl-9 pr-4 py-2 rounded-xl text-sm border outline-none w-full"
-            style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }} />
-        </div>
         <div className="flex gap-1.5 flex-wrap">
           <button onClick={() => setFilterRole("all")}
             className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
@@ -738,16 +745,16 @@ const UtilisateursPage: React.FC = () => {
             <button key={r.value} onClick={() => setFilterRole(filterRole === r.value ? "all" : r.value)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
               style={{
-                background: filterRole === r.value ? r.color : "transparent",
-                borderColor: filterRole === r.value ? r.color : "hsl(var(--border))",
+                background: filterRole === r.value ? `hsl(var(--${r.token}))` : "transparent",
+                borderColor: filterRole === r.value ? `hsl(var(--${r.token}))` : "hsl(var(--border))",
                 color: filterRole === r.value ? "white" : "hsl(var(--foreground))",
               }}>{r.label}</button>
           ))}
           <button onClick={() => setFilterRole("sans_compte" as any)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
             style={{
-              background: (filterRole as any) === "sans_compte" ? "#0E9F8E" : "transparent",
-              borderColor: (filterRole as any) === "sans_compte" ? "#0E9F8E" : "hsl(var(--border))",
+              background: (filterRole as any) === "sans_compte" ? "hsl(var(--success))" : "transparent",
+              borderColor: (filterRole as any) === "sans_compte" ? "hsl(var(--success))" : "hsl(var(--border))",
               color: (filterRole as any) === "sans_compte" ? "white" : "hsl(var(--foreground))",
             }}>Sans compte</button>
         </div>
@@ -758,7 +765,7 @@ const UtilisateursPage: React.FC = () => {
       ) : (
       <>
       {/* Tableau */}
-      <div className="rounded-2xl overflow-hidden"
+      <div className="overflow-hidden"
         style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
         {isLoading ? (
           <div className="flex items-center justify-center h-32 gap-2">
@@ -857,6 +864,7 @@ const UtilisateursPage: React.FC = () => {
       {/* Dialogs */}
       {showCreate && <CreateUserDialog onClose={() => setShowCreate(false)} onCreated={refetch} />}
       <ChangePasswordDialog user={changePwdUser} onClose={() => setChangePwdUser(null)} />
+      </div>
     </div>
   );
 };

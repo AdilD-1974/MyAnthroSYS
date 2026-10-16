@@ -16,7 +16,17 @@ class Collaborateur(Base):
     __tablename__ = "collaborateurs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    matricule: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    # RG-MULTISOCIETE-08 (correctif 24/08, migration 066) : unique=True
+    # retiré -- remplacé en base par uq_collaborateurs_societe_matricule
+    # (societe_id, matricule), pour permettre à deux collaborateurs de
+    # sociétés différentes de partager le même matricule. Laisser
+    # unique=True ici recréerait l'ancienne contrainte bloquante si le
+    # schéma est un jour régénéré depuis ces modèles.
+    matricule: Mapped[str] = mapped_column(String(50), nullable=False)
+    # RG-MULTISOCIETE-08 (migration 066) : société d'origine de CETTE fiche
+    # -- un collaborateur = une société, désormais (la même personne réelle
+    # employée par deux sociétés du groupe a deux fiches distinctes).
+    societe_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("societes.id"), nullable=True)
     ancien_matricule: Mapped[str | None] = mapped_column(String(50))
     civilite: Mapped[str | None] = mapped_column(String(10))
     nom: Mapped[str] = mapped_column(String(100), nullable=False)

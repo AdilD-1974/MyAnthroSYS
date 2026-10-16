@@ -18,7 +18,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # CLES
 # ---------------------------------------------------------------------------
 TypeCle = Literal["NUMERIQUE", "TEXTE", "DATE", "BOOLEEN"]
-ModeCle = Literal["EXACT", "PLAGE"]
+# EXACT = égalité stricte (tous types) ; PLAGE = intervalle {min, max} ;
+# LT/LTE/GT/GTE = comparaison simple (<, <=, >, >=) à une valeur seuil unique —
+# sigles confirmés depuis BaremeForm.tsx (type ModeCleExt local, RG-BAR-MODE-01),
+# PAS "LE"/"GE" comme une première correction l'avait supposé à tort.
+ModeCle = Literal["EXACT", "PLAGE", "LT", "LTE", "GT", "GTE"]
 
 
 class BaremeCleBase(BaseModel):
@@ -30,10 +34,13 @@ class BaremeCleBase(BaseModel):
 
     @model_validator(mode="after")
     def _check_plage_compatible(self) -> "BaremeCleBase":
-        if self.mode == "PLAGE" and self.type not in ("NUMERIQUE", "DATE"):
+        # Comparer ("<", "≤", ">", "≥") ou définir une plage n'a de sens que
+        # sur des valeurs ordonnables — NUMERIQUE ou DATE. EXACT reste seul
+        # mode valable sur TEXTE/BOOLEEN.
+        if self.mode != "EXACT" and self.type not in ("NUMERIQUE", "DATE"):
             raise ValueError(
-                f"Mode PLAGE incompatible avec le type {self.type}. "
-                "Utilisez NUMERIQUE ou DATE."
+                f"Mode {self.mode} incompatible avec le type {self.type}. "
+                "Utilisez NUMERIQUE ou DATE (seul EXACT est possible sur TEXTE/BOOLEEN)."
             )
         return self
 
@@ -88,6 +95,11 @@ class BaremeBase(BaseModel):
     date_fin_validite: date | None = None
     reference_decision: str | None = Field(None, max_length=200)
     actif: bool = True
+    # RG-MULTISOCIETE-03 (migration 057) : None = barème générique (visible
+    # de toutes les sociétés), une valeur = surcharge propre à cette société.
+    # Jamais modifiable via BaremeHeaderUpdate/PATCH (voir plus bas) -- un
+    # barème ne change pas de portée après coup, il se recrée.
+    societe_id: UUID | None = None
 
     @model_validator(mode="after")
     def _check_dates(self) -> "BaremeBase":

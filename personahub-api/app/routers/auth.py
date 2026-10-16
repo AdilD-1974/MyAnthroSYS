@@ -7,7 +7,10 @@ from app.core.security import (
     get_current_user_payload, require_roles
 )
 from app.models.auth import User, Profile, UserRole
-from app.schemas.auth import LoginRequest, TokenResponse, UserCreate, UserRead, PasswordChange
+from app.schemas.auth import (
+    LoginRequest, TokenResponse, UserCreate, UserRead, PasswordChange,
+    SocieteRef, SocieteActiveRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
@@ -20,6 +23,53 @@ def _dominant_role(roles: list[str]) -> str:
         if r in roles:
             return r
     return roles[0] if roles else "collaborateur"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RG-05 (migration 057, multi-société façon Odoo) — helpers société
+# ─────────────────────────────────────────────────────────────────────────────
+# SQL brut (comme le lookup matricule existant plus bas) plutôt qu'un modèle
+# ORM Societe/UserSociete : ces modèles ne sont pas dans les fichiers fournis,
+# et le pattern SQL brut est déjà celui utilisé dans ce routeur pour tout ce
+# qui touche à une table hors du périmètre auth (collaborateurs).
+
+def _societes_utilisateur(db: Session, user_id: str) -> list[dict]:
+    """Sociétés accessibles à l'utilisateur (table user_societes), triées
+    société par défaut en premier."""
+    rows = db.execute(text("""
+        SELECT s.id, s.raison_sociale, s.nom_commercial, s.code_societe, us.est_defaut
+          FROM public.user_societes us
+          JOIN public.societes s ON s.id = us.societe_id
+         WHERE us.user_id = :uid
+         ORDER BY us.est_defaut DESC, s.raison_sociale
+    """), {"uid": str(user_id)}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _resoudre_societe_active(db: Session, user: User, societes: list[dict]) -> str | None:
+    """
+    Détermine la société active à poser dans le JWT au login :
+      1. user.societe_active_id s'il est bien dans la liste des sociétés
+         accessibles (choix précédent de l'utilisateur, respecté) ;
+      2. sinon la société marquée est_defaut=true ;
+      3. sinon la première société accessible ;
+      4. None si l'utilisateur n'a accès à aucune société (cas à surveiller :
+         un utilisateur nouvellement créé sans ligne dans user_societes).
+    Persiste le choix sur user.societe_active_id si différent (pour que le
+    prochain login retombe directement dessus).
+    """
+    if not societes:
+        return None
+    ids_accessibles = {s["id"] for s in societes}
+    courant = str(user.societe_active_id) if user.societe_active_id else None
+    if courant and courant in {str(i) for i in ids_accessibles}:
+        resolue = courant
+    else:
+        resolue = str(next((s["id"] for s in societes if s["est_defaut"]), societes[0]["id"]))
+    if str(user.societe_active_id) != resolue:
+        user.societe_active_id = resolue
+        db.commit()
+    return resolue
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -38,11 +88,16 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     roles = [r.role for r in user.roles]
     dominant = _dominant_role(roles)
 
+    # RG-05 : société active posée au login, embarquée dans le JWT.
+    societes = _societes_utilisateur(db, str(user.id))
+    societe_active_id = _resoudre_societe_active(db, user, societes)
+
     token = create_access_token({
         "sub": str(user.id),
         "email": user.email,
         "role": dominant,
         "all_roles": roles,
+        "societe_active_id": societe_active_id,
     })
 
     return TokenResponse(
@@ -52,6 +107,58 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         user_id=str(user.id),
         nom=user.profile.nom if user.profile else None,
         prenom=user.profile.prenom if user.profile else None,
+        societe_active_id=societe_active_id,
+    )
+
+
+@router.post("/societe-active", response_model=TokenResponse)
+def changer_societe_active(
+    data: SocieteActiveRequest,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+):
+    """
+    RG-05 : bascule de société active (sélecteur façon Odoo multi-company).
+    Vérifie que la société demandée fait bien partie des sociétés accessibles
+    à l'utilisateur (table user_societes) avant de l'accepter -- pas de
+    confiance dans un societe_id envoyé par le client sans validation.
+    Renvoie un NOUVEAU token JWT avec le claim societe_active_id à jour ;
+    le token précédent reste valide jusqu'à son expiration naturelle (pas de
+    révocation ici) -- acceptable pour une bascule de contexte, pas une
+    déconnexion de sécurité.
+    """
+    user = db.query(User).filter(User.id == payload["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    societes = _societes_utilisateur(db, str(user.id))
+    if not any(s["id"] == data.societe_id or str(s["id"]) == data.societe_id for s in societes):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Société non accessible pour cet utilisateur",
+        )
+
+    user.societe_active_id = data.societe_id
+    db.commit()
+
+    roles = [r.role for r in user.roles]
+    dominant = _dominant_role(roles)
+    token = create_access_token({
+        "sub": str(user.id),
+        "email": user.email,
+        "role": dominant,
+        "all_roles": roles,
+        "societe_active_id": data.societe_id,
+    })
+
+    return TokenResponse(
+        access_token=token,
+        role=dominant,
+        all_roles=roles,
+        user_id=str(user.id),
+        nom=user.profile.nom if user.profile else None,
+        prenom=user.profile.prenom if user.profile else None,
+        societe_active_id=data.societe_id,
     )
 
 
@@ -107,6 +214,16 @@ def get_me(payload: dict = Depends(get_current_user_payload), db: Session = Depe
         if row:
             matricule = row[0]
 
+    # RG-05 : sociétés accessibles + société active
+    societes = _societes_utilisateur(db, str(user.id))
+    societe_refs = [
+        SocieteRef(id=str(s["id"]), raison_sociale=s["raison_sociale"], nom_commercial=s["nom_commercial"], code_societe=s.get("code_societe"))
+        for s in societes
+    ]
+    societe_active_id = str(user.societe_active_id) if user.societe_active_id else (
+        societe_refs[0].id if societe_refs else None
+    )
+
     return UserRead(
         id=str(user.id),
         email=user.email,
@@ -116,6 +233,8 @@ def get_me(payload: dict = Depends(get_current_user_payload), db: Session = Depe
         roles=[r.role for r in user.roles],
         matricule=matricule,
         collaborateur_id=collaborateur_id,
+        societes=societe_refs,
+        societe_active_id=societe_active_id,
     )
 
 

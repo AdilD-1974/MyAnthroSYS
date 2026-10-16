@@ -6,10 +6,12 @@ import { useManagerPopulation } from "@/hooks/useManagerPopulation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, Search, CalendarDays, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, CalendarDays, Download, ChevronDown, X } from "lucide-react";
 import * as XLSX from "xlsx";
+import { calcJoursAvecType } from "./congeCalculs";
 
 const MOIS_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const MOIS_LONG = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -18,6 +20,80 @@ const TYPE_COLORS = [
   "hsl(221 83% 53%)", "hsl(142 71% 45%)", "hsl(38 92% 50%)", "hsl(271 91% 65%)",
   "hsl(0 72% 51%)", "hsl(180 71% 45%)", "hsl(330 81% 60%)", "hsl(60 71% 45%)",
 ];
+
+// ─── Filtre multi-choix générique (checkboxes dans un popover) ─
+// `selected = []` est interprété comme "tous" (aucun filtre appliqué),
+// exactement comme l'ancienne valeur "ALL" des Select simples.
+function MultiSelectFilter({
+  label, options, selected, onChange, width = "w-44",
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  width?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const toggle = (v: string) =>
+    onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v]);
+
+  const displayLabel =
+    selected.length === 0
+      ? label
+      : selected.length === 1
+        ? options.find(o => o.value === selected[0])?.label ?? label
+        : `${selected.length} sélectionnés`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className={`h-8 justify-between font-normal ${width}`}>
+          <span className="truncate">{displayLabel}</span>
+          <span className="flex items-center gap-1 ml-1 flex-shrink-0">
+            {selected.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px] leading-none">{selected.length}</Badge>
+            )}
+            <ChevronDown size={13} style={{ color: "hsl(var(--muted-foreground))" }} />
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-2" align="start">
+        <div className="flex items-center justify-between px-1 pb-1.5 mb-1" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
+          <span className="text-xs font-semibold" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</span>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="text-xs inline-flex items-center gap-0.5 hover:underline"
+              style={{ color: "hsl(var(--primary))" }}
+            >
+              <X size={11} /> Réinitialiser
+            </button>
+          )}
+        </div>
+        <div className="max-h-64 overflow-y-auto space-y-0.5">
+          {options.length === 0 ? (
+            <div className="text-xs px-2 py-2" style={{ color: "hsl(var(--muted-foreground))" }}>Aucune option</div>
+          ) : options.map(opt => {
+            const checked = selected.includes(opt.value);
+            return (
+              <label
+                key={opt.value}
+                className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm"
+                style={{ background: checked ? "hsl(var(--muted))" : "transparent" }}
+                onMouseEnter={e => { if (!checked) e.currentTarget.style.background = "hsl(var(--muted)/0.5)"; }}
+                onMouseLeave={e => { if (!checked) e.currentTarget.style.background = "transparent"; }}
+              >
+                <Checkbox checked={checked} onCheckedChange={() => toggle(opt.value)} />
+                <span className="truncate">{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function PlanningCongesPage() {
   const { role } = useAuth();
@@ -28,9 +104,9 @@ export default function PlanningCongesPage() {
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-indexed
   const [viewMode, setViewMode] = useState<"mois" | "annuel">("mois");
-  const [filterType, setFilterType] = useState("ALL");
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [filterStatut, setFilterStatut] = useState("ALL");
+  const [filterStatuts, setFilterStatuts] = useState<string[]>([]);
 
   const { data: typesConge = [] } = useQuery({
     queryKey: ["ref-type-conge-actifs"],
@@ -40,26 +116,101 @@ export default function PlanningCongesPage() {
     },
   });
 
+  // Jours fériés de l'année affichée (+ marge fin/début d'année pour les congés
+  // à cheval sur deux exercices) — nécessaire pour calculer la vraie portion
+  // d'un congé qui tombe dans un mois donné (RG-CONGE-PERIODE-MOIS-01).
+  const { data: feriesSet = new Set<string>() } = useQuery<Set<string>>({
+    queryKey: ["jours-feries-planning", viewYear],
+    queryFn: async () => {
+      const data: any[] = await api.get(
+        `/db/ref_jours_feries?select=date_debut,nombre_jours&date_debut=gte.${viewYear - 1}-12-01&date_debut=lte.${viewYear + 1}-01-31`
+      );
+      const s = new Set<string>();
+      (data || []).forEach((r) => {
+        const nb = r.nombre_jours ?? 1;
+        const d = new Date(r.date_debut + "T00:00:00");
+        for (let i = 0; i < nb; i++) { const cur = new Date(d); cur.setDate(cur.getDate() + i); s.add(cur.toISOString().split("T")[0]); }
+      });
+      return s;
+    },
+  });
+
+  const getTypeJour = (code: string): string | null =>
+    (typesConge as any[]).find(t => (t.code ?? t.code_type_conge) === code)?.code_type_jour ?? null;
+
+  /** Jours décomptés d'un congé qui tombent dans [intervalDebut, intervalFin] (ISO yyyy-mm-dd).
+   * Réutilise calcJoursAvecType (congeCalculs.ts) — même règles que la saisie
+   * et que la récupération paie, pour ne jamais afficher un total différent
+   * d'un module à l'autre. Les demi-journées de bord ne s'appliquent que si
+   * la borne de l'intervalle coïncide avec la vraie borne du congé. */
+  const joursDansIntervalle = (d: any, intervalDebut: string, intervalFin: string): number => {
+    const finAbsence = d.date_fin_absence ?? d.date_retour ?? d.date_debut;
+    const debutEff = d.date_debut > intervalDebut ? d.date_debut : intervalDebut;
+    const finEff = finAbsence < intervalFin ? finAbsence : intervalFin;
+    if (debutEff > finEff) return 0;
+    const debutDemi = debutEff === d.date_debut ? d.debut_demi_journee : null;
+    const finDemi = finEff === finAbsence ? d.fin_demi_journee : null;
+    return calcJoursAvecType(debutEff, finEff, debutDemi || "", finDemi || "", getTypeJour(d.code_type_conge), feriesSet).dec;
+  };
+
   const { data: demandes = [], isLoading } = useQuery({
-    queryKey: ["cong-planning", viewYear, filterType, filterStatut, search, managerCollabIds, isManager],
+    queryKey: ["cong-planning", viewYear, filterTypes, filterStatuts, search, managerCollabIds, isManager],
     enabled: !isManager || !popLoading,
     queryFn: async () => {
       const yearStart = `${viewYear}-01-01`;
       const yearEnd = `${viewYear}-12-31`;
       // RG-MGR-POP-01 : filtrer par population du manager
       if (isManager && managerCollabIds.length === 0) return [];
-      const params = new URLSearchParams({
+
+      // ── Branche A : circuit (cong_demandes), TOUS statuts (y compris en_attente/brouillon) ──
+      const paramsDemandes = new URLSearchParams({
         archive: "eq.false",
         date_debut: `gte.${yearStart}`,
         date_fin_absence: `lte.${yearEnd}`,
         select: "*,collaborateurs(nom,prenom,matricule)",
         order: "date_debut",
       });
-      if (filterStatut !== "ALL") params.set("statut", `eq.${filterStatut}`);
-      if (filterType !== "ALL") params.set("code_type_conge", `eq.${filterType}`);
-      if (isManager) params.set("collaborateur_id", `in.(${managerCollabIds.join(",")})`);
-      const data: any[] = await api.get(`/db/cong_demandes?${params.toString()}`);
-      return (data || []).filter((d: any) => {
+      if (filterTypes.length === 1) paramsDemandes.set("code_type_conge", `eq.${filterTypes[0]}`);
+      else if (filterTypes.length > 1) paramsDemandes.set("code_type_conge", `in.(${filterTypes.join(",")})`);
+      if (isManager) paramsDemandes.set("collaborateur_id", `in.(${managerCollabIds.join(",")})`);
+
+      // ── Branche B : saisie directe (cong_consommation, demande_id null) — toujours "approuvee" ──
+      const paramsConso = new URLSearchParams({
+        archive: "eq.false",
+        est_annulee: "eq.false",
+        demande_id: "is.null",
+        date_debut: `gte.${yearStart}`,
+        date_retour: `lte.${yearEnd}`,
+        select: "*,collaborateurs(nom,prenom,matricule)",
+        order: "date_debut",
+      });
+      if (filterTypes.length === 1) paramsConso.set("code_type_conge", `eq.${filterTypes[0]}`);
+      else if (filterTypes.length > 1) paramsConso.set("code_type_conge", `in.(${filterTypes.join(",")})`);
+      if (isManager) paramsConso.set("collaborateur_id", `in.(${managerCollabIds.join(",")})`);
+
+      const [dataDemandes, dataConso]: [any[], any[]] = await Promise.all([
+        api.get(`/db/cong_demandes?${paramsDemandes.toString()}`),
+        api.get(`/db/cong_consommation?${paramsConso.toString()}`),
+      ]);
+
+      const circuit = (dataDemandes || []).map((d: any) => ({ ...d, source: "circuit" }));
+      const directes = (dataConso || []).map((d: any) => ({
+        ...d,
+        statut: "approuvee",
+        date_fin_absence: d.date_fin_absence ?? d.date_retour, // cong_consommation n'a pas date_fin_absence
+        source: "saisie_directe",
+      }));
+
+      let fusion = [...circuit, ...directes];
+
+      // Filtre statut, appliqué côté client (les valeurs réelles sont en minuscule :
+      // en_attente / approuvee / brouillon / refusee / annulee / modifiee)
+      if (filterStatuts.length > 0) {
+        const wanted = new Set(filterStatuts.map((s) => s.toLowerCase()));
+        fusion = fusion.filter((d) => wanted.has(String(d.statut ?? "").toLowerCase()));
+      }
+
+      return fusion.filter((d: any) => {
         if (!search) return true;
         const c = d.collaborateurs;
         const t = search.toLowerCase();
@@ -68,16 +219,34 @@ export default function PlanningCongesPage() {
     },
   });
 
+  // Statut "en cours de validation" : identification visuelle dédiée (pointillés + opacité réduite)
+  const estEnAttente = (d: any) => ["en_attente", "brouillon"].includes(String(d?.statut ?? "").toLowerCase());
+
   // Construire map couleurs par type
-  // typeColorMap : uniquement les types présents dans les demandes chargées
+  // Priorité à la couleur définie dans le référentiel (ref_type_conge) :
+  // on essaie plusieurs noms de champ possibles selon le schéma réel.
+  // Si aucune couleur n'est définie pour un type, repli sur la palette
+  // automatique (comme avant) pour ne jamais afficher de case sans couleur.
+  const getCouleurRef = (typeObj: any): string | undefined =>
+    typeObj?.couleur || typeObj?.couleur_hex || typeObj?.couleur_hexa ||
+    typeObj?.color || typeObj?.hex_color || typeObj?.code_couleur || undefined;
+
   const typeColorMap = useMemo(() => {
     const map: Record<string, string> = {};
     const codesPresents = [...new Set((demandes as any[]).map((d: any) => d.code_type_conge).filter(Boolean))];
-    codesPresents.forEach((code, i) => {
-      map[code as string] = TYPE_COLORS[i % TYPE_COLORS.length];
+    let fallbackIdx = 0;
+    codesPresents.forEach((code) => {
+      const typeObj = (typesConge as any[]).find(t => (t.code ?? t.code_type_conge) === code);
+      const couleurRef = getCouleurRef(typeObj);
+      if (couleurRef) {
+        map[code as string] = couleurRef;
+      } else {
+        map[code as string] = TYPE_COLORS[fallbackIdx % TYPE_COLORS.length];
+        fallbackIdx++;
+      }
     });
     return map;
-  }, [demandes]);
+  }, [demandes, typesConge]);
 
   // legendeItems : libellé + couleur pour les types présents
   const legendeItems = useMemo(() => {
@@ -94,7 +263,15 @@ export default function PlanningCongesPage() {
   const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
 
   // Helper robuste : date de fin
-  const getEndDate = (d: any) => new Date(d.date_fin_absence ?? d.date_retour ?? d.date_fin);
+  // RG-CONGE-PARSE-DATE-LOCAL-01 (30/07/2026) : new Date("YYYY-MM-DD") sans
+  // heure est interprété par JS en UTC minuit, alors que les cellules du
+  // calendrier sont construites en heure LOCALE (new Date(year,month,day)).
+  // Au Maroc (UTC+0/+1), ce décalage faisait perdre le premier jour d'un
+  // congé dans les comparaisons (>= start échouait pour le jour de début).
+  // On force donc systématiquement l'heure locale via "T00:00:00", comme
+  // déjà fait dans congeCalculs.ts.
+  const parseLocal = (dateStr: string) => new Date(dateStr + "T00:00:00");
+  const getEndDate = (d: any) => parseLocal(d.date_fin_absence ?? d.date_retour ?? d.date_fin);
 
 
   // Collaborateurs uniques dans le mois courant
@@ -102,7 +279,7 @@ export default function PlanningCongesPage() {
     const monthStart = new Date(viewYear, viewMonth, 1);
     const monthEnd = new Date(viewYear, viewMonth + 1, 0);
     const filtered = demandes.filter((d: any) => {
-      const start = new Date(d.date_debut);
+      const start = parseLocal(d.date_debut);
       const end = getEndDate(d);
       return start <= monthEnd && end >= monthStart;
     });
@@ -119,7 +296,7 @@ export default function PlanningCongesPage() {
     const date = new Date(viewYear, viewMonth, day);
     return demandes.filter((d: any) => {
       if (d.collaborateur_id !== collabId) return false;
-      const start = new Date(d.date_debut);
+      const start = parseLocal(d.date_debut);
       const end = getEndDate(d);
       return date >= start && date <= end;
     });
@@ -149,7 +326,7 @@ export default function PlanningCongesPage() {
   const getDemandeMois = (collabId: string, mois: number) => {
     return demandes.filter((d: any) => {
       if (d.collaborateur_id !== collabId) return false;
-      const start = new Date(d.date_debut);
+      const start = parseLocal(d.date_debut);
       const end = getEndDate(d);
       const moisStart = new Date(viewYear, mois, 1);
       const moisEnd = new Date(viewYear, mois + 1, 0);
@@ -296,28 +473,30 @@ export default function PlanningCongesPage() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
             <Input placeholder="Rechercher…" className="pl-9 h-8" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-44 h-8"><SelectValue placeholder="Type" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous les types</SelectItem>
-              {(typesConge as any[]).map((t: any) => <SelectItem key={t.code} value={t.code}>{t.libelle}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterStatut} onValueChange={setFilterStatut}>
-            <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous statuts</SelectItem>
-              <SelectItem value="APPROUVEE">Approuvées</SelectItem>
-              <SelectItem value="EN_ATTENTE">En attente</SelectItem>
-              <SelectItem value="BROUILLON">Brouillons</SelectItem>
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            label="Tous les types"
+            width="w-48"
+            options={(typesConge as any[]).map((t: any) => ({ value: t.code, label: t.libelle }))}
+            selected={filterTypes}
+            onChange={setFilterTypes}
+          />
+          <MultiSelectFilter
+            label="Tous statuts"
+            width="w-40"
+            options={[
+              { value: "approuvee", label: "Approuvées" },
+              { value: "en_attente", label: "En attente" },
+              { value: "brouillon", label: "Brouillons" },
+            ]}
+            selected={filterStatuts}
+            onChange={setFilterStatuts}
+          />
         </CardContent>
       </Card>
 
       {/* Légende : uniquement les types de congé présents dans le planning affiché */}
       {legendeItems.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           {legendeItems.map(({ code, color, libelle }) => (
             <span key={code} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
               style={{ background: `${color}18`, color, border: `1.5px solid ${color}50` }}>
@@ -325,6 +504,12 @@ export default function PlanningCongesPage() {
               {libelle}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+            style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+            <span className="w-2.5 h-2.5 rounded-sm inline-block flex-shrink-0"
+              style={{ border: "1.5px dashed hsl(var(--muted-foreground))", background: "transparent" }}></span>
+            En attente de validation
+          </span>
         </div>
       )}
 
@@ -375,14 +560,18 @@ export default function PlanningCongesPage() {
                       {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
                         const absences = isAbsent(collab.id, day);
                         const isWE = isWeekend(day);
+                        const first = absences[0];
+                        const pending = first ? estEnAttente(first) : false;
                         return (
                           <td key={day} className="p-0 text-center h-10"
                             style={{ borderLeft: "1px solid hsl(var(--border)/0.5)", background: isWE ? "hsl(var(--muted)/0.3)" : undefined }}
-                            title={absences.map(a => getTypeLibelle(a.code_type_conge)).join(", ")}>
+                            title={absences.map(a => `${getTypeLibelle(a.code_type_conge)}${estEnAttente(a) ? " (en attente)" : ""}`).join(", ")}>
                             {absences.length > 0 && (
                               <div className="w-full h-full flex items-center justify-center">
                                 <div className="w-5 h-5 rounded-sm"
-                                  style={{ background: typeColorMap[absences[0].code_type_conge] || "hsl(var(--primary))" }} />
+                                  style={pending
+                                    ? { background: `${typeColorMap[first.code_type_conge] || "hsl(var(--primary))"}30`, border: `1.5px dashed ${typeColorMap[first.code_type_conge] || "hsl(var(--primary))"}` }
+                                    : { background: typeColorMap[first.code_type_conge] || "hsl(var(--primary))" }} />
                               </div>
                             )}
                           </td>
@@ -432,34 +621,45 @@ export default function PlanningCongesPage() {
                       </td>
                       {Array.from({ length: 12 }, (_, m) => {
                         const moisDemandes = getDemandeMois(collab.id, m);
-                        const getJoursDroits = (d: any) => {
-                          if (d.nbr_jours_decomptes && Number(d.nbr_jours_decomptes) > 0) return Number(d.nbr_jours_decomptes);
-                          if (d.nbr_jours_ouvrables && Number(d.nbr_jours_ouvrables) > 0) return Number(d.nbr_jours_ouvrables);
-                          return null;
-                        };
-                        const getJoursCal = (d: any) => {
-                          if (d.nbr_jours_calendaires && Number(d.nbr_jours_calendaires) > 0) return Number(d.nbr_jours_calendaires);
-                          const s = new Date(d.date_debut); const e = getEndDate(d);
-                          if (!isNaN(s.getTime()) && !isNaN(e.getTime())) return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
-                          return null;
+                        const moisStartIso = `${viewYear}-${String(m + 1).padStart(2, "0")}-01`;
+                        const moisEndIso = new Date(viewYear, m + 1, 0).toISOString().split("T")[0];
+                        // RG-CONGE-PERIODE-MOIS-01 (30/07/2026) : un congé à cheval sur
+                        // deux mois affichait à tort son TOTAL complet dans CHAQUE mois
+                        // traversé (ex. un congé de 5j apparaissait "5j" en mai ET "5j" en
+                        // juin). On calcule ici la vraie portion du mois, comme pour la
+                        // récupération de paie (joursDansPeriode / RecuperationModulesPage).
+                        const joursPortionMois = (d: any) => joursDansIntervalle(d, moisStartIso, moisEndIso);
+                        const calPortionMois = (d: any) => {
+                          const finAbsence = d.date_fin_absence ?? d.date_retour ?? d.date_debut;
+                          const debutEff = d.date_debut > moisStartIso ? d.date_debut : moisStartIso;
+                          const finEff = finAbsence < moisEndIso ? finAbsence : moisEndIso;
+                          if (debutEff > finEff) return 0;
+                          return calcJoursAvecType(debutEff, finEff, "", "", null, feriesSet).cal;
                         };
                         return (
                           <td key={m} className="p-1 text-center" style={{ borderLeft: "1px solid hsl(var(--border)/0.5)", minWidth: 70 }}>
                             {moisDemandes.length > 0 && (
                               <div className="flex flex-col gap-1 items-center">
                                 {moisDemandes.slice(0, 2).map((d: any, di: number) => {
-                                  const droits = getJoursDroits(d);
-                                  const cal = getJoursCal(d);
+                                  const droits = joursPortionMois(d);
+                                  const cal = calPortionMois(d);
+                                  const totalDroits = Number(d.nbr_jours_decomptes ?? 0);
+                                  const chevauche = droits > 0 && totalDroits > 0 && Math.abs(droits - totalDroits) > 0.01;
                                   const color = typeColorMap[d.code_type_conge] || "hsl(var(--primary))";
+                                  const pending = estEnAttente(d);
                                   return (
                                     <div key={di}
-                                      className="w-full px-1.5 py-1 rounded text-white font-medium"
-                                      style={{ background: color, fontSize: 10 }}
-                                      title={`${getTypeLibelle(d.code_type_conge)}${droits != null ? ` — ${droits}j droits` : ""}${cal != null ? ` / ${cal}j cal.` : ""}`}>
-                                      <div style={{ opacity: 0.85, fontSize: 9, fontWeight: 400 }}>{getTypeLibelle(d.code_type_conge)}</div>
-                                      <div className="font-bold" style={{ fontSize: 11 }}>
-                                        {droits != null ? `${droits}j` : "—"}
-                                        <span style={{ opacity: 0.75, fontWeight: 400 }}> / {cal != null ? `${cal}j` : "—"}</span>
+                                      className="w-full px-1.5 py-1 rounded font-medium"
+                                      style={pending
+                                        ? { background: `${color}22`, border: `1.5px dashed ${color}`, color, fontSize: "calc(10px * var(--font-scale))" }
+                                        : { background: color, color: "white", fontSize: "calc(10px * var(--font-scale))" }}
+                                      title={`${getTypeLibelle(d.code_type_conge)}${pending ? " — en attente de validation" : ""} — ${droits}j${chevauche ? ` sur ce mois / ${totalDroits}j au total` : " (droits)"}${cal ? ` / ${cal}j cal.` : ""}`}>
+                                      <div style={{ opacity: 0.85, fontSize: "calc(9px * var(--font-scale))", fontWeight: 400 }}>
+                                        {getTypeLibelle(d.code_type_conge)}{pending ? " ⏳" : ""}{chevauche ? " ↔" : ""}
+                                      </div>
+                                      <div className="font-bold" style={{ fontSize: "calc(11px * var(--font-scale))" }}>
+                                        {droits > 0 ? `${droits}j` : "—"}
+                                        <span style={{ opacity: 0.75, fontWeight: 400 }}> / {cal > 0 ? `${cal}j` : "—"}</span>
                                       </div>
                                     </div>
                                   );

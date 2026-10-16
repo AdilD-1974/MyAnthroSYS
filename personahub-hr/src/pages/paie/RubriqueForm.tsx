@@ -4,30 +4,38 @@
  */
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
-import { ArrowLeft, Check, Loader2, Plus, Trash2, Info } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Plus, Trash2, Info, FileText, Calculator, Layers, Receipt, Archive as ArchiveIcon } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useListNavigationContext } from "@/hooks/useListNavigationContext";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { ChevronLeft, ChevronRight, ChevronDown, RotateCcw } from "lucide-react";
 
-interface Ref { code: string; libelle: string }
+interface Ref { code: string; libelle: string; ordre_calcul?: number | null }
 interface Rubrique {
   code: string; libelle: string; libelle_edition: string | null; description: string | null;
   code_famille: string | null; code_flux: string | null; code_type: string | null; code_frequence: string | null;
   frequence_calcul: string; frequence_raz_cumuls: string;
   date_debut: string | null; date_fin: string | null;
   traiter: boolean; simulation: boolean; v_batch: boolean; v_externe: boolean; v_ajout: boolean;
-  v_forcage: boolean; v_regularisation: boolean; v_glissant: boolean; v_historique: boolean; pr_cumulee: boolean;
+  v_forcage: boolean; v_regularisation: boolean; v_annulation: boolean; v_reprise: boolean; v_import: boolean;
+  v_glissant: boolean; v_historique: boolean; pr_cumulee: boolean;
   ordre_calcul: number | null; conditionnee: boolean; code_regle: string | null; archive: boolean;
   zone_fixe_key: string | null;
+  // RG-RUB-ARRONDI-01 : nouveau champ de paramétrage — nécessite la
+  // migration 048_rubrique_arrondi_stockage.sql avant usage.
+  mode_arrondi: string; nb_decimales_arrondi: number;
+  // RG-RUB-EDITION-COND-01 : n'enregistrer/afficher la ligne calculée que si
+  // l'attribut sélectionné est différent de 0. null = toujours enregistrer.
+  // ⚠️ Nécessite une colonne dédiée côté base — voir note de migration plus bas.
+  attribut_controle_non_zero: string | null;
+  // RG-RUB-EN-NET-01 : montant alimenté (EV MONTANT ou zone fixe) traité
+  // comme un NET à garantir — le moteur recherche le brut équivalent par
+  // dichotomie (voir sql/23_rubrique_en_net.sql).
+  rubrique_en_net: boolean;
 }
 interface Imputation {
-  id?: string; code_rubrique: string; numero_imputation: number; code_compte: string; sens: string; intitule_compte: string | null;
+  id?: string; rubrique_paie_code: string; part: "SALARIALE" | "PATRONALE" | "NEUTRE";
+  compte_debit: string | null; compte_credit: string | null;
+  axe_debit: string | null; axe_credit: string | null;
 }
 interface Assiette {
   id?: string; code_rubrique: string; code_assiette: string; sens_assiette: string;
@@ -40,10 +48,12 @@ interface Alimentation {
   nbr_paies_recuperer: number | null;
 }
 
-const ATTRIBUTS_RUBRIQUE = ["BASE", "TAUX", "MONT", "DATE", "TEXT"] as const;
+const ATTRIBUTS_RUBRIQUE = ["BASE", "NOMBRE", "TAUX", "MONTANT", "DATE", "TEXTE"] as const;
 const ATTRIBUTS_RUBRIQUE_LABELS: Record<string, string> = {
-  BASE: "Nombre", TAUX: "Taux", MONT: "Montant", DATE: "Date", TEXT: "Texte",
+  BASE: "Base", NOMBRE: "Nombre", TAUX: "Taux", MONTANT: "Montant", DATE: "Date", TEXTE: "Texte",
 };
+// RG-RUB-EDITION-COND-01 : seuls les attributs numériques ont un sens dans un test "≠ 0".
+const ATTRIBUTS_CONTROLE_NON_ZERO = ["BASE", "NOMBRE", "TAUX", "MONTANT"] as const;
 const SOURCE_TYPES = ["TABLE", "RUBRIQUE", "CONSTANTE"] as const;
 const SOURCE_TYPES_LABELS: Record<string, string> = { TABLE: "Table", RUBRIQUE: "Rubrique", CONSTANTE: "Constante" };
 const ATTRIBUTS_SOURCE_RUBRIQUE = ["NBR", "TAUX", "MONT"] as const;
@@ -68,14 +78,28 @@ const FREQUENCES_OPTIONS = [
   { code: "ANNUELLE", label: "Annuelle" },
 ];
 
+// RG-RUB-ARRONDI-01 (Adil DAIA) : mode d'arrondi appliqué au résultat calculé
+// de la rubrique. ⚠️ Champ de PARAMÉTRAGE uniquement dans ce formulaire — son
+// application réelle lors du calcul de paie nécessite un câblage séparé dans
+// paie_engine.py, non encore fait à ce stade.
+const ARRONDI_MODES = [
+  { code: "PLUS_PROCHE", label: "Au plus proche" },
+  { code: "SUPERIEUR", label: "Toujours au supérieur" },
+  { code: "INFERIEUR", label: "Toujours à l'inférieur (tronqué)" },
+];
+
 const EMPTY: Rubrique = {
   code: "", libelle: "", libelle_edition: null, description: null,
   code_famille: null, code_flux: null, code_type: null, code_frequence: null,
   frequence_calcul: "MENSUELLE", frequence_raz_cumuls: "ANNUELLE",
   date_debut: null, date_fin: null,
   traiter: true, simulation: false, v_batch: false, v_externe: false, v_ajout: false,
-  v_forcage: false, v_regularisation: false, v_glissant: false, v_historique: false, pr_cumulee: false,
+  v_forcage: false, v_regularisation: false, v_annulation: false, v_reprise: false, v_import: false,
+  v_glissant: false, v_historique: false, pr_cumulee: false,
   ordre_calcul: null, conditionnee: false, code_regle: null, archive: false, zone_fixe_key: null,
+  mode_arrondi: "PLUS_PROCHE", nb_decimales_arrondi: 2,
+  attribut_controle_non_zero: null,
+  rubrique_en_net: false,
 };
 
 const ZONE_FIXE_OPTIONS = Array.from({ length: 20 }, (_, i) => ({
@@ -83,12 +107,20 @@ const ZONE_FIXE_OPTIONS = Array.from({ length: 20 }, (_, i) => ({
   label: `Zone fixe ${String(i + 1).padStart(2, "0")}`,
 }));
 
+// Autorisations de saisie en ÉLÉMENT VARIABLE : une rubrique est saisissable
+// dès qu'au moins un TYPE est coché. `v_import` autorise en plus l'alimentation
+// par import de fichier (contrôlée à l'import).
+const EV_TYPES: { key: keyof Rubrique; label: string; desc: string; code: string }[] = [
+  { key: "v_ajout", label: "Ajout", desc: "S'ajoute à la valeur calculée", code: "AJOUT" },
+  { key: "v_forcage", label: "Forçage", desc: "Remplace la valeur calculée", code: "FORCAGE" },
+  { key: "v_regularisation", label: "Régularisation", desc: "Rappel sur période antérieure", code: "REGULARISATION" },
+  { key: "v_annulation", label: "Annulation", desc: "Annule un élément précédent", code: "ANNULATION" },
+  { key: "v_reprise", label: "Reprise", desc: "Reprise d'historique / bilan d'ouverture", code: "REPRISE" },
+];
+
 const BOOL_FLAGS: { key: keyof Rubrique; label: string; desc: string }[] = [
   { key: "v_batch", label: "Batch", desc: "Traitement par lot" },
   { key: "v_externe", label: "Externe", desc: "Valorisation externe" },
-  { key: "v_ajout", label: "Ajout", desc: "Ajout manuel autorisé" },
-  { key: "v_forcage", label: "Forçage", desc: "Forçage de valeur autorisé" },
-  { key: "v_regularisation", label: "Régularisation", desc: "Régularisable" },
   { key: "v_glissant", label: "Glissant", desc: "Calcul glissant" },
   { key: "v_historique", label: "Historique", desc: "Conservation historique" },
   { key: "pr_cumulee", label: "Pr. Cumulée", desc: "Prime cumulée" },
@@ -101,6 +133,95 @@ interface Props {
   onBack: () => void;
   /** RG-NAV-CTX-01 : Callback pour basculer vers une autre rubrique (prev/next) */
   onSwitchTo?: (code: string) => void;
+}
+
+// Autocomplete générique utilisé pour les champs Compte débit/crédit (source
+// ref_imputation_comptable) et Axe débit/crédit (source ref_axe_analytique)
+// de l'onglet Comptabilité. `options` porte la valeur stockée (`value`,
+// ex. code_compte ou code axe) et le libellé affiché.
+function ComboboxRef({
+  value, onChange, options, placeholder, width = "w-40",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  width?: string;
+}) {
+  const [saisie, setSaisie] = useState("");
+  const [ouvert, setOuvert] = useState(false);
+
+  const selection = options.find(o => o.value === value);
+  const texteAffiche = ouvert ? saisie : (selection ? `${selection.value} – ${selection.label}` : value);
+
+  const filtres = options.filter(o =>
+    !saisie || o.value.toLowerCase().includes(saisie.toLowerCase()) || o.label.toLowerCase().includes(saisie.toLowerCase())
+  ).slice(0, 30);
+
+  return (
+    <div className={`relative ${width}`}>
+      <input
+        value={texteAffiche}
+        onChange={e => { setSaisie(e.target.value); setOuvert(true); }}
+        onFocus={() => { setSaisie(""); setOuvert(true); }}
+        onBlur={() => setTimeout(() => setOuvert(false), 150)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
+      />
+      {ouvert && filtres.length > 0 && (
+        <ul className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-border bg-card shadow-lg">
+          {filtres.map(o => (
+            <li
+              key={o.value}
+              onMouseDown={() => { onChange(o.value); setSaisie(""); setOuvert(false); }}
+              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-muted"
+            >
+              <span className="font-mono">{o.value}</span>
+              {o.label && <span className="text-muted-foreground"> – {o.label}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {value && !ouvert && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-destructive text-xs"
+          title="Effacer"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---- Pavé accordéon maison — chevron à gauche (icône + libellé + badge
+// optionnel à droite), même esprit que les panneaux pliables déjà utilisés
+// ailleurs dans l'appli (HistoriqueCollaborateurPage, TraitementPaiePage). --
+function PaveAccordeon({ titre, icone: Icone, extra, ouvert, onToggle, children }: {
+  titre: string; icone?: React.ElementType; extra?: React.ReactNode;
+  ouvert: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2.5 px-5 py-4 text-left hover:bg-muted/30 transition-colors"
+      >
+        <ChevronDown
+          size={16}
+          className="shrink-0 text-muted-foreground transition-transform duration-200"
+          style={{ transform: ouvert ? "rotate(0deg)" : "rotate(-90deg)" }}
+        />
+        {Icone && <Icone size={16} className="shrink-0 text-muted-foreground" />}
+        <span className="text-sm font-semibold text-foreground flex-1">{titre}</span>
+        {extra}
+      </button>
+      {ouvert && <div className="px-5 pb-5 pt-1 border-t border-border">{children}</div>}
+    </div>
+  );
 }
 
 const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwitchTo }) => {
@@ -120,31 +241,129 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
   const [alimentations, setAlimentations] = useState<Alimentation[]>([]);
   const [assietteRubriques, setAssietteRubriques] = useState<Ref[]>([]);
   const [refComptes, setRefComptes] = useState<{ id: string; code_compte: string; intitule_compte: string | null }[]>([]);
+  const [refAxes, setRefAxes] = useState<{ id: string; code: string; libelle: string }[]>([]);
   const [allRubriques, setAllRubriques] = useState<Ref[]>([]);
+  const [reglesCatalogue, setReglesCatalogue] = useState<{ code: string; libelle: string; formule_lisible: string; attribut_calcule: string }[]>([]);
+  const [reglesSpecifiques, setReglesSpecifiques] = useState<{ code: string; libelle: string; attribut_calcule: string }[]>([]);
   const [constantes, setConstantes] = useState<{ code: string; libelle: string; valeur: string }[]>([]);
   const [loading, setLoading] = useState(!!sourceCode);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const [newImp, setNewImp] = useState({ ref_imputation_id: "", sens: "D" });
+  const [newImp, setNewImp] = useState({
+    compte_debit: "", compte_credit: "", axe_debit: "", axe_credit: "",
+    part: "NEUTRE" as "SALARIALE" | "PATRONALE" | "NEUTRE",
+  });
   const [newAss, setNewAss] = useState({ code_assiette: "", sens_assiette: "PLUS" });
   const [composantes, setComposantes] = useState<{ code_rubrique: string; libelle: string; sens_assiette: string }[]>([]);
 
-  // RG-RUB-ACCORDION-01 : état des accordéons persisté en localStorage — avant tout return conditionnel
-  const ACCORDION_STORAGE_KEY = "rubrique_form_open_sections";
-  const getStoredSections = (): string[] => {
-    try { const s = localStorage.getItem(ACCORDION_STORAGE_KEY); return s ? JSON.parse(s) : ["general"]; } catch { return ["general"]; }
-  };
-  const [openSections, setOpenSections] = useState<string[]>(getStoredSections);
-  const handleAccordionChange = useCallback((values: string[]) => {
-    setOpenSections(values);
-    try { localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(values)); } catch {}
+  // RG-POPULATION-RUBRIQUE-01 (Adil DAIA) : populations attribuées à cette
+  // rubrique (opt-in strict — sans aucune population ni déclencheur, la
+  // rubrique n'est calculée pour personne) et cascade de déclencheurs.
+  //
+  // Chaque ligne de déclencheur porte un statut visible plutôt que de
+  // disparaître immédiatement au clic sur "Retirer" — même principe que
+  // l'attribution des rubriques dans PopulationsPaiePage.tsx : ATTRIBUEE
+  // (déjà en base), RETIREE (sera retirée à l'enregistrement, annulable),
+  // NOUVELLE (pas encore enregistrée).
+  const [populationsDisponibles, setPopulationsDisponibles] = useState<{ id: string; code: string; libelle: string; actif: boolean }[]>([]);
+  const [populationsRubrique, setPopulationsRubrique] = useState<{ population_id: string; type_attribution: "ATTRIBUEE" | "RETIREE" }[]>([]);
+  const [lignesDeclencheurs, setLignesDeclencheurs] = useState<{ code: string; statut: "ATTRIBUEE" | "RETIREE" | "NOUVELLE" }[]>([]);
+  const [chargementPopulations, setChargementPopulations] = useState(false);
+  const [enregistrementPopulations, setEnregistrementPopulations] = useState(false);
+
+  useEffect(() => {
+    setChargementPopulations(true);
+    api.get("/paie/populations")
+      .then((rows: any) => setPopulationsDisponibles(rows || []))
+      .catch(() => { /* repli silencieux : le pavé affichera juste "aucune population" */ })
+      .finally(() => setChargementPopulations(false));
   }, []);
 
   useEffect(() => {
+    if (!editCode) { setPopulationsRubrique([]); setLignesDeclencheurs([]); return; }
+    Promise.all([
+      api.get(`/paie/rubriques/${editCode}/populations`),
+      api.get(`/paie/rubriques/${editCode}/declencheurs`),
+    ]).then(([pops, decls]: [any, any]) => {
+      setPopulationsRubrique(pops || []);
+      setLignesDeclencheurs((decls || []).map((code: string) => ({ code, statut: "ATTRIBUEE" as const })));
+    }).catch(() => { /* repli silencieux */ });
+  }, [editCode]);
+
+  const basculerRetraitDeclencheur = (code: string) => {
+    setLignesDeclencheurs((lignes) => lignes
+      .filter((l) => !(l.code === code && l.statut === "NOUVELLE"))
+      .map((l) => l.code === code ? { ...l, statut: l.statut === "RETIREE" ? "ATTRIBUEE" : "RETIREE" } : l));
+  };
+
+  const ajouterDeclencheur = (code: string) => {
+    setLignesDeclencheurs((lignes) => {
+      if (lignes.some((l) => l.code === code)) {
+        return lignes.map((l) => l.code === code ? { ...l, statut: "ATTRIBUEE" as const } : l);
+      }
+      return [...lignes, { code, statut: "NOUVELLE" as const }];
+    });
+  };
+
+  const enregistrerPopulations = async () => {
+    if (!editCode) return;
+    setEnregistrementPopulations(true);
+    try {
+      const codesRetenus = lignesDeclencheurs.filter((l) => l.statut !== "RETIREE").map((l) => l.code);
+      await api.patch(`/paie/rubriques/${editCode}/declencheurs`, { codes_declencheurs: codesRetenus });
+      setLignesDeclencheurs(codesRetenus.map((code) => ({ code, statut: "ATTRIBUEE" as const })));
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (e: any) {
+      setError(e.message || "Échec de l'enregistrement des déclencheurs");
+    } finally {
+      setEnregistrementPopulations(false);
+    }
+  };
+
+  // RG-RUB-ONGLETS-01 (Adil DAIA) : navigation par onglets (au lieu de
+  // l'accordéon précédent) — persistée en localStorage comme avant, même clé
+  // renommée pour éviter de restaurer une ancienne valeur incompatible.
+  const TAB_STORAGE_KEY = "rubrique_form_active_tab";
+  const getStoredTab = (): string => {
+    try { return localStorage.getItem(TAB_STORAGE_KEY) || "general"; } catch { return "general"; }
+  };
+  const [activeTab, setActiveTabRaw] = useState<string>(getStoredTab);
+  const setActiveTab = useCallback((v: string) => {
+    setActiveTabRaw(v);
+    try { localStorage.setItem(TAB_STORAGE_KEY, v); } catch {}
+  }, []);
+
+  // Filet de sécurité : si l'onglet mémorisé n'est plus disponible dans le
+  // contexte courant (ex. "comptabilite" alors qu'on crée une nouvelle
+  // rubrique, ou "calcul" alors que le type vient de passer à Assiette),
+  // on retombe sur "Général" plutôt que d'afficher un panneau vide.
+  useEffect(() => {
+    const dispo = new Set(["general"]);
+    if (form.code_type !== "ASS") dispo.add("calcul");
+    if (!isNew) { dispo.add("assiette"); dispo.add("comptabilite"); }
+    if (!dispo.has(activeTab)) setActiveTabRaw("general");
+  }, [activeTab, isNew, form.code_type]);
+
+  // RG-RUB-ONGLETS-03 (Adil DAIA) : l'onglet "Calcul" est désormais un
+  // accordéon à un seul niveau (voir plus bas) — l'ancien état de sous-onglet
+  // Alimentation/Calcul n'a plus lieu d'être.
+  // Pavés ouverts par défaut : Alimentation + Règle de calcul (l'essentiel).
+  // Accordéon maison plutôt que le composant shadcn générique — on veut le
+  // chevron à GAUCHE de l'icône/libellé (convention déjà utilisée ailleurs
+  // dans l'appli), alors que le composant shadcn le place par défaut à droite.
+  const [pavesOuverts, setPavesOuverts] = useState<Set<string>>(new Set(["alimentation", "regle", "classification"]));
+  const togglePave = (cle: string) => setPavesOuverts(prev => {
+    const n = new Set(prev);
+    n.has(cle) ? n.delete(cle) : n.add(cle);
+    return n;
+  });
+
+  useEffect(() => {
     const loadRefs = async () => {
-      const [fam, typ, flx, frq, assRub, cpt, allRub, cst] = await Promise.all([
+      const [fam, typ, flx, frq, assRub, cpt, axe, allRub, cst, reg, spec] = await Promise.all([
         api.get("/db/ref_famille_rubrique_paie?actif=eq.true&select=code,libelle"),
         api.get("/db/ref_type_rubrique_paie?actif=eq.true&select=code,libelle"),
         api.get("/db/ref_flux_rubrique_paie?actif=eq.true&select=code,libelle"),
@@ -152,8 +371,11 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
         // RG-RUB-ASS-01 : Seules les rubriques de type ASS peuvent recevoir des composantes – Auteur : Adil DAIA
         api.get("/db/rubrique_paie?code_type=eq.ASS&select=code,libelle&order=code"),
         api.get("/db/ref_imputation_comptable?actif=eq.true&select=id,code_compte,intitule_compte&order=code_compte"),
-        api.get("/db/rubrique_paie?select=code,libelle&order=code"),
+        api.get("/db/ref_axe_analytique?actif=eq.true&select=id,code,libelle&order=code"),
+        api.get("/db/rubrique_paie?select=code,libelle,ordre_calcul&order=code"),
         api.get("/db/ref_constante_paie?actif=eq.true&select=code,libelle,valeur&order=code"),
+        api.get("/db/ref_regle_calcul_standard?actif=eq.true&select=code,libelle,formule_lisible,attribut_calcule&order=ordre_affichage"),
+        api.get("/db/regle_calcul_specifique?actif=eq.true&archive=eq.false&select=code,libelle,attribut_calcule&order=code"),
       ]);
       if (fam) setFamilles(fam as Ref[]);
       if (typ) setTypes(typ as Ref[]);
@@ -161,8 +383,11 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
       if (frq) setFrequences(frq as Ref[]);
       if (assRub) setAssietteRubriques(assRub as Ref[]);
       if (cpt) setRefComptes(cpt as any[]);
+      if (axe) setRefAxes(axe as any[]);
       if (allRub) setAllRubriques(allRub as Ref[]);
       if (cst) setConstantes(cst as any[]);
+      if (reg) setReglesCatalogue(reg as any[]);
+      if (spec) setReglesSpecifiques(spec as any[]);
     };
     loadRefs();
   }, []);
@@ -173,7 +398,7 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
       setLoading(true);
       const [rData, iData, aData, alData] = await Promise.all([
         api.get(`/db/rubrique_paie?code=eq.${sourceCode}&limit=1`),
-        api.get(`/db/rubrique_paie_imputation?code_rubrique=eq.${sourceCode}&select=*,ref_imputation_comptable(code_compte,intitule_compte)&order=numero_imputation`),
+        api.get(`/db/rubrique_paie_imputation?rubrique_paie_code=eq.${sourceCode}&order=part`),
         api.get(`/db/rubrique_paie_assiette?code_rubrique=eq.${sourceCode}`),
         api.get(`/db/rubrique_paie_alimentation?code_rubrique=eq.${sourceCode}`),
       ]);
@@ -209,7 +434,7 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
         if (allRubriques && allRubriques.length > 0) {
           allRubriques.forEach((r: any) => { libMap[r.code] = r.libelle; });
         } else {
-          const allR: any = await api.get("/db/rubrique_paie?select=code,libelle&order=code");
+          const allR: any = await api.get("/db/rubrique_paie?select=code,libelle,ordre_calcul&order=code");
           (allR || []).forEach((r: any) => { libMap[r.code] = r.libelle; });
         }
         setComposantes((rows as any[]).map((d: any) => ({
@@ -222,7 +447,18 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
     load();
   }, [editCode, form.code, form.code_type, allRubriques]);
 
-  const setField = (key: string, value: any) => setForm(f => ({ ...f, [key]: value }));
+  // RG-EV-AUTORISATION : la rubrique est saisissable en élément variable dès
+  // qu'au moins un type est autorisé. Sans type autorisé, l'import est impossible.
+  const evSaisissable = EV_TYPES.some((t) => !!(form as any)[t.key]);
+
+  const setField = (key: string, value: any) => setForm(f => {
+    const next: any = { ...f, [key]: value };
+    // Décocher le dernier type de saisie retire aussi l'autorisation d'import.
+    if (EV_TYPES.some((t) => t.key === key) && !EV_TYPES.some((t) => !!next[t.key])) {
+      next.v_import = false;
+    }
+    return next;
+  });
 
   const handleSave = async () => {
     if (!form.code || !form.libelle) { setError("Code et libellé sont requis."); return; }
@@ -237,7 +473,11 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
       // En mode duplication, cloner les données liées (imputations, assiettes, alimentations)
       if (duplicateCode) {
         for (const imp of imputations) {
-          await api.post("/db/rubrique_paie_imputation", { code_rubrique: newCode, numero_imputation: imp.numero_imputation, ref_imputation_id: (imp as any).ref_imputation_id, sens: imp.sens }).catch(() => {});
+          await api.post("/db/rubrique_paie_imputation", {
+            rubrique_paie_code: newCode, part: imp.part,
+            compte_debit: imp.compte_debit, compte_credit: imp.compte_credit,
+            axe_debit: imp.axe_debit, axe_credit: imp.axe_credit,
+          }).catch(() => {});
         }
         for (const ass of assiettes) {
           await api.post("/db/rubrique_paie_assiette", { code_rubrique: newCode, code_assiette: ass.code_assiette, sens_assiette: ass.sens_assiette }).catch(() => {});
@@ -262,16 +502,22 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
   };
 
   const addImputation = async () => {
-    if (!newImp.ref_imputation_id) return;
+    if (!newImp.compte_debit && !newImp.compte_credit) {
+      setError("Au moins un compte (débit ou crédit) est requis.");
+      return;
+    }
     const codeRub = editCode || form.code.toUpperCase();
     if (!codeRub) { setError("Enregistrez d'abord la rubrique."); return; }
-    const nextNum = imputations.length > 0 ? Math.max(...imputations.map(i => i.numero_imputation)) + 1 : 1;
     try {
-      await api.post("/db/rubrique_paie_imputation", { code_rubrique: codeRub, numero_imputation: nextNum, ref_imputation_id: newImp.ref_imputation_id, sens: newImp.sens });
+      await api.post("/db/rubrique_paie_imputation", {
+        rubrique_paie_code: codeRub, part: newImp.part,
+        compte_debit: newImp.compte_debit || null, compte_credit: newImp.compte_credit || null,
+        axe_debit: newImp.axe_debit || null, axe_credit: newImp.axe_credit || null,
+      });
     } catch (e: any) { setError(e.message); return; }
-    const impData: any = await api.get(`/db/rubrique_paie_imputation?code_rubrique=eq.${codeRub}&order=numero_imputation`);
+    const impData: any = await api.get(`/db/rubrique_paie_imputation?rubrique_paie_code=eq.${codeRub}&order=part`);
     setImputations((impData || []) as any[]);
-    setNewImp({ ref_imputation_id: "", sens: "D" });
+    setNewImp({ compte_debit: "", compte_credit: "", axe_debit: "", axe_credit: "", part: "NEUTRE" });
   };
 
   const deleteImputation = async (id: string) => {
@@ -314,6 +560,11 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
         if (inserted) setAlimentations(prev => [...prev, (Array.isArray(inserted) ? inserted[0] : inserted) as Alimentation]);
       } catch (e: any) { setError(e.message); return; }
     }
+    // Miroir : alimenter le Nombre alimente aussi la Base, pour toujours
+    // conserver la base initiale (la Base reste modifiable indépendamment).
+    if (attr === "NOMBRE") {
+      await saveAlimentation("BASE", field, value);
+    }
   };
 
   const SelectField: React.FC<{ label: string; value: string | null; refs: Ref[]; field: string }> = ({ label, value, refs, field }) => (
@@ -352,7 +603,16 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
           </button>
           <div>
             <h1 className="text-xl font-bold text-foreground">
-              {duplicateCode ? `Duplication de ${duplicateCode}` : isNew ? "Nouvelle rubrique de paie" : `Rubrique ${editCode}`}
+              {duplicateCode ? (
+                `Duplication de ${duplicateCode}`
+              ) : isNew ? (
+                "Nouvelle rubrique de paie"
+              ) : (
+                <>
+                  {form.libelle || editCode}{" "}
+                  <span className="text-accent">({editCode})</span>
+                </>
+              )}
             </h1>
             <p className="text-xs text-muted-foreground">
               {duplicateCode ? "Saisissez un nouveau code pour la rubrique dupliquée" : isNew ? "Remplissez les informations pour créer une nouvelle rubrique" : "Modifiez les informations de la rubrique"}
@@ -391,19 +651,35 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
         </div>
       )}
       {success && (
-        <div className="mb-4 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">
+        <div
+          className="mb-4 px-4 py-3 rounded-lg text-sm"
+          style={{ background: "hsl(var(--success) / 0.1)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.3)" }}
+        >
           Rubrique enregistrée avec succès.
         </div>
       )}
 
-      {/* Formulaire en accordéon */}
-      <Accordion type="multiple" value={openSections} onValueChange={handleAccordionChange} className="space-y-3">
-        {/* Informations générales */}
-        <AccordionItem value="general" className="rounded-xl border border-border bg-card px-5">
-          <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
+      {/* Formulaire en onglets */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full justify-start bg-muted/50 mb-4 h-auto flex-wrap">
+          <TabsTrigger value="general" className="gap-1.5 text-sm py-2.5"><FileText size={15} /> Général</TabsTrigger>
+          {form.code_type !== "ASS" && (
+            <TabsTrigger value="calcul" className="gap-1.5 text-sm py-2.5"><Calculator size={15} /> Calcul</TabsTrigger>
+          )}
+          {!isNew && (
+            <TabsTrigger value="assiette" className="gap-1.5 text-sm py-2.5"><Layers size={15} /> Assiette</TabsTrigger>
+          )}
+          {!isNew && (
+            <TabsTrigger value="comptabilite" className="gap-1.5 text-sm py-2.5"><Receipt size={15} /> Comptabilité</TabsTrigger>
+          )}
+        </TabsList>
+
+        {/* ===== Onglet Général : Informations générales + Classification + Archivage ===== */}
+        <TabsContent value="general" className="space-y-4 mt-0">
+        <div className="rounded-xl border border-border bg-card px-5 py-4">
+          <h3 className="text-sm font-semibold text-foreground mb-4">
             Informations générales
-          </AccordionTrigger>
-          <AccordionContent>
+          </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Code *</label>
@@ -473,15 +749,9 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                 />
               </div>
             </div>
-          </AccordionContent>
-        </AccordionItem>
+        </div>
 
-        {/* Classification */}
-        <AccordionItem value="classification" className="rounded-xl border border-border bg-card px-5">
-          <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
-            Classification & Fréquences
-          </AccordionTrigger>
-          <AccordionContent>
+        <PaveAccordeon titre="Classification & Fréquences" ouvert={pavesOuverts.has("classification")} onToggle={() => togglePave("classification")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
               <SelectField label="Famille" value={form.code_famille} refs={familles} field="code_famille" />
               <SelectField label="Type" value={form.code_type} refs={types} field="code_type" />
@@ -529,16 +799,218 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                 ℹ️ Les périodes associées à la fréquence "Périodique" sont configurées dans le référentiel des fréquences (Paramétrage Paie &gt; Fréquences).
               </p>
             )}
-          </AccordionContent>
-        </AccordionItem>
 
-        {/* Alimentation des rubriques — masqué pour type Assiette */}
+            {/* RG-RUB-EN-NET-01 (Adil DAIA) : montant EV/zone fixe traité
+                comme un NET à garantir — le moteur cherche le brut
+                équivalent par dichotomie (calculer_bulletin). C'est une
+                caractéristique fondamentale de la rubrique (comment
+                interpréter sa valeur, quelle que soit sa source), pas une
+                question d'autorisation de saisie — d'où sa place ici plutôt
+                que dans l'onglet Calcul. Mis en avant (fond warning) : un
+                paramétrage à ne pas cocher par inadvertance, il recalcule
+                le bulletin entier plusieurs fois. */}
+            <div className="border-t border-border pt-4 mt-4">
+              <label
+                className="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors"
+                style={
+                  form.rubrique_en_net
+                    ? { borderColor: "hsl(var(--warning) / 0.5)", background: "hsl(var(--warning) / 0.06)" }
+                    : { borderColor: "hsl(var(--border))" }
+                }
+                title="Le montant alimenté (élément variable ou zone fixe) est interprété comme un net à garantir ; le système recherche le brut équivalent"
+              >
+                <input type="checkbox" checked={!!form.rubrique_en_net}
+                  onChange={e => setField("rubrique_en_net", e.target.checked)}
+                  className="mt-0.5 rounded border-border focus:ring-2" style={{ accentColor: "hsl(var(--warning))" }} />
+                <div>
+                  <span className="text-sm font-medium text-foreground">Rubrique en net</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Le montant reçu (élément variable ou zone fixe) est un <strong>net à garantir</strong>, pas le
+                    montant final. Le système recherche automatiquement le brut équivalent (recalcul complet du
+                    bulletin par approximations successives) selon le paramétrage habituel de cette rubrique
+                    (cotisations, IR…).
+                  </p>
+                </div>
+              </label>
+            </div>
+        </PaveAccordeon>
+
+        {/* RG-POPULATION-RUBRIQUE-01 (Adil DAIA) : uniquement une fois la
+            rubrique créée (les tables d'attribution référencent son code). */}
+        {!isNew && (
+        <PaveAccordeon titre="Populations & accès" ouvert={pavesOuverts.has("populations")} onToggle={() => togglePave("populations")}>
+          <p className="text-xs text-muted-foreground mb-4">
+            Sans aucune population ni déclencheur ci-dessous, cette rubrique n'est calculée pour <strong>personne</strong>.
+          </p>
+
+          {/* Lecture seule — l'attribution se fait depuis la population elle-même
+              (Paramétrage > Populations de paie), pas ici : une rubrique peut
+              appartenir à plusieurs populations, et la gérer depuis la fiche
+              rubrique risquait de la retirer par erreur d'une population à
+              laquelle une autre personne l'avait rattachée entre-temps.
+              RG-POPULATION-RUBRIQUE-04 : une population peut aussi bien
+              ATTRIBUER cette rubrique que la RETIRER explicitement — les deux
+              sont distinguées par couleur (vert/rouge), pas juste listées
+              pêle-mêle, sinon on ne voit pas d'où vient un éventuel retrait. */}
+          <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+            Populations qui incluent cette rubrique
+          </h4>
+          {chargementPopulations ? (
+            <div className="flex justify-center py-3"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+          ) : populationsRubrique.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic mb-4">
+              Aucune — cette rubrique n'apparaît dans aucune population pour l'instant.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {populationsRubrique.map(pr => {
+                  const p = populationsDisponibles.find(x => x.id === pr.population_id);
+                  if (!p) return null;
+                  const attribuee = pr.type_attribution === "ATTRIBUEE";
+                  return (
+                    <span key={p.id}
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border"
+                      style={
+                        attribuee
+                          ? { borderColor: "hsl(var(--success) / 0.35)", background: "hsl(var(--success) / 0.08)", color: "hsl(var(--success))" }
+                          : { borderColor: "hsl(var(--destructive) / 0.35)", background: "hsl(var(--destructive) / 0.08)", color: "hsl(var(--destructive))" }
+                      }
+                      title={p.actif ? undefined : "Population inactive"}
+                    >
+                      {attribuee ? <Check size={11} /> : <Trash2 size={11} />}
+                      {p.libelle}{!p.actif && " (inactive)"}
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-4">
+                <span className="inline-flex items-center gap-1" style={{ color: "hsl(var(--success))" }}><Check size={10} /> attribue</span>
+                {" · "}
+                <span className="inline-flex items-center gap-1" style={{ color: "hsl(var(--destructive))" }}><Trash2 size={10} /> retire</span>
+                {" — en cas de conflit entre deux populations, le retrait prime toujours."}
+              </p>
+            </>
+          )}
+          <p className="text-xs text-muted-foreground mb-5">
+            Pour ajouter, retirer ou changer le type (attribuer/retirer) de cette rubrique dans une population, modifiez la
+            population dans <span className="font-medium text-foreground">Paramétrage &gt; Populations de paie</span>.
+          </p>
+
+          <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+            Déclencheurs (accès en cascade)
+          </h4>
+          <p className="text-xs text-muted-foreground mb-3">
+            Avoir déjà accès à l'une de ces rubriques suffit à débloquer celle-ci, même sans population qui lui soit propre.
+            Seules les rubriques d'ordre de calcul <strong>supérieur</strong> à celui de cette rubrique ({form.ordre_calcul ?? 0}) sont proposées.
+          </p>
+
+          <div className="rounded-lg border border-border overflow-hidden mb-3">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: "hsl(var(--muted) / 0.5)" }}>
+                  <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">Rubrique déclencheur</th>
+                  <th className="px-3 py-2 text-right text-[11px] uppercase tracking-wide font-semibold text-muted-foreground w-24">Ordre</th>
+                  <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wide font-semibold text-muted-foreground w-28">Statut</th>
+                  <th className="px-3 py-2 w-12" />
+                </tr>
+              </thead>
+              <tbody>
+                {lignesDeclencheurs.length === 0 && (
+                  <tr><td colSpan={4} className="px-3 py-3 text-center text-xs text-muted-foreground italic">Aucun déclencheur.</td></tr>
+                )}
+                {lignesDeclencheurs.map(ligne => {
+                  const r = allRubriques.find(x => x.code === ligne.code);
+                  const cfg = ligne.statut === "ATTRIBUEE"
+                    ? { label: "Attribuée", v: "--success" }
+                    : ligne.statut === "RETIREE"
+                      ? { label: "Retirée", v: "--destructive" }
+                      : { label: "Nouvelle", v: "--info" };
+                  return (
+                    <tr key={ligne.code} className="border-t border-border">
+                      <td className="px-3 py-1.5">
+                        <span className={`font-mono text-xs ${ligne.statut === "RETIREE" ? "line-through text-muted-foreground" : "text-accent"}`}>{ligne.code}</span>
+                        {r?.libelle && <span className={`text-muted-foreground ${ligne.statut === "RETIREE" ? "line-through" : ""}`}> – {r.libelle}</span>}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground">{r?.ordre_calcul ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-center">
+                        <span
+                          className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ background: `hsl(var(${cfg.v}) / 0.12)`, color: `hsl(var(${cfg.v}))` }}
+                        >
+                          {cfg.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <button onClick={() => basculerRetraitDeclencheur(ligne.code)}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+                          style={ligne.statut === "RETIREE" ? { color: "hsl(var(--success))" } : undefined}
+                          onMouseEnter={(e) => { if (ligne.statut !== "RETIREE") e.currentTarget.style.color = "hsl(var(--destructive))"; }}
+                          onMouseLeave={(e) => { if (ligne.statut !== "RETIREE") e.currentTarget.style.color = ""; }}
+                          title={ligne.statut === "RETIREE" ? "Annuler le retrait" : "Retirer"}
+                        >
+                          {ligne.statut === "RETIREE" ? <RotateCcw size={12} /> : <Trash2 size={12} />}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <select
+            value=""
+            onChange={e => { if (e.target.value) ajouterDeclencheur(e.target.value); }}
+            className="w-full sm:w-96 px-3 py-2 rounded-lg border text-sm bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all mb-4"
+          >
+            <option value="">+ Ajouter un déclencheur…</option>
+            {allRubriques
+              .filter(r => r.code !== (editCode || form.code)
+                && !lignesDeclencheurs.some(l => l.code === r.code && l.statut !== "RETIREE")
+                && (r.ordre_calcul ?? 0) > (form.ordre_calcul ?? 0))
+              .map(r => <option key={r.code} value={r.code}>{r.code} – {r.libelle} (ordre {r.ordre_calcul ?? 0})</option>)}
+          </select>
+
+          <div>
+            <button onClick={enregistrerPopulations} disabled={enregistrementPopulations}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50">
+              {enregistrementPopulations ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Enregistrer les déclencheurs
+            </button>
+          </div>
+        </PaveAccordeon>
+        )}
+
+
+        {/* Archivage — déplacé ici (RG-RUB-ONGLETS-01) : un simple bouton bascule
+            ne justifiait pas son propre onglet, regroupé avec le reste des
+            informations générales de la rubrique. */}
+        <PaveAccordeon titre="Archivage" icone={ArchiveIcon} ouvert={pavesOuverts.has("archivage")} onToggle={() => togglePave("archivage")}>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" checked={form.archive} onChange={e => setField("archive", e.target.checked)}
+              className="rounded border-border text-accent focus:ring-accent/30" />
+            <div>
+              <span className="text-sm font-medium text-foreground">Archiver cette rubrique</span>
+              <p className="text-xs text-muted-foreground">La rubrique ne sera plus visible dans les listes actives</p>
+            </div>
+          </label>
+        </PaveAccordeon>
+        </TabsContent>
+
+        {/* ===== Onglet Calcul : pavés en accordéon (RG-RUB-ONGLETS-03 — Adil DAIA) =====
+            Remplace l'ancienne structure à 3 niveaux (Calcul > Alimentation/Calcul >
+            Normale/Cotisation/Barème) : Alimentation et Règle de calcul se cachaient
+            mutuellement alors qu'on a besoin de voir les deux à la fois (la règle
+            référence justement les valeurs alimentées). Un seul niveau, en accordéon,
+            scroll au lieu de clics entre onglets. Panneaux "Règle cotisation" et
+            "Recherche barème" retirés : aucun de leurs champs n'était relié à `form`
+            ni sauvegardé nulle part (UI décorative, jamais câblée) — à réintroduire
+            plus tard avec un vrai câblage plutôt que de laisser croire qu'ils fonctionnent. */}
         {form.code_type !== "ASS" && (
-        <AccordionItem value="alimentation" className="rounded-xl border border-border bg-card px-5">
-          <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
-            Alimentation des rubriques
-          </AccordionTrigger>
-          <AccordionContent>
+        <TabsContent value="calcul" className="mt-0 space-y-3">
+
+          <PaveAccordeon titre="Alimentation des rubriques" ouvert={pavesOuverts.has("alimentation")} onToggle={() => togglePave("alimentation")}>
             <p className="text-xs text-muted-foreground mb-4">
               Définissez pour chaque attribut la source de valorisation : une table, une rubrique ou une constante.
             </p>
@@ -649,202 +1121,133 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                 );
               })}
             </div>
-          </AccordionContent>
-        </AccordionItem>
-        )}
+            </PaveAccordeon>
 
-        {/* Paramètres de calcul — masqué pour les rubriques de type Assiette (RG-RUB-ASS-03) */}
-        {form.code_type !== "ASS" && (
-        <AccordionItem value="calcul" className="rounded-xl border border-border bg-card px-5">
-          <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
-            Paramètres de calcul
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+          <PaveAccordeon titre="Ordre & règle de calcul" ouvert={pavesOuverts.has("regle")} onToggle={() => togglePave("regle")}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="w-28">
                 <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Ordre</label>
                 <input type="number"
-                  value={form.code_type === "ASS" ? 0 : (form.ordre_calcul ?? "")}
-                  disabled={form.code_type === "ASS"}
+                  value={form.ordre_calcul ?? ""}
                   onChange={e => setField("ordre_calcul", e.target.value ? parseInt(e.target.value) : null)}
-                  className={`w-full px-3 py-2.5 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all ${form.code_type === "ASS" ? "opacity-50 cursor-not-allowed" : ""}`}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
                 />
-                {form.code_type === "ASS" && (
-                  <p className="text-[10px] text-muted-foreground mt-1">Ordre fixé à 0 — calcul déclenché par la rubrique appelante</p>
-                )}
               </div>
-              {form.code_type !== "ASS" && (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Règle de calcul</label>
-                  <Tabs defaultValue="normale" className="w-full">
-                    <TabsList className="w-full justify-start bg-muted/50 mb-3">
-                      <TabsTrigger value="normale" className="text-xs">Règle normale</TabsTrigger>
-                      <TabsTrigger value="cotisation" className="text-xs">Règle cotisation</TabsTrigger>
-                      <TabsTrigger value="bareme" className="text-xs">Recherche barème</TabsTrigger>
-                    </TabsList>
-
-                    {/* Règle normale */}
-                    <TabsContent value="normale" className="mt-0">
-                      <div className="rounded-lg border border-border bg-background p-4 space-y-3">
-                        <div className="flex items-start gap-2 mb-2">
-                          <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-                          <p className="text-xs text-muted-foreground">Formule de calcul standard basée sur des rubriques existantes.</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Base (rubrique)</label>
-                            <select
-                              value={form.code_regle || ""}
-                              onChange={e => setField("code_regle", e.target.value || null)}
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="">— Aucune —</option>
-                              {allRubriques.map(r => (
-                                <option key={r.code} value={r.code}>{r.code} – {r.libelle}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Taux (%)</label>
-                            <input type="number" step="0.01" placeholder="100"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Nombre (rubrique)</label>
-                            <select
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="">— Aucune —</option>
-                              {allRubriques.map(r => (
-                                <option key={r.code} value={r.code}>{r.code} – {r.libelle}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Montant fixe</label>
-                            <input type="number" step="0.01" placeholder="0.00"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                        </div>
+              <div className="sm:col-span-2 lg:col-span-3">
+                <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Règle de calcul</label>
+                <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                  <div className="flex items-start gap-2 mb-2">
+                    <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
+                    <p className="text-xs text-muted-foreground">Choisissez le type de règle (Standard = catalogue système, Spécifique = bibliothèque métier), puis la règle à appliquer. Ses variables (base, taux, nombre…) sont valorisées dans « Alimentation des rubriques » ci-dessus.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Type de règle</label>
+                      <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs">
+                        {([["STANDARD", "Standard"], ["SPECIFIQUE", "Spécifique"]] as const).map(([val, lbl]) => {
+                          const actif = (form.type_regle === "SPECIFIQUE" ? "SPECIFIQUE" : "STANDARD") === val;
+                          return (
+                            <button key={val} type="button"
+                              onClick={() => { if (form.type_regle !== val) { setField("type_regle", val); setField("code_regle", null); } }}
+                              className={`px-4 py-1.5 transition-colors ${actif ? "bg-accent text-accent-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+                              {lbl}
+                            </button>
+                          );
+                        })}
                       </div>
-                    </TabsContent>
-
-                    {/* Règle cotisation */}
-                    <TabsContent value="cotisation" className="mt-0">
-                      <div className="rounded-lg border border-border bg-background p-4 space-y-3">
-                        <div className="flex items-start gap-2 mb-2">
-                          <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-                          <p className="text-xs text-muted-foreground">Calcul de cotisation : Base × Taux avec plafond et plancher optionnels.</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Base cotisation (rubrique)</label>
-                            <select
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="">— Sélectionner —</option>
-                              {allRubriques.map(r => (
-                                <option key={r.code} value={r.code}>{r.code} – {r.libelle}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Taux salarial (%)</label>
-                            <input type="number" step="0.01" placeholder="0.00"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Taux patronal (%)</label>
-                            <input type="number" step="0.01" placeholder="0.00"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Plafond</label>
-                            <input type="number" step="0.01" placeholder="Illimité"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Plancher</label>
-                            <input type="number" step="0.01" placeholder="0.00"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Part (rubrique résultat)</label>
-                            <select
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="">— Aucune —</option>
-                              {allRubriques.map(r => (
-                                <option key={r.code} value={r.code}>{r.code} – {r.libelle}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    </TabsContent>
-
-                    {/* Recherche barème */}
-                    <TabsContent value="bareme" className="mt-0">
-                      <div className="rounded-lg border border-border bg-background p-4 space-y-3">
-                        <div className="flex items-start gap-2 mb-2">
-                          <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-                          <p className="text-xs text-muted-foreground">Recherche dans un barème pour déterminer le montant selon une valeur de référence (ancienneté, salaire…).</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Barème (rubrique)</label>
-                            <select
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="">— Sélectionner —</option>
-                              {allRubriques.filter(r => r.code !== (editCode || form.code)).map(r => (
-                                <option key={r.code} value={r.code}>{r.code} – {r.libelle}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Valeur de recherche (rubrique)</label>
-                            <select
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="">— Sélectionner —</option>
-                              {allRubriques.map(r => (
-                                <option key={r.code} value={r.code}>{r.code} – {r.libelle}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Colonne résultat</label>
-                            <input type="text" placeholder="Ex : montant, taux…"
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Mode de recherche</label>
-                            <select
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-                            >
-                              <option value="TRANCHE">Par tranche</option>
-                              <option value="EXACT">Exact</option>
-                              <option value="PLAFOND">Plafond</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium mb-1.5 text-muted-foreground">
+                        {form.type_regle === "SPECIFIQUE" ? "Règle spécifique (bibliothèque métier)" : "Règle de calcul (catalogue standard)"}
+                      </label>
+                      <select
+                        value={form.code_regle || ""}
+                        onChange={e => setField("code_regle", e.target.value || null)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
+                      >
+                        <option value="">— Aucune règle —</option>
+                        {form.type_regle === "SPECIFIQUE"
+                          ? reglesSpecifiques.map(r => <option key={r.code} value={r.code}>{r.code} — {r.libelle}</option>)
+                          : Object.entries(
+                              reglesCatalogue.reduce((acc, r) => { (acc[r.attribut_calcule] ||= []).push(r); return acc; }, {} as Record<string, typeof reglesCatalogue>)
+                            ).map(([attr, regs]) => (
+                              <optgroup key={attr} label={`Calculs sur ${attr}`}>
+                                {regs.map(r => <option key={r.code} value={r.code}>{r.code} — {r.libelle}</option>)}
+                              </optgroup>
+                            ))}
+                      </select>
+                      {form.code_regle && form.type_regle !== "SPECIFIQUE" && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          Formule : <code className="text-accent">{reglesCatalogue.find(r => r.code === form.code_regle)?.formule_lisible || "—"}</code>
+                        </p>
+                      )}
+                      {form.code_regle && form.type_regle === "SPECIFIQUE" && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">Règle métier personnalisée (séquence d'instructions définie dans « Règles de calcul »).</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
+            </div>
+            </PaveAccordeon>
+
+          <PaveAccordeon
+            titre="Autorisations de saisie & indicateurs"
+            ouvert={pavesOuverts.has("autorisations")}
+            onToggle={() => togglePave("autorisations")}
+            extra={
+              evSaisissable ? (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: "hsl(var(--success) / 0.15)", color: "hsl(var(--success))" }}>
+                  Saisissable en élément variable
+                </span>
+              ) : (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  Non saisissable
+                </span>
+              )
+            }
+          >
+            <p className="text-xs text-muted-foreground mb-3">
+              Cochez les types autorisés. Dès qu'un seul type est coché, la rubrique devient saisissable en élément variable.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {EV_TYPES.map(({ key, label, desc }) => (
+                <label key={key}
+                  className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors bg-background ${
+                    form[key] ? "border-accent/60 bg-accent/5" : "border-border hover:border-accent/30"}`}
+                  title={desc}
+                >
+                  <input type="checkbox" checked={!!form[key]}
+                    onChange={e => setField(key, e.target.checked)}
+                    className="mt-0.5 rounded border-border text-accent focus:ring-accent/30" />
+                  <div>
+                    <span className="text-sm font-medium text-foreground">{label}</span>
+                    <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                  </div>
+                </label>
+              ))}
             </div>
 
-            {/* Flags booléens */}
-            <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Indicateurs de traitement</h3>
+            {/* Import : conditionné à au moins un type autorisé */}
+            <label
+              className={`mt-3 flex items-start gap-2.5 p-3 rounded-lg border transition-colors ${
+                !evSaisissable ? "opacity-50 cursor-not-allowed border-border"
+                : form.v_import ? "border-accent/60 bg-accent/5 cursor-pointer" : "border-border hover:border-accent/30 cursor-pointer bg-background"}`}
+              title="Autorise l'alimentation de cette rubrique par import de fichier"
+            >
+              <input type="checkbox" checked={!!form.v_import} disabled={!evSaisissable}
+                onChange={e => setField("v_import", e.target.checked)}
+                className="mt-0.5 rounded border-border text-accent focus:ring-accent/30 disabled:cursor-not-allowed" />
+              <div>
+                <span className="text-sm font-medium text-foreground">Import autorisé</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  La rubrique peut être alimentée par import de fichier (Préparation → Import Excel).
+                  {!evSaisissable && " Autorisez d'abord au moins un type de saisie."}
+                </p>
+              </div>
+            </label>
+
+            <h3 className="text-xs font-semibold text-muted-foreground mt-5 mb-3 uppercase tracking-wider">Indicateurs de traitement</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {BOOL_FLAGS.map(({ key, label, desc }) => (
                 <label key={key}
@@ -863,18 +1266,80 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                 </label>
               ))}
             </div>
-          </AccordionContent>
-        </AccordionItem>
-        )} {/* fin RG-RUB-ASS-03 */}
+            </PaveAccordeon>
 
+          <PaveAccordeon titre="Arrondi & condition d'enregistrement" ouvert={pavesOuverts.has("arrondi")} onToggle={() => togglePave("arrondi")}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* RG-RUB-ARRONDI-01 : arrondi du résultat calculé */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Mode et précision d'arrondi appliqués au montant calculé de cette rubrique.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Mode d'arrondi</label>
+                    <select value={form.mode_arrondi} onChange={e => setField("mode_arrondi", e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all">
+                      {ARRONDI_MODES.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Nombre de décimales</label>
+                    <input type="number" min={0} max={6}
+                      value={form.nb_decimales_arrondi}
+                      onChange={e => setField("nb_decimales_arrondi", e.target.value === "" ? 0 : parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all" />
+                  </div>
+                </div>
+              </div>
+
+              {/* RG-RUB-EDITION-COND-01 (Adil DAIA) : n'enregistrer la ligne calculée que
+                  si l'attribut choisi est différent de 0. ⚠️ Nécessite une colonne dédiée
+                  côté base (voir migration suggérée en tête de fichier / doc de déploiement) —
+                  paramétrage seul ici tant que paie_engine.py ne l'applique pas. */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  N'enregistre (et n'affiche) la ligne calculée que si l'attribut sélectionné est différent de 0.
+                </p>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Attribut à contrôler</label>
+                  <select
+                    value={form.attribut_controle_non_zero ?? ""}
+                    onChange={e => setField("attribut_controle_non_zero", e.target.value || null)}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
+                  >
+                    <option value="">— Aucun (toujours enregistrer) —</option>
+                    {ATTRIBUTS_CONTROLE_NON_ZERO.map(a => (
+                      <option key={a} value={a}>{ATTRIBUTS_RUBRIQUE_LABELS[a]}</option>
+                    ))}
+                  </select>
+                  {form.attribut_controle_non_zero && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      La rubrique ne sera enregistrée que si{" "}
+                      <span className="font-medium text-foreground">
+                        {ATTRIBUTS_RUBRIQUE_LABELS[form.attribut_controle_non_zero]}
+                      </span>{" "}
+                      ≠ 0.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+            </PaveAccordeon>
+
+        </TabsContent>
+        )}
+
+        {/* ===== Onglet Assiette : Composantes (si type=ASS) ou Assiettes associées (sinon) ===== */}
+        {!isNew && (
+        <TabsContent value="assiette" className="space-y-4 mt-0">
         {/* RG-RUB-ASS-03 (Adil DAIA) : Pour les rubriques de type Assiette, afficher
             uniquement la liste des rubriques qui l'alimentent (composantes).
             Les pavés "Alimentation" et "Paramètres de calcul" sont masqués. */}
-        {!isNew && form.code_type === "ASS" && (
-          <AccordionItem value="composantes" className="rounded-xl border-2 px-5"
+        {form.code_type === "ASS" && (
+          <div className="rounded-xl border-2 px-5 py-4"
             style={{ borderColor: "hsl(var(--accent)/0.4)", background: "hsl(var(--accent)/0.04)" }}>
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-4">
                 <span className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
                   📋 Rubriques composantes de cette assiette
                 </span>
@@ -882,19 +1347,17 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                   style={{ background: composantes.length > 0 ? "hsl(var(--accent)/0.15)" : "hsl(var(--muted)/0.5)", color: composantes.length > 0 ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))" }}>
                   {composantes.length} rubrique{composantes.length > 1 ? "s" : ""}
                 </span>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent>
+            </div>
               {/* Résumé : total +/- */}
               {composantes.length > 0 && (
                 <div className="flex gap-4 mb-4 p-3 rounded-lg" style={{ background: "hsl(var(--muted)/0.3)" }}>
                   <div className="text-xs">
-                    <span className="font-semibold" style={{ color: "hsl(142 60% 35%)" }}>
+                    <span className="font-semibold" style={{ color: "hsl(var(--success))" }}>
                       + {composantes.filter(c => c.sens_assiette === "PLUS").length} en plus
                     </span>
                   </div>
                   <div className="text-xs">
-                    <span className="font-semibold" style={{ color: "hsl(0 65% 40%)" }}>
+                    <span className="font-semibold" style={{ color: "hsl(var(--destructive))" }}>
                       − {composantes.filter(c => c.sens_assiette !== "PLUS").length} en moins
                     </span>
                   </div>
@@ -926,12 +1389,12 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                           <td className="px-4 py-2.5">
                             {c.sens_assiette === "PLUS" ? (
                               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold"
-                                style={{ background: "hsl(142 60% 45% / 0.12)", color: "hsl(142 60% 30%)", border: "1px solid hsl(142 60% 45% / 0.25)" }}>
+                                style={{ background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.25)" }}>
                                 + En plus
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold"
-                                style={{ background: "hsl(0 65% 50% / 0.12)", color: "hsl(0 65% 35%)", border: "1px solid hsl(0 65% 50% / 0.25)" }}>
+                                style={{ background: "hsl(var(--destructive) / 0.12)", color: "hsl(var(--destructive))", border: "1px solid hsl(var(--destructive) / 0.25)" }}>
                                 − En moins
                               </span>
                             )}
@@ -942,18 +1405,15 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                   </table>
                 </div>
               )}
-            </AccordionContent>
-          </AccordionItem>
+          </div>
         )}
 
-        {/* Assiettes */}
         {/* RG-RUB-ASS-02 : À l'exception des assiettes (ASS), toutes les autres rubriques peuvent être injectées dans les assiettes – Auteur : Adil DAIA */}
-        {!isNew && form.code_type !== "ASS" && (
-          <AccordionItem value="assiettes" className="rounded-xl border border-border bg-card px-5">
-            <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
+        {form.code_type !== "ASS" && (
+          <div className="rounded-xl border border-border bg-card px-5 py-4">
+            <h3 className="text-sm font-semibold text-foreground mb-4">
               Assiettes
-            </AccordionTrigger>
-            <AccordionContent>
+            </h3>
               <p className="text-xs text-muted-foreground mb-4">
                 La valeur de cette rubrique s'ajoute (en plus ou en moins) dans les rubriques de type Assiette ci-dessous.
               </p>
@@ -974,7 +1434,14 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                           <td className="px-4 py-2.5 font-mono text-foreground">{a.code_assiette}</td>
                           <td className="px-4 py-2.5 text-foreground">{assietteLabel(a.code_assiette)}</td>
                           <td className="px-4 py-2.5">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${a.sens_assiette === "PLUS" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full"
+                              style={
+                                a.sens_assiette === "PLUS"
+                                  ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))" }
+                                  : { background: "hsl(var(--destructive) / 0.12)", color: "hsl(var(--destructive))" }
+                              }
+                            >
                               {a.sens_assiette === "PLUS" ? "+ En plus" : "− En moins"}
                             </span>
                           </td>
@@ -1015,104 +1482,145 @@ const RubriqueForm: React.FC<Props> = ({ editCode, duplicateCode, onBack, onSwit
                   <Plus size={13} /> Ajouter
                 </button>
               </div>
-            </AccordionContent>
-          </AccordionItem>
+          </div>
+        )}
+        </TabsContent>
         )}
 
-        {/* Imputations comptables */}
+        {/* ===== Onglet Comptabilité : Imputations comptables ===== */}
         {!isNew && (
-          <AccordionItem value="imputations" className="rounded-xl border border-border bg-card px-5">
-            <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
+        <TabsContent value="comptabilite" className="space-y-4 mt-0">
+          <div className="rounded-xl border border-border bg-card px-5 py-4">
+            <h3 className="text-sm font-semibold text-foreground mb-4">
               Imputations comptables
-            </AccordionTrigger>
-            <AccordionContent>
-              {imputations.length > 0 && (
-                <div className="rounded-lg border border-border overflow-hidden mb-4">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-muted/30">
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">N°</th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Compte</th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Intitulé</th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Sens</th>
-                        <th className="px-4 py-2 w-12" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {imputations.map((imp: any) => (
-                        <tr key={imp.id || imp.numero_imputation} className="border-t border-border">
-                          <td className="px-4 py-2.5 text-foreground">{imp.numero_imputation}</td>
-                          <td className="px-4 py-2.5 font-mono text-foreground">{imp.ref_imputation_comptable?.code_compte || imp.code_compte}</td>
-                          <td className="px-4 py-2.5 text-foreground">{imp.ref_imputation_comptable?.intitule_compte || imp.intitule_compte || "—"}</td>
-                          <td className="px-4 py-2.5">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${imp.sens === "D" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
-                              {imp.sens === "D" ? "Débit" : "Crédit"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {imp.id && (
-                              <button onClick={() => deleteImputation(imp.id!)} className="p-1 rounded hover:bg-muted">
-                                <Trash2 size={12} className="text-destructive" />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {/* Ajout imputation */}
-              <div className="flex items-end gap-3 flex-wrap">
-                <div>
-                  <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Compte</label>
-                  <select
-                    value={newImp.ref_imputation_id}
-                    onChange={e => setNewImp(p => ({ ...p, ref_imputation_id: e.target.value }))}
-                    className="px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all w-72"
-                  >
-                    <option value="">— Sélectionner un compte —</option>
-                    {refComptes.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.code_compte} – {c.intitule_compte || ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Sens</label>
-                  <select value={newImp.sens} onChange={e => setNewImp(p => ({ ...p, sens: e.target.value }))}
-                    className="px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all">
-                    <option value="D">Débit</option>
-                    <option value="C">Crédit</option>
-                  </select>
-                </div>
-                <button onClick={addImputation}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-accent/10 text-accent hover:bg-accent/20 transition-colors">
-                  <Plus size={13} /> Ajouter
-                </button>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        )}
+            </h3>
+              {/* Options d'autocomplete : comptes depuis ref_imputation_comptable,
+                  axes depuis ref_axe_analytique + le littéral spécial HERITE_UO
+                  (reprend l'UO du collaborateur au moment de la génération —
+                  ce n'est pas une ligne du référentiel). */}
+              {(() => {
+                const optionsComptes = refComptes.map(c => ({ value: c.code_compte, label: c.intitule_compte || "" }));
+                const optionsAxes = [
+                  { value: "HERITE_UO", label: "Hérité de l'UO du collaborateur" },
+                  ...refAxes.map(a => ({ value: a.code, label: a.libelle })),
+                ];
+                const libelleCompte = (code: string | null) =>
+                  code ? (refComptes.find(c => c.code_compte === code)?.intitule_compte || null) : null;
+                const libelleAxe = (code: string | null) =>
+                  code === "HERITE_UO" ? "Hérité de l'UO du collaborateur"
+                  : code ? (refAxes.find(a => a.code === code)?.libelle || null) : null;
 
-        {/* Archive */}
-        <AccordionItem value="archive" className="rounded-xl border border-border bg-card px-5">
-          <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline">
-            Archivage
-          </AccordionTrigger>
-          <AccordionContent>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={form.archive} onChange={e => setField("archive", e.target.checked)}
-                className="rounded border-border text-accent focus:ring-accent/30" />
-              <div>
-                <span className="text-sm font-medium text-foreground">Archiver cette rubrique</span>
-                <p className="text-xs text-muted-foreground">La rubrique ne sera plus visible dans les listes actives</p>
-              </div>
-            </label>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+                return (
+                  <>
+                    {form.code_type === "COT" && imputations.length > 0 && (
+                      ["SALARIALE", "PATRONALE"] as const
+                    ).filter(p => !imputations.some((i: any) => i.part === p)).map(p => (
+                      <p
+                        key={p}
+                        className="mb-3 text-xs px-3 py-2 rounded-lg"
+                        style={{ background: "hsl(var(--warning) / 0.12)", color: "hsl(var(--warning))" }}
+                      >
+                        Part {p === "SALARIALE" ? "salariale" : "patronale"} non imputée — le montant correspondant sera exclu de la génération d'écritures.
+                      </p>
+                    ))}
+                    {imputations.length > 0 && (
+                      <div className="rounded-lg border border-border overflow-hidden mb-4">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-muted/30">
+                              {form.code_type === "COT" && <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Part</th>}
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Compte débit</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Compte crédit</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Axe débit</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Axe crédit</th>
+                              <th className="px-4 py-2 w-12" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {imputations.map((imp: any) => (
+                              <tr key={imp.id} className="border-t border-border">
+                                {form.code_type === "COT" && (
+                                  <td className="px-4 py-2.5 text-foreground">
+                                    {imp.part === "SALARIALE" ? "Salariale" : imp.part === "PATRONALE" ? "Patronale" : "—"}
+                                  </td>
+                                )}
+                                <td className="px-4 py-2.5 text-foreground">
+                                  {imp.compte_debit
+                                    ? <><span className="font-mono">{imp.compte_debit}</span>{libelleCompte(imp.compte_debit) && <span className="text-muted-foreground"> – {libelleCompte(imp.compte_debit)}</span>}</>
+                                    : "—"}
+                                </td>
+                                <td className="px-4 py-2.5 text-foreground">
+                                  {imp.compte_credit
+                                    ? <><span className="font-mono">{imp.compte_credit}</span>{libelleCompte(imp.compte_credit) && <span className="text-muted-foreground"> – {libelleCompte(imp.compte_credit)}</span>}</>
+                                    : "—"}
+                                </td>
+                                <td className="px-4 py-2.5 text-foreground">
+                                  {imp.axe_debit
+                                    ? <><span className="font-mono">{imp.axe_debit}</span>{libelleAxe(imp.axe_debit) && <span className="text-muted-foreground"> – {libelleAxe(imp.axe_debit)}</span>}</>
+                                    : "—"}
+                                </td>
+                                <td className="px-4 py-2.5 text-foreground">
+                                  {imp.axe_credit
+                                    ? <><span className="font-mono">{imp.axe_credit}</span>{libelleAxe(imp.axe_credit) && <span className="text-muted-foreground"> – {libelleAxe(imp.axe_credit)}</span>}</>
+                                    : "—"}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  {imp.id && (
+                                    <button onClick={() => deleteImputation(imp.id!)} className="p-1 rounded hover:bg-muted">
+                                      <Trash2 size={12} className="text-destructive" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {/* Ajout imputation */}
+                    <div className="flex items-end gap-3 flex-wrap">
+                      {form.code_type === "COT" && (
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Part</label>
+                          <select value={newImp.part} onChange={e => setNewImp(p => ({ ...p, part: e.target.value as any }))}
+                            className="px-3 py-2 rounded-lg border text-sm outline-none bg-background text-foreground border-border focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all">
+                            <option value="SALARIALE">Part salariale</option>
+                            <option value="PATRONALE">Part patronale</option>
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Compte débit</label>
+                        <ComboboxRef value={newImp.compte_debit} onChange={v => setNewImp(p => ({ ...p, compte_debit: v }))}
+                          options={optionsComptes} placeholder="Rechercher un compte…" width="w-56" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Compte crédit</label>
+                        <ComboboxRef value={newImp.compte_credit} onChange={v => setNewImp(p => ({ ...p, compte_credit: v }))}
+                          options={optionsComptes} placeholder="Rechercher un compte…" width="w-56" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Axe débit</label>
+                        <ComboboxRef value={newImp.axe_debit} onChange={v => setNewImp(p => ({ ...p, axe_debit: v }))}
+                          options={optionsAxes} placeholder="Rechercher un axe…" width="w-48" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Axe crédit</label>
+                        <ComboboxRef value={newImp.axe_credit} onChange={v => setNewImp(p => ({ ...p, axe_credit: v }))}
+                          options={optionsAxes} placeholder="Rechercher un axe…" width="w-48" />
+                      </div>
+                      <button onClick={addImputation}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-accent/10 text-accent hover:bg-accent/20 transition-colors">
+                        <Plus size={13} /> Ajouter
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+          </div>
+        </TabsContent>
+        )}
+      </Tabs>
 
       {/* Actions */}
       <div className="flex items-center gap-3 mt-6">

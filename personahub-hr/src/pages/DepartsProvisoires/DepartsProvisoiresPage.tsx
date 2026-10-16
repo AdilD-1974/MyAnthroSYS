@@ -711,25 +711,26 @@ const DepartsProvisoiresPage: React.FC = () => {
   }), [grouped, filterStatuts, filterMotifs, filterReconductible, periodRange, search]);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <PauseCircle size={20} style={{ color: "hsl(var(--accent))" }} />
-            <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
-              Départs provisoires
-            </h1>
-          </div>
-          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Détachements, mises en disponibilité, congés spécifiques
-          </p>
-        </div>
-        <Button size="sm" onClick={() => { setShowForm(true); resetForm(); }}>
-          <Plus size={15} className="mr-1" /> Nouveau départ provisoire
-        </Button>
+    <div className="max-w-6xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Départs provisoires</span>
       </div>
 
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap" style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <button onClick={() => { setShowForm(true); resetForm(); }}
+          className="flex items-center gap-1.5 text-[13px] font-medium h-8 px-3"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}>
+          <Plus size={14} /> Nouveau départ provisoire
+        </button>
+        <div className="flex-1" />
+        <span className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+          Détachements, mises en disponibilité, congés spécifiques
+        </span>
+      </div>
+
+      <div className="p-6 space-y-6">
       {/* KPIs */}
       {(() => {
         // KPIs sur grouped (une ligne par chaîne de reconductions)
@@ -748,16 +749,16 @@ const DepartsProvisoiresPage: React.FC = () => {
         return (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: "En cours", value: enCours, icon: <PauseCircle size={17} />, bg: "hsl(45 100% 50% / 0.12)", color: "hsl(45 100% 28%)", border: "hsl(45 100% 50% / 0.25)" },
-              { label: "Réintégrés", value: reintegres, icon: <UserCheck size={17} />, bg: "hsl(142 55% 45% / 0.12)", color: "hsl(142 55% 28%)", border: "hsl(142 55% 45% / 0.25)" },
-              { label: "Reconduits", value: reconduits, icon: <RefreshCw size={17} />, bg: "hsl(210 70% 50% / 0.12)", color: "hsl(210 70% 35%)", border: "hsl(210 70% 50% / 0.25)" },
-              { label: "Jours en cours", value: totalJours, icon: <Calendar size={17} />, bg: "hsl(var(--accent) / 0.10)", color: "hsl(var(--accent))", border: "hsl(var(--accent) / 0.2)" },
-              { label: "Dépassés", value: depasses, icon: <AlertTriangle size={17} />, bg: "hsl(0 70% 50% / 0.10)", color: "hsl(0 70% 40%)", border: "hsl(0 70% 50% / 0.2)" },
-              { label: "Expirent ≤ 7j", value: expirent7j, icon: <Bell size={17} />, bg: "hsl(38 92% 50% / 0.12)", color: "hsl(38 92% 35%)", border: "hsl(38 92% 50% / 0.25)" },
+              { label: "En cours", value: enCours, icon: <PauseCircle size={17} />, token: "warning" },
+              { label: "Réintégrés", value: reintegres, icon: <UserCheck size={17} />, token: "success" },
+              { label: "Reconduits", value: reconduits, icon: <RefreshCw size={17} />, token: "info" },
+              { label: "Jours en cours", value: totalJours, icon: <Calendar size={17} />, token: "accent" },
+              { label: "Dépassés", value: depasses, icon: <AlertTriangle size={17} />, token: "destructive" },
+              { label: "Expirent ≤ 7j", value: expirent7j, icon: <Bell size={17} />, token: "warning" },
             ].map(k => (
-              <div key={k.label} className="rounded-xl p-3.5 flex items-center gap-3"
-                style={{ background: "hsl(var(--card))", border: `1px solid ${k.border}` }}>
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: k.bg, color: k.color }}>{k.icon}</div>
+              <div key={k.label} className="p-3.5 flex items-center gap-3"
+                style={{ background: "hsl(var(--card))", border: `1px solid hsl(var(--${k.token}) / 0.25)`, borderRadius: "var(--radius)" }}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `hsl(var(--${k.token}) / 0.12)`, color: `hsl(var(--${k.token}))` }}>{k.icon}</div>
                 <div>
                   <p className="text-xl font-bold leading-none" style={{ color: "hsl(var(--foreground))" }}>{k.value}</p>
                   <p className="text-[11px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</p>
@@ -1895,6 +1896,7 @@ const DepartsProvisoiresPage: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

@@ -29,6 +29,22 @@ from app.services.droits_conge import (
 
 router = APIRouter(prefix="/conges", tags=["Droits & Barèmes Congés"])
 
+# RG-MULTISOCIETE-08 (migration 057) : bareme_droit_conge et ses tranches
+# restent un référentiel GLOBAL non touché ici (comme bareme_droit_conge
+# n'a pas de societe_id dans les fichiers fournis, pas de RG-03 appliqué --
+# à revoir si Adil veut un jour des barèmes de congés par société, sur le
+# même modèle que les barèmes de paie). Seuls les deux endpoints ci-dessous
+# qui opèrent sur un id_collaborateur précis sont bornés à la société active
+# (catégorie A via collaborateur_contrats).
+
+def _collaborateur_ou_403(db: Session, id_collaborateur: str, societe_id: str) -> None:
+    ok = db.execute(text("""
+        SELECT 1 FROM collaborateur_contrats
+         WHERE collaborateur_id = :cid AND societe_id = :sid AND archive = false
+    """), {"cid": id_collaborateur, "sid": societe_id}).first()
+    if not ok:
+        raise HTTPException(403, detail="Collaborateur non accessible pour cette société.")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Schémas Pydantic
@@ -291,6 +307,10 @@ def recalcul_droits(
     Retourne le détail de chaque type de congé recalculé.
     """
     user_id = payload.get("sub")
+    societe_active = payload.get("societe_active_id")
+    if not societe_active:
+        raise HTTPException(403, detail="Aucune société active sur ce token — reconnexion requise")
+    _collaborateur_ou_403(db, id_collaborateur, societe_active)
     try:
         resultats = recalculer_droits_collaborateur(
             db=db,
@@ -330,9 +350,13 @@ def histo_recalculs(
     code_type_conge: Optional[str] = None,
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_user_payload),
+    payload: dict = Depends(get_current_user_payload),
 ):
     """Historique des recalculs de droits pour un collaborateur."""
+    societe_active = payload.get("societe_active_id")
+    if not societe_active:
+        raise HTTPException(403, detail="Aucune société active sur ce token — reconnexion requise")
+    _collaborateur_ou_403(db, id_collaborateur, societe_active)
     where = "WHERE id_collaborateur = :collab"
     params: dict = {"collab": id_collaborateur}
     if code_type_conge:

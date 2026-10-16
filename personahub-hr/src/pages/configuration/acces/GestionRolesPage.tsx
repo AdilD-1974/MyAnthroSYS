@@ -785,37 +785,38 @@ export default function GestionRolesPage() {
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      {/* En-tête */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <Shield className="w-7 h-7 text-primary" />
-            Gestion des accès — Rôles
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Créez des rôles personnalisés, affectez-leur des espaces et gérez leurs accès menus.
-            Les rôles système sont verrouillés.
-          </p>
-        </div>
+    <div className="max-w-5xl mx-auto">
+      {/* Fil d'Ariane */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 text-[13px] text-muted-foreground">
+        <span>Configuration</span>
+        <span style={{ opacity: 0.5 }}>/</span>
+        <span className="font-semibold text-foreground">Gestion des accès — Rôles</span>
+      </div>
+
+      {/* Barre d'outils */}
+      <div className="flex items-center gap-2 px-6 py-2.5 flex-wrap border-b border-border bg-card">
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium"
+          style={{ background: "hsl(var(--primary))", color: "white", borderRadius: "var(--radius)" }}
         >
-          <Plus className="w-4 h-4" /> Nouveau rôle
+          <Plus className="w-3.5 h-3.5" /> Nouveau rôle
         </button>
+        <div className="w-px h-5 mx-1 bg-border" />
+        <div className="flex items-center flex-1 min-w-[200px] h-8 px-2.5 border border-border rounded-[var(--radius)] bg-background max-w-xs">
+          <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mr-1.5" />
+          <input
+            className="flex-1 text-[13px] outline-none bg-transparent"
+            placeholder="Rechercher un rôle…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex-1" />
+        <span className="text-[12px] text-muted-foreground">Rôles personnalisés, espaces et accès menus — les rôles système sont verrouillés</span>
       </div>
 
-      {/* Barre de recherche */}
-      <div className="relative">
-        <input
-          className="w-full pl-4 pr-4 py-2.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          placeholder="Rechercher un rôle…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
+      <div className="p-6 space-y-6">
       {/* Liste */}
       {loading ? (
         <Spinner />
@@ -974,6 +975,7 @@ export default function GestionRolesPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
