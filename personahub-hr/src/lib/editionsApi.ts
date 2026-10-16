@@ -138,6 +138,7 @@ export interface Fonction {
   categorie: string;
   signature: string;
   description?: string;
+  exemple?: string;
   origine: "PAIE" | "EDITION";
 }
 
@@ -216,6 +217,10 @@ export const editionsApi = {
     appel<{ version_id: string; numero: number; empreinte: string }>("POST", `/versions/${versionId}/publier`, undefined, { "If-Match": `"${jeton}"` }),
   apercu: (versionId: string, parametres: Record<string, unknown>, forme?: string) =>
     appel<Blob>("POST", `/versions/${versionId}/apercu`, { parametres, forme }),
+  /** Assistant de formule : valeur sur les premiers documents (définition en cours, non enregistrée). */
+  testerFormule: (definition: Definition, formule: string, parametres: Record<string, unknown>, contexte?: string) =>
+    appel<{ nb_lignes: number; resultats: { titre: string; valeur: unknown; texte: string; type: string; manques: string[]; erreur: string | null }[] }>(
+      "POST", "/formules/tester", { definition, formule, parametres, contexte }),
   /** Aperçu tabulaire des données (corps, variables), sans mise en page. */
   donnees: (versionId: string, parametres: Record<string, unknown>) =>
     appel<ApercuDonnees>("POST", `/versions/${versionId}/donnees`, { parametres }),

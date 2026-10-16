@@ -56,7 +56,7 @@ from app.editions import expressions as ex
 from app.editions import format as fmt
 from app.editions import variantes
 from app.editions.definition import Definition
-from app.editions.moteur.executeur import DocumentProduit, donnees_brutes, executer
+from app.editions.moteur.executeur import DocumentProduit, donnees_brutes, executer, tester_formule
 from app.editions.sources import ContexteSecurite, ErreurSource
 from app.editions.validation import CatalogueValidation, Rapport, valider
 
@@ -600,6 +600,23 @@ def donnees(db: Session, u: Utilisateur, version_id: str, parametres: dict) -> d
         raise ErreurEdition(str(e))
     auditer(db, u, "APERCU_DONNEES", "VERSION", version_id, {"modele": m["code"]})
     return res
+
+
+def tester(db: Session, u: Utilisateur, definition: dict, formule: str, parametres: dict,
+           contexte: Optional[str] = None) -> dict:
+    """Assistant de formule : valeur de `formule` sur de vrais documents, avec la
+    définition EN COURS (non enregistrée) du designer. Rien n'est écrit."""
+    exiger(db, u, "CONCEVOIR")
+    if not (formule or "").strip():
+        raise Invalide("Formule vide")
+    try:
+        d = Definition.model_validate(definition)
+    except Exception as e:
+        raise Invalide("La définition comporte des erreurs de structure : test impossible", {"message": str(e)[:2000]})
+    try:
+        return tester_formule(db, d, parametres or {}, contexte_securite(db, u), formule, contexte)
+    except ErreurSource as e:
+        raise ErreurEdition(str(e))
 
 
 def racine_stockage() -> Path:

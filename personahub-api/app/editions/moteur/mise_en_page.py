@@ -366,9 +366,9 @@ class Composeur:
         self._cache_donnees[cle] = resultat                     # garde-fou contre une référence circulaire
         rub = self.ctx.rubriques.get(str(ligne.get("id")), {})
         r = self._resolver(ligne, {}, None, None, avec_donnees=False)
+        r.ligne["corps"] = resultat["corps"]                     # TOTAL_CORPS lit les corps déjà calculés
         for c in self.d.corps:
             resultat["corps"][c.code] = self._compiler_corps(c, rub, r)
-        r.ligne["corps"] = resultat["corps"]
         for v in self.d.variables:                              # dans l'ordre : une variable lit les précédentes
             r.ligne["var"] = resultat["var"]
             resultat["var"][v.code] = self._evaluer(v.valeur, r, f"var.{v.code}")
@@ -425,7 +425,11 @@ class Composeur:
                         cases[ligne_code][col_code] = self._ajouter(cases[ligne_code][col_code], v)
             return cases
         lignes = []
+        formules = []
         for i, a in enumerate(c.affectations):
+            if a.formule:                                       # après les rubriques : elles peuvent les totaliser
+                formules.append((i, a))
+                continue
             code = (a.rubrique or "").strip().upper()
             param = self.ctx.parametrage_rubriques.get(code, {})
             ligne = {"code_rubrique": code, "groupe": a.groupe, "_rang": i,
@@ -446,6 +450,19 @@ class Composeur:
                     continue
             if utile or a.nulle:
                 lignes.append(ligne)
+        if formules:
+            r.ligne.setdefault("corps", {})[c.code] = list(lignes)   # provisoire : les lignes de rubriques
+            for i, a in formules:
+                ligne = {"code_rubrique": "", "groupe": a.groupe, "_rang": i, "libelle": a.libelle or ""}
+                utile = False
+                for attribut, col in a.cibles.items():
+                    v = self._valeur_affectee(c, a, attribut, rub, r)
+                    if v is not None:
+                        ligne[col] = self._ajouter(ligne.get(col), v)
+                        utile = utile or self._non_nul(v)
+                if utile or a.nulle:
+                    lignes.append(ligne)
+            lignes.sort(key=lambda l: l["_rang"])
         if c.tri == "CODE":
             lignes.sort(key=lambda l: (l["code_rubrique"], l["_rang"]))
         elif c.tri == "PAIE":

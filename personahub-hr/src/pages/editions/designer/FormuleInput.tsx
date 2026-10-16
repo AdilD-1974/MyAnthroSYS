@@ -13,6 +13,7 @@ import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { editionsApi, type Analyse } from "@/lib/editionsApi";
 import { ATTRIBUTS_RUBRIQUE, RUBRIQUES_EN_TETE } from "@/pages/editions/types";
 import { sourceDuJeu, useReferentiels } from "./contexte";
+import AssistantFormule from "./AssistantFormule";
 
 interface Props {
   value: string;
@@ -36,6 +37,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
   const [indice, setIndice] = useState(0);
   const [analyse, setAnalyse] = useState<Analyse | null>(null);
   const [enCours, setEnCours] = useState(false);
+  const [assistant, setAssistant] = useState(false);
 
   const source = jeu?.startsWith("corps:") ? undefined : sourceDuJeu(definition, jeu);
   const parametres = useMemo(() => (definition?.parametres ?? []).map((p) => p.code), [definition]);
@@ -157,8 +159,14 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
         onClick={(e) => relire(e.currentTarget)}
         onKeyDown={clavier}
         onBlur={() => setTimeout(() => setJeton(null), 150)}
-        className={`w-full resize-y rounded-md border bg-background px-2 py-1.5 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-ring ${erreur ? "border-destructive" : "border-input"}`}
+        className={`w-full resize-y rounded-md border bg-background py-1.5 pl-2 pr-8 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-ring ${erreur ? "border-destructive" : "border-input"}`}
       />
+      {!disabled && (
+        <button type="button" title="Assistant de formule : tout ce qu'on peut écrire, des recettes, et un test sur de vrais bulletins"
+          onClick={() => setAssistant(true)}
+          className="absolute right-1 top-1 rounded px-1 font-serif text-xs italic text-primary hover:bg-primary/10">ƒx</button>
+      )}
+      {assistant && <AssistantFormule valeur={value ?? ""} jeu={jeu} onValider={onChange} onFermer={() => setAssistant(false)} />}
       {jeton && suggestions.length > 0 && (
         <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-auto rounded-md border bg-popover shadow-lg">
           {suggestions.map((s, i) => (

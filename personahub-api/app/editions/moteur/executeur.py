@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.editions import expressions as ex
+from app.editions import format as fmt
 from app.editions.definition import Definition, Jeu, Tableau
 from app.editions.moteur.mise_en_page import Anomalie, Composeur, Contexte, composer
 from app.editions.moteur.rendu_pdf import RenduPDF
@@ -289,3 +290,29 @@ def _chemin_relatif(p: str) -> str:
 def _nom_fichier(v: Any) -> str:
     s = re.sub(r"[^\w\-. ]+", "_", str(v or "edition"), flags=re.UNICODE).strip(" ._")
     return s[:120] or "edition"
+
+
+def tester_formule(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSecurite, formule: str,
+                   contexte: Optional[str] = None, max_lignes: int = 3) -> dict:
+    """Assistant de formule : la valeur d'une formule sur les premiers documents,
+    dans le contexte du document (défaut) ou de la 1re ligne d'un corps (« corps:<code> »)."""
+    prep = _preparer(db, d, parametres_bruts, sec, registre_masques=None, racine_fichiers="storage",
+                     contexte_fixe=None, forme=None)
+    resultats = []
+    for l in prep.lignes[:max_lignes]:
+        comp = Composeur(Contexte(definition=prep.definition, lignes=[l], **prep.contexte))
+        enfant = None
+        if contexte and contexte.startswith("corps:"):
+            lignes_corps = comp._donnees(l)["corps"].get(contexte[6:]) or []
+            enfant = lignes_corps[0] if isinstance(lignes_corps, list) and lignes_corps else {}
+        r = comp._resolver(l, {}, 1, 1, enfant)
+        ident = l.get("identite") or {}
+        titre = " ".join(str(x) for x in (l.get("matricule"), ident.get("nom"), ident.get("prenom")) if x)
+        try:
+            v = ex.evaluer(formule, r)
+            resultats.append({"titre": titre, "valeur": _json(v), "texte": fmt.texte_par_defaut(v),
+                              "type": type(v).__name__ if v is not None else "VIDE", "manques": r.manques, "erreur": None})
+        except ex.ErreurFormule as err:
+            resultats.append({"titre": titre, "valeur": None, "texte": "", "type": "ERREUR", "manques": r.manques,
+                              "erreur": err.message})
+    return {"nb_lignes": len(prep.lignes), "resultats": resultats}

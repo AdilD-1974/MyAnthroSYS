@@ -128,6 +128,25 @@ def plans_paie(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(g
     return sv.plans_paie(db, u)
 
 
+class TestFormule(BaseModel):
+    definition: dict
+    formule: str
+    parametres: dict = {}
+    contexte: Optional[str] = None            # « corps:<code> » : 1re ligne du corps
+
+
+@router.post("/formules/tester")
+def tester_formule(corps: TestFormule, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """Valeur d'une formule sur les premiers documents (définition en cours, non enregistrée)."""
+    try:
+        return sv.tester(db, u, corps.definition, corps.formule, corps.parametres, corps.contexte)
+    except sv.ErreurEdition as e:
+        db.rollback()
+        raise _http(e)
+    finally:
+        db.rollback()                         # lecture seule
+
+
 # ---------------------------------------------------------------- modèles
 @router.get("/modeles")
 def lister_modeles(categorie: Optional[str] = None, archives: bool = False,

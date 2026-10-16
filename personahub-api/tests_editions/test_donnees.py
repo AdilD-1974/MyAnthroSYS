@@ -199,3 +199,40 @@ def test_forme_par_defaut_au_rendu(db):
     docs = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP},
                     ContexteSecurite(None, S1, donnees_sensibles=True))
     assert docs[0].nom_fichier == "Compacte_M001.pdf"
+
+
+def test_total_corps_et_ligne_de_total():
+    from app.editions import expressions as ex
+    r = ex.ResolverEdition(ligne={"corps": {
+        "detail": [{"groupe": "Gains", "gains": 100}, {"groupe": "Indemnités", "gains": 500}, {"groupe": "Indemnités", "gains": 680}],
+        "cumuls": {"mois": {"brut": 10}, "cumul": {"brut": 30}}}})
+    assert ex.evaluer('TOTAL_CORPS("detail", "gains")', r) == 1280
+    assert ex.evaluer('TOTAL_CORPS("detail", "gains", "Indemnités")', r) == 1180
+    assert ex.evaluer('TOTAL_CORPS("cumuls", "brut")', r) == 40
+    assert ex.evaluer('TOTAL_CORPS("cumuls", "brut", "cumul")', r) == 30
+    assert ex.evaluer('TOTAL_CORPS("absent", "x")', r) is None
+    noms = {f["nom"]: f for f in ex.catalogue()}
+    assert noms["TOTAL_CORPS"]["exemple"] and noms["SI"]["description"]
+
+
+@base_requise
+def test_formule_qui_totalise_son_corps_et_test_de_formule(db):
+    from app.editions.moteur.executeur import donnees_brutes, tester_formule
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    d["corps"][0]["affectations"].append({"formule": 'TOTAL_CORPS("detail", "gains", "Gains")', "groupe": "Gains",
+                                          "libelle": "Total des gains", "cibles": {"VAL": "gains"}})
+    d["corps"][0]["affectations"].insert(0, {"formule": '"titre"', "libelle": "rang conservé", "nulle": True, "cibles": {"VAL": "base"}})
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    res = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)
+    lignes = res["lignes"][0]["corps"]["detail"]
+    assert lignes[0]["libelle"] == "rang conservé"                     # l'ordre des affectations est gardé
+    total = next(l for l in lignes if l["libelle"] == "Total des gains")
+    assert total["gains"] == 10500.0                                   # 10 000 + 500 ; la ligne de total n'est pas comptée
+    t = tester_formule(db, Definition.model_validate(d), {"periode": P_SEP}, sec, "[SALBASE].CMT + 1")
+    assert t["nb_lignes"] == 2 and any(x["valeur"] == 20001.0 for x in t["resultats"])
+    t2 = tester_formule(db, Definition.model_validate(d), {"periode": P_SEP}, sec, "1 + * 2")
+    assert t2["resultats"][0]["erreur"]
+    t3 = tester_formule(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec,
+                        "libelle + \" / \" + TEXTE(gains)", contexte="corps:detail")
+    assert t3["resultats"][0]["texte"].startswith("rang conservé")

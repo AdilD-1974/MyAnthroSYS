@@ -395,6 +395,34 @@ _f("ASSET")(lambda a, r: r.contexte(f"ASSET.{_txt(a[0]).upper()}"))
 _f("UTILISATEUR")(lambda a, r: r.contexte(f"UTILISATEUR.{_txt(a[0]) if a else 'nom'}"))
 
 
+# ---- Données de l'état (RG-EDT-DONNEES) ----
+def _total_corps(a: list, r: "ResolverEdition") -> Any:
+    """TOTAL_CORPS("corps", "colonne"[, "groupe ou ligne"]) : somme d'une colonne
+    d'un corps — lignes du groupe (corps LIGNES) ou de la ligne (corps CASES)."""
+    code, col = _txt(a[0]), _txt(a[1])
+    filtre = _txt(a[2]) if len(a) > 2 and not _est_vide(a[2]) else None
+    corps = (r.ligne.get("corps") or {}).get(code)
+    if isinstance(corps, dict):
+        lignes = [corps.get(filtre) or {}] if filtre else list(corps.values())
+    elif isinstance(corps, list):
+        lignes = [l for l in corps if filtre is None or l.get("groupe") == filtre]
+    else:
+        r.manquant(f"corps {code}")
+        return VIDE
+    total = Decimal(0)
+    for l in lignes:
+        v = l.get(col)
+        if not _est_vide(v):
+            try:
+                total += dsl._to_dec(v)
+            except Exception:
+                pass
+    return total
+
+
+_f("TOTAL_CORPS")(_total_corps)
+
+
 # Fonctions dont les arguments ne sont PAS évalués d'avance (RG-EDT-FORMULE-05)
 # ou désignent une expression à agréger (RG-EDT-FORMULE-06).
 AGREGATS = ("TOTAL", "MOYENNE_SUR", "NB", "MIN_SUR", "MAX_SUR")
@@ -617,35 +645,51 @@ def interpoler(texte: str, resolver: ResolverEdition,
 
 
 def catalogue() -> list[dict]:
-    """Fonctions disponibles (pour l'autocomplétion du designer) : celles de la
+    """Fonctions disponibles (assistant de formule du designer) : celles de la
     paie, documentées dans regle_dsl.CATALOGUE, plus celles des éditions."""
     paie = {f["nom"]: f for f in getattr(dsl, "CATALOGUE", [])}
-    ajouts = {
-        "MAJUSCULE": ("Texte", "MAJUSCULE(texte)"), "MINUSCULE": ("Texte", "MINUSCULE(texte)"),
-        "GAUCHE": ("Texte", "GAUCHE(texte, n)"), "DROITE": ("Texte", "DROITE(texte, n)"),
-        "REMPLACER": ("Texte", "REMPLACER(texte, cherché, remplaçant)"),
-        "SUPPRESPACE": ("Texte", "SUPPRESPACE(texte)"), "CONTIENT": ("Texte", "CONTIENT(texte, cherché)"),
-        "LONGUEUR": ("Texte", "LONGUEUR(texte)"), "SIVIDE": ("Logique", "SIVIDE(valeur, si_vide)"),
-        "TEXTE": ("Conversion", "TEXTE(valeur)"), "NOMBRE": ("Conversion", "NOMBRE(valeur)"),
-        "FORMAT": ("Conversion", "FORMAT(valeur, \"MASQUE\")"),
-        "MONTANT_EN_LETTRES": ("Conversion", "MONTANT_EN_LETTRES(montant, \"FR\"|\"AR\")"),
-        "TOTAL": ("Agrégats", "TOTAL(expression, GROUPE|PAGE|REPORT|ETAT)"),
-        "MOYENNE_SUR": ("Agrégats", "MOYENNE_SUR(expression, portée)"),
-        "NB": ("Agrégats", "NB(expression, portée)"),
-        "MIN_SUR": ("Agrégats", "MIN_SUR(expression, portée)"),
-        "MAX_SUR": ("Agrégats", "MAX_SUR(expression, portée)"),
-        "PAGE": ("Contexte", "PAGE()"), "NB_PAGES": ("Contexte", "NB_PAGES()"),
-        "CHARTE": ("Contexte", "CHARTE(\"logo\")"), "ASSET": ("Contexte", "ASSET(\"CODE\")"),
-        "UTILISATEUR": ("Contexte", "UTILISATEUR(\"nom\")"),
+    ajouts = {   # nom : (catégorie, signature, description, exemple)
+        "MAJUSCULE": ("Texte", "MAJUSCULE(texte)", "Met en capitales", 'MAJUSCULE(identite.nom)'),
+        "MINUSCULE": ("Texte", "MINUSCULE(texte)", "Met en minuscules", 'MINUSCULE(identite.prenom)'),
+        "GAUCHE": ("Texte", "GAUCHE(texte, n)", "Les n premiers caractères", 'GAUCHE(identite.prenom, 1) + ". " + identite.nom'),
+        "DROITE": ("Texte", "DROITE(texte, n)", "Les n derniers caractères", 'DROITE(paiement.numero_compte, 4)'),
+        "REMPLACER": ("Texte", "REMPLACER(texte, cherché, remplaçant)", "Remplace un morceau de texte", 'REMPLACER(identite.cin, " ", "")'),
+        "SUPPRESPACE": ("Texte", "SUPPRESPACE(texte)", "Retire les espaces en trop", 'SUPPRESPACE(adresse.adresse)'),
+        "CONTIENT": ("Texte", "CONTIENT(texte, cherché)", "Vrai si le texte contient le morceau", 'CONTIENT(affectation.emploi_libelle, "Directeur")'),
+        "LONGUEUR": ("Texte", "LONGUEUR(texte)", "Nombre de caractères", 'LONGUEUR(identite.cin)'),
+        "SIVIDE": ("Logique", "SIVIDE(valeur, si_vide)", "Remplace une valeur absente (rubrique absente du bulletin…)", 'SIVIDE([PRIM_ANC].MT, 0)'),
+        "TEXTE": ("Conversion", "TEXTE(valeur)", "Convertit en texte brut, sans masque", 'TEXTE(identite.matricule)'),
+        "NOMBRE": ("Conversion", "NOMBRE(valeur)", "Convertit un texte en nombre", 'NOMBRE(situation_familiale.nb_enfants_a_charge)'),
+        "FORMAT": ("Conversion", "FORMAT(valeur, \"MASQUE\")", "Met en forme avec un masque (MONTANT, DATE_LONGUE…)", 'FORMAT(periode.date_fin, "DATE_LONGUE")'),
+        "MONTANT_EN_LETTRES": ("Conversion", "MONTANT_EN_LETTRES(montant, \"FR\"|\"AR\")", "Écrit un montant en toutes lettres (dirhams, centimes)", 'MONTANT_EN_LETTRES(net_a_payer)'),
+        "TOTAL_CORPS": ("Données de l'état", "TOTAL_CORPS(\"corps\", \"colonne\"[, \"groupe\"])",
+                        "Somme d'une colonne d'un corps, éventuellement d'un seul groupe (ou d'une ligne d'un corps « cases »)",
+                        'TOTAL_CORPS("detail", "gains", "Indemnités non imposables")'),
+        "TOTAL": ("Agrégats", "TOTAL(expression, GROUPE|PAGE|REPORT|ETAT)", "Somme sur les documents (journaux)", 'TOTAL(net_a_payer, ETAT)'),
+        "MOYENNE_SUR": ("Agrégats", "MOYENNE_SUR(expression, portée)", "Moyenne sur les documents", 'MOYENNE_SUR(total_brut, ETAT)'),
+        "NB": ("Agrégats", "NB(expression, portée)", "Nombre de documents", 'NB(matricule, GROUPE)'),
+        "MIN_SUR": ("Agrégats", "MIN_SUR(expression, portée)", "Plus petite valeur", 'MIN_SUR(net_a_payer, ETAT)'),
+        "MAX_SUR": ("Agrégats", "MAX_SUR(expression, portée)", "Plus grande valeur", 'MAX_SUR(net_a_payer, ETAT)'),
+        "PAGE": ("Contexte", "PAGE()", "Numéro de la page", '"Page " + PAGE() + " / " + NB_PAGES()'),
+        "NB_PAGES": ("Contexte", "NB_PAGES()", "Nombre de pages du document", '"Page " + PAGE() + " / " + NB_PAGES()'),
+        "CHARTE": ("Contexte", "CHARTE(\"logo\")", "Élément de la charte de la société", 'CHARTE("logo")'),
+        "ASSET": ("Contexte", "ASSET(\"CODE\")", "Image ou fichier déposé (signature, cachet)", 'ASSET("CACHET")'),
+        "UTILISATEUR": ("Contexte", "UTILISATEUR(\"nom\")", "Utilisateur qui lance l'édition", 'UTILISATEUR("nom")'),
     }
+    logique = {"SI": ("SI(condition, alors[, sinon])", "Choisit une valeur selon une condition", 'SI(net_a_payer > 0, "Virement", "Néant")'),
+               "ET": ("ET(a, b, …)", "Vrai si toutes les conditions le sont", 'ET([SALBASE].MT > 0, [PRIM_ANC].MT > 0)'),
+               "OU": ("OU(a, b, …)", "Vrai si une condition l'est", 'OU(sens = "GAIN", sens = "RETENUE")')}
     sortie = []
     for nom in sorted(set(FONCTIONS) | set(PARESSEUSES)):
         if nom in ajouts:
-            cat, sig = ajouts[nom]
-            sortie.append({"nom": nom, "categorie": cat, "signature": sig, "origine": "EDITION"})
+            cat, sig, desc, exemple = ajouts[nom]
+            sortie.append({"nom": nom, "categorie": cat, "signature": sig, "description": desc, "exemple": exemple, "origine": "EDITION"})
+        elif nom in logique:
+            sig, desc, exemple = logique[nom]
+            sortie.append({"nom": nom, "categorie": "Logique", "signature": sig, "description": desc, "exemple": exemple, "origine": "EDITION"})
         else:
             f = paie.get(nom, {})
             sortie.append({"nom": nom, "categorie": f.get("cat", "Paie"),
                            "signature": f.get("signature", f"{nom}(…)"),
-                           "description": f.get("desc", ""), "origine": "PAIE"})
+                           "description": f.get("desc", ""), "exemple": f.get("exemple", ""), "origine": "PAIE"})
     return sortie
