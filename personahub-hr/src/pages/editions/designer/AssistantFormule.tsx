@@ -90,7 +90,7 @@ export default function AssistantFormule({ valeur, jeu, onValider, onFermer }: {
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(curseur, curseur); });
   };
 
-  const corpsCtx = jeu?.startsWith("corps:") ? (definition?.corps ?? []).find((c) => c.code === jeu.slice(6)) : undefined;
+  const corpsCtx = jeu?.startsWith("corps:") ? (definition?.corps ?? []).find((c) => c.code === jeu.slice(6).split(",")[0]) : undefined;
   const source = corpsCtx ? sourceDuJeu(definition, undefined) : sourceDuJeu(definition, jeu);
 
   const contenu: { groupe: string; elements: Element[] }[] = useMemo(() => {

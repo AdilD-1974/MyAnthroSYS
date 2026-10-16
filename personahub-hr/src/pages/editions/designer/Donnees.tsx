@@ -392,12 +392,14 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
       <div className="overflow-auto rounded border">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10"><tr>
-            {["#", "Rubrique", "Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`), ...(c.nature === "LIGNES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls", ""].map((h) => <th key={h} className={th}>{h}</th>)}
+            {["#", "Rubrique", "Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`), ...(c.nature === "LIGNES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls",
+              ...(c.nature === "LIGNES" ? ["Fusion ↑", "Gras"] : []), ""].map((h) => <th key={h} className={th}
+                title={h === "Fusion ↑" ? "S'ajoute à la ligne au-dessus : une seule ligne imprimée (somme ; « en – » soustrait)" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
           </tr></thead>
           <tbody>
             {visibles.map(({ a, i }) => (
-              <tr key={i} className="hover:bg-muted/30">
-                <td className={`${td} w-8 text-center text-xs text-muted-foreground`}>{i + 1}</td>
+              <tr key={i} className={`hover:bg-muted/30 ${a.fusion ? "bg-sky-50/60" : ""}`}>
+                <td className={`${td} w-8 text-center text-xs text-muted-foreground`}>{a.fusion ? "↳" : i + 1}</td>
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
                     <td className={`${td} min-w-[240px]`} colSpan={2}>
@@ -430,12 +432,18 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
                     {ATTRIBUTS_AFFECTABLES.map((x) => <td key={x.code} className={td}>{selCible(a, i, x.code)}</td>)}
                   </>
                 )}
-                {c.nature === "LIGNES" && <td className={`${td} w-32`}><input className={classeChamp} disabled={ro} value={a.groupe ?? ""} placeholder="ex. Gains"
+                {c.nature === "LIGNES" && <td className={`${td} w-32`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.groupe ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : "ex. Gains"}
                   list={`groupes-${c.code}`} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "groupe", e.target.value), "g")} /></td>}
-                <td className={`${td} min-w-[150px]`}><input className={classeChamp} disabled={ro} value={a.libelle ?? ""} placeholder={nomRub(a.rubrique) || "—"}
+                <td className={`${td} min-w-[150px]`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.libelle ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : nomRub(a.rubrique) || "—"}
                   onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "libelle", e.target.value), "l")} /></td>
                 <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.negatif} onChange={(e) => majA(i, (z) => poser(z, "negatif", e.target.checked || null), "n")} /></td>
                 <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.nulle} onChange={(e) => majA(i, (z) => poser(z, "nulle", e.target.checked || null), "z")} /></td>
+                {c.nature === "LIGNES" && <>
+                  <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro || i === 0 || !!a.formule || !!affs[i - 1]?.formule}
+                    title="S'ajoute à la ligne au-dessus" checked={!!a.fusion} onChange={(e) => majA(i, (z) => poser(z, "fusion", e.target.checked || null), "fu")} /></td>
+                  <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro || !!a.fusion}
+                    checked={a.gras ?? !!a.formule} onChange={(e) => majA(i, (z) => poser(z, "gras", e.target.checked === !!z.formule ? null : e.target.checked), "gr")} /></td>
+                </>}
                 <td className={`${td} w-28 whitespace-nowrap text-right`}>{!ro && <>
                   <button type="button" title="Monter" onClick={() => majC((z) => { const y = z.affectations!; if (i > 0) [y[i - 1], y[i]] = [y[i], y[i - 1]]; }, "ao")}><ArrowUp className="inline h-3 w-3" /></button>
                   <button type="button" title="Descendre" onClick={() => majC((z) => { const y = z.affectations!; if (i < y.length - 1) [y[i + 1], y[i]] = [y[i], y[i + 1]]; }, "ao")}><ArrowDown className="inline h-3 w-3" /></button>
@@ -454,7 +462,7 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
                 </>}</td>
               </tr>
             ))}
-            {!affs.length && <tr><td colSpan={12} className="p-6 text-center text-sm text-muted-foreground">
+            {!affs.length && <tr><td colSpan={14} className="p-6 text-center text-sm text-muted-foreground">
               Aucune rubrique. « Ajouter des rubriques » permet d'en choisir plusieurs et de leur donner la même répartition.</td></tr>}
           </tbody>
         </table>
@@ -472,6 +480,7 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
   const [q, setQ] = useState("");
   const [choisies, setChoisies] = useState<string[]>([]);
   const [modele, setModele] = useState<Affectation>({ periode: "MOIS", cibles: {} });
+  const [uneLigne, setUneLigne] = useState<{ actif: boolean; libelle: string }>({ actif: false, libelle: "" });
   const cibles = ciblesDuCorps(c);
   const deja = new Set((c.affectations ?? []).map((a) => `${a.rubrique}|${a.periode ?? "MOIS"}`));
   const toutes = useMemo(() => [...rubriques.map((r) => ({ ...r, total: false })), ...RUBRIQUES_EN_TETE.map((r) => ({ ...r, total: true }))], [rubriques]);
@@ -524,12 +533,20 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
             {c.nature === "LIGNES" && <Ligne libelle="Groupe"><Texte value={modele.groupe} placeholder="ex. Retenues" onChange={(v) => setModele((m) => ({ ...m, groupe: v || null }))} /></Ligne>}
             <Case libelle="en –" value={modele.negatif} onChange={(v) => setModele((m) => ({ ...m, negatif: v || undefined }))} />
             <Case libelle="Nulls" value={modele.nulle} onChange={(v) => setModele((m) => ({ ...m, nulle: v || undefined }))} />
+            {c.nature === "LIGNES" && (
+              <div className="mt-2 rounded border p-1.5">
+                <Case libelle="Toutes sur UNE seule ligne (additionnées)" value={uneLigne.actif} onChange={(v) => setUneLigne((u) => ({ ...u, actif: v }))} />
+                {uneLigne.actif && <div className="mt-1"><Texte value={uneLigne.libelle} placeholder="Libellé de la ligne" onChange={(v) => setUneLigne((u) => ({ ...u, libelle: v }))} /></div>}
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onFermer}>Annuler</Button>
-          <Button disabled={!choisies.length} onClick={() => onAjouter(choisies.map((code) => {
+          <Button disabled={!choisies.length} onClick={() => onAjouter(choisies.map((code, k) => {
             const a: Affectation = { rubrique: code, cibles: { ...modele.cibles } };
+            if (uneLigne.actif && k > 0) a.fusion = true;
+            if (uneLigne.actif && k === 0 && uneLigne.libelle) a.libelle = uneLigne.libelle;
             if (modele.periode === "CUMUL") a.periode = "CUMUL";
             if (modele.groupe) a.groupe = modele.groupe;
             if (modele.negatif) a.negatif = true;
@@ -675,7 +692,7 @@ function OngletApercu({ d, version, ro, enregistrer }: { d: Definition; version:
                         <thead><tr>{["Groupe", "Rubrique", "Libellé", ...c.colonnes.map((col) => col.libelle)].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
                         <tbody>
                           {(v as Record<string, unknown>[] ?? []).map((ligne, i) => (
-                            <tr key={i}>
+                            <tr key={i} className={ligne.gras ? "font-bold" : ""}>
                               <td className={`${td} px-2 text-muted-foreground`}>{affiche(ligne.groupe)}</td>
                               <td className={`${td} px-2 font-mono`}>{affiche(ligne.code_rubrique)}</td>
                               <td className={`${td} px-2`}>{affiche(ligne.libelle)}</td>

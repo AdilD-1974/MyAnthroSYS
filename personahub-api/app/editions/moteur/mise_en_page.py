@@ -33,6 +33,8 @@ RG-EDT-DONNEES-01 à 05 (Adil DAIA) : les corps de données sont compilés une f
     une valeur affectée est non nulle (ou « nulle » cochée), dans l'ordre choisi ; un
     corps CASES additionne ses affectations dans ses cases. « en – » change le signe
     avant la somme. Les formules lisent corps.<corps>.<ligne>.<colonne> et var.<code>.
+RG-EDT-DONNEES-06 (Adil DAIA) : des affectations « fusion » forment UNE ligne (somme ;
+    « en – » soustrait) ; une ligne de formule s'imprime en gras sauf avis contraire.
 RG-EDT-GRILLE-01 (Adil DAIA) : une grille est une zone fixe de lignes × colonnes,
     chaque case une formule évaluée dans le contexte du document (cumuls…).
 RG-EDT-RENDU-05 (Adil DAIA) : agrégats — GROUPE = groupe en cours (le plus
@@ -50,7 +52,7 @@ from typing import Any, Callable, Optional
 
 from app.editions import expressions as ex
 from app.editions import format as fmt
-from app.editions.definition import Bande, Corps, Definition, Grille, LigneRubrique, Tableau
+from app.editions.definition import Bande, Corps, Definition, Grille, LigneRubrique, Style, Tableau
 from app.editions.moteur import texte as tx
 
 log = logging.getLogger(__name__)
@@ -424,44 +426,48 @@ class Composeur:
                     if v is not None:
                         cases[ligne_code][col_code] = self._ajouter(cases[ligne_code][col_code], v)
             return cases
-        lignes = []
-        formules = []
+        # RG-EDT-DONNEES-06 : une affectation « fusion » s'ajoute à la ligne précédente (une ligne imprimée)
+        blocs: list[list[tuple[int, Any]]] = []
         for i, a in enumerate(c.affectations):
-            if a.formule:                                       # après les rubriques : elles peuvent les totaliser
-                formules.append((i, a))
-                continue
-            code = (a.rubrique or "").strip().upper()
-            param = self.ctx.parametrage_rubriques.get(code, {})
-            ligne = {"code_rubrique": code, "groupe": a.groupe, "_rang": i,
-                     "libelle": a.libelle or self.ctx.libelles_rubriques.get(code) or code}
+            if a.fusion and blocs and not a.formule and not blocs[-1][0][1].formule:
+                blocs[-1].append((i, a))
+            else:
+                blocs.append([(i, a)])
+
+        def construire(bloc) -> Optional[dict]:
+            i0, a0 = bloc[0]
+            code0 = (a0.rubrique or "").strip().upper()
+            ligne = {"code_rubrique": "+".join((a.rubrique or "").strip().upper() for _, a in bloc if a.rubrique),
+                     "groupe": a0.groupe, "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
+                     "libelle": a0.libelle or (self.ctx.libelles_rubriques.get(code0) or code0 if code0 else "")}
             utile = False
-            for attribut, col in a.cibles.items():
-                v = self._valeur_affectee(c, a, attribut, rub, r)
-                if v is None:
-                    continue
-                ligne[col] = self._ajouter(ligne.get(col), v)
-                utile = utile or self._non_nul(v)
-            # RG-EDT-DONNEES-05 : paramétrage de la rubrique (valeurs du mois)
-            if a.periode == "MOIS" and code and not a.nulle:
-                mois = rub.get(code) or {}
+            for _, a in bloc:
+                for attribut, col in a.cibles.items():
+                    v = self._valeur_affectee(c, a, attribut, rub, r)
+                    if v is None:
+                        continue
+                    ligne[col] = self._ajouter(ligne.get(col), v)
+                    utile = utile or self._non_nul(v)
+            if any(a.nulle for _, a in bloc):
+                return ligne
+            # RG-EDT-DONNEES-05 : paramétrage de la rubrique, pour une ligne d'une seule rubrique du mois
+            if len(bloc) == 1 and not a0.formule and a0.periode == "MOIS" and code0:
+                param = self.ctx.parametrage_rubriques.get(code0, {})
+                mois = rub.get(code0) or {}
                 if (param.get("ne_editer_si_mt_zero") and not self._non_nul(mois.get("MT"))) \
                         or (param.get("ne_editer_si_nb_zero") and not self._non_nul(mois.get("NB"))) \
                         or (param.get("ne_editer_si_ty_zero") and not self._non_nul(mois.get("TX"))):
-                    continue
-            if utile or a.nulle:
-                lignes.append(ligne)
+                    return None
+            # une ligne fusionnée s'imprime si son résultat est non nul
+            if len(bloc) > 1:
+                return ligne if any(self._non_nul(ligne.get(col)) for col in {c2 for _, a in bloc for c2 in a.cibles.values()}) else None
+            return ligne if utile else None
+
+        lignes = [l for b in blocs if not b[0][1].formule for l in [construire(b)] if l is not None]
+        formules = [b for b in blocs if b[0][1].formule]
         if formules:
             r.ligne.setdefault("corps", {})[c.code] = list(lignes)   # provisoire : les lignes de rubriques
-            for i, a in formules:
-                ligne = {"code_rubrique": "", "groupe": a.groupe, "_rang": i, "libelle": a.libelle or ""}
-                utile = False
-                for attribut, col in a.cibles.items():
-                    v = self._valeur_affectee(c, a, attribut, rub, r)
-                    if v is not None:
-                        ligne[col] = self._ajouter(ligne.get(col), v)
-                        utile = utile or self._non_nul(v)
-                if utile or a.nulle:
-                    lignes.append(ligne)
+            lignes += [l for b in formules for l in [construire(b)] if l is not None]
             lignes.sort(key=lambda l: l["_rang"])
         if c.tri == "CODE":
             lignes.sort(key=lambda l: (l["code_rubrique"], l["_rang"]))
@@ -523,7 +529,13 @@ class Composeur:
 
     def _tranches_tableau(self, tab: Tableau, ligne: Optional[dict], r_parent, page, nb_pages) -> list[Tranche]:
         if tab.corps:                                           # RG-EDT-DONNEES-01
-            lignes = (self._donnees(ligne)["corps"].get(tab.corps) or []) if ligne else []
+            lignes = []
+            if ligne:
+                donnees = self._donnees(ligne)["corps"]
+                for code in [tab.corps, *tab.corps_suivants]:
+                    cp = self.d.corps_par_code(code)
+                    for l in donnees.get(code) or []:
+                        lignes.append({**l, "groupe": l.get("groupe") or (cp.libelle if cp else code)})
             cle = (ligne or {}).get("id")
         else:
             jeu = self.d.jeu(tab.jeu)
@@ -586,7 +598,8 @@ class Composeur:
                         self.ctx.registre_masques)
                     cellules.append((c, t))
                 fond = "#FAFAFA" if tab.zebre and nb_lignes % 2 else None
-                tranches.append(rangee(cellules, fond=fond, style_ligne=lr.style if lr is not None else None))
+                style_l = lr.style if lr is not None else (Style(gras=True) if l.get("_gras") else None)
+                tranches.append(rangee(cellules, fond=fond, style_ligne=style_l))
                 nb_lignes += 1
                 imprimees.add(id(origine if origine is not None else l))
 

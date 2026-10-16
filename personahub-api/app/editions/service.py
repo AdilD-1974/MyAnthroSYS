@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from sqlalchemy import bindparam, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.editions import catalogue as cat
@@ -554,6 +555,11 @@ def _executer(db: Session, u: Utilisateur, m: dict, v: dict, d: Definition, para
                         racine_fichiers=str(racine_stockage()), filigrane=filigrane, forme=forme)
     except ErreurSource as e:
         raise ErreurEdition(str(e))
+    except SQLAlchemyError as e:
+        # jamais d'erreur 500 brute : la transaction est annulée et le motif remonte à l'écran
+        db.rollback()
+        log.exception("Édition %s : erreur de lecture des données", m["code"])
+        raise ErreurEdition(f"Lecture des données impossible : {str(getattr(e, 'orig', e)).splitlines()[0][:300]}")
     return docs, sec.donnees_sensibles
 
 
@@ -598,6 +604,10 @@ def donnees(db: Session, u: Utilisateur, version_id: str, parametres: dict) -> d
         res = donnees_brutes(db, d, parametres or {}, contexte_securite(db, u, m))
     except ErreurSource as e:
         raise ErreurEdition(str(e))
+    except SQLAlchemyError as e:
+        db.rollback()
+        log.exception("Aperçu des données %s", m["code"])
+        raise ErreurEdition(f"Lecture des données impossible : {str(getattr(e, 'orig', e)).splitlines()[0][:300]}")
     auditer(db, u, "APERCU_DONNEES", "VERSION", version_id, {"modele": m["code"]})
     return res
 
@@ -617,6 +627,9 @@ def tester(db: Session, u: Utilisateur, definition: dict, formule: str, parametr
         return tester_formule(db, d, parametres or {}, contexte_securite(db, u), formule, contexte)
     except ErreurSource as e:
         raise ErreurEdition(str(e))
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise ErreurEdition(f"Lecture des données impossible : {str(getattr(e, 'orig', e)).splitlines()[0][:300]}")
 
 
 def racine_stockage() -> Path:

@@ -255,7 +255,7 @@ def _json(v: Any) -> Any:
     if isinstance(v, (date, datetime)):
         return v.isoformat()
     if isinstance(v, dict):
-        return {k: _json(x) for k, x in v.items() if not str(k).startswith("_")}
+        return {("gras" if k == "_gras" else k): _json(x) for k, x in v.items() if k == "_gras" or not str(k).startswith("_")}
     if isinstance(v, (list, tuple)):
         return [_json(x) for x in v]
     return v
@@ -303,7 +303,7 @@ def tester_formule(db: Session, d: Definition, parametres_bruts: dict, sec: Cont
         comp = Composeur(Contexte(definition=prep.definition, lignes=[l], **prep.contexte))
         enfant = None
         if contexte and contexte.startswith("corps:"):
-            lignes_corps = comp._donnees(l)["corps"].get(contexte[6:]) or []
+            lignes_corps = comp._donnees(l)["corps"].get(contexte[6:].split(",")[0]) or []
             enfant = lignes_corps[0] if isinstance(lignes_corps, list) and lignes_corps else {}
         r = comp._resolver(l, {}, 1, 1, enfant)
         ident = l.get("identite") or {}

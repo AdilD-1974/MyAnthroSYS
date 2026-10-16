@@ -205,10 +205,11 @@ class FournisseurBulletin(Fournisseur):
             conds.append("b.collaborateur_id IN :collabs")
             binds["collabs"] = collabs
             expanding.append("collabs")
-        plan = _id(p.get("plan_paie"))
-        if plan:
-            conds.append("b.plan_paie_id = :plan")
-            binds["plan"] = plan
+        plans = _ids(p.get("plan_paie"))               # un plan, ou plusieurs (paramètre « multiple »)
+        if plans:
+            conds.append("b.plan_paie_id IN :plans")
+            binds["plans"] = plans
+            expanding.append("plans")
         return " AND ".join(conds), binds, expanding
 
     def lire(self, db: Session, parametres: dict, sec: ContexteSecurite) -> list[Ligne]:

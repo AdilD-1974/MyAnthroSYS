@@ -236,3 +236,45 @@ def test_formule_qui_totalise_son_corps_et_test_de_formule(db):
     t3 = tester_formule(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec,
                         "libelle + \" / \" + TEXTE(gains)", contexte="corps:detail")
     assert t3["resultats"][0]["texte"].startswith("rang conservé")
+
+
+def test_fusion_invalide():
+    d = definition()
+    d["corps"][0]["affectations"][0]["fusion"] = True                  # première affectation : rien à quoi s'ajouter
+    d["corps"][0]["affectations"].append({"formule": "1", "fusion": True, "cibles": {"VAL": "gains"}})
+    messages = [e.message for e in valider(d, CAT).erreurs]
+    assert sum("se fusionne" in m for m in messages) == 2
+
+
+@base_requise
+def test_lignes_fusionnees_gras_et_corps_a_la_suite(db):
+    from app.editions.moteur.executeur import donnees_brutes, executer
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    affs = d["corps"][0]["affectations"]
+    # SALBASE + PRIM_ANC sur une seule ligne « Salaire et ancienneté » ; CNSS_SAL soustraite de la même ligne
+    affs[0]["libelle"] = "Salaire et ancienneté"
+    affs[1]["fusion"] = True
+    affs.insert(2, {"rubrique": "CNSS_SAL", "fusion": True, "negatif": True, "cibles": {"MT": "gains"}})
+    affs.append({"formule": 'TOTAL_CORPS("detail", "gains")', "libelle": "Total formule", "cibles": {"VAL": "gains"}})
+    affs.append({"rubrique": "ATRISK", "gras": True, "libelle": "AT en gras", "cibles": {"PAT": "patronal"}})
+    # second corps « lignes » affiché à la suite dans le même tableau, sans groupe : titre = libellé du corps
+    d["corps"].append({"code": "indem", "libelle": "Indemnités non imposables", "nature": "LIGNES", "colonnes": COLS,
+                       "affectations": [{"rubrique": "PRIM_ANC", "libelle": "Indemnité test", "cibles": {"MT": "gains"}}]})
+    d["bandes"][0]["elements"][1]["corps_suivants"] = ["indem"]
+    assert valider(d, CAT).valide, [e.message for e in valider(d, CAT).erreurs]
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    res = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)
+    detail = res["lignes"][0]["corps"]["detail"]
+    fus = detail[0]
+    assert fus["libelle"] == "Salaire et ancienneté" and fus["code_rubrique"] == "SALBASE+PRIM_ANC+CNSS_SAL"
+    assert fus["gains"] == 10000 + 500 - 268.80 and fus["base"] == 20000.0
+    assert not any(l["code_rubrique"] == "PRIM_ANC" for l in detail)       # plus de ligne séparée
+    tot = next(l for l in detail if l["libelle"] == "Total formule")
+    assert tot["gras"] is True and fus["gras"] is False
+    assert next(l for l in detail if l["libelle"] == "AT en gras")["gras"] is True
+    docs = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)
+    t = textes(docs[0].contenu)
+    assert docs[0].anomalies == []
+    assert "Salaire et ancienneté" in t and "10 231,20" in t
+    assert t.index("Retenues") < t.index("Indemnités non imposables") < t.index("Indemnité test")

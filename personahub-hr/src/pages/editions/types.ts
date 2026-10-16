@@ -119,6 +119,7 @@ export interface ElTableau extends ElementBase {
   type: "TABLEAU";
   jeu: string;                      // jeu SECONDAIRE (mode expert)…
   corps?: string | null;            // …ou corps de données « lignes »
+  corps_suivants?: string[];        // autres corps « lignes » imprimés à la suite
   grouper?: boolean;
   colonnes: Colonne[];
   sections?: Section[];
@@ -191,8 +192,10 @@ export interface Affectation {
   cibles: Partial<Record<AttributAffecte, string>>;   // colonne (LIGNES) ou « ligne.colonne » (CASES)
   groupe?: string | null;
   libelle?: string | null;
-  negatif?: boolean;
+  negatif?: boolean;                // « en – » : soustraite (seule ou dans une ligne fusionnée)
   nulle?: boolean;
+  fusion?: boolean;                 // s'ajoute à la ligne de l'affectation précédente
+  gras?: boolean | null;            // défaut : gras pour une formule
 }
 export interface Corps {
   code: string;
@@ -246,7 +249,12 @@ export function masqueColonne(c: ColonneCorps): string | null {
 }
 
 /** Tableau lié à un corps « lignes » : une colonne libellé puis une par colonne du corps. */
-export function tableauDepuisCorps(d: Definition, corps: Corps, x = 0, y = 0, largeur?: number, id?: string): ElTableau {
+export function tableauDepuisCorps(d: Definition, corpsOuListe: Corps | Corps[], x = 0, y = 0, largeur?: number, id?: string): ElTableau {
+  const liste = Array.isArray(corpsOuListe) ? corpsOuListe : [corpsOuListe];
+  // colonnes : celles du premier corps, puis celles des suivants qui manquent
+  const colonnesCorps: ColonneCorps[] = [];
+  liste.forEach((c) => c.colonnes.forEach((col) => { if (!colonnesCorps.some((x) => x.code === col.code)) colonnesCorps.push(col); }));
+  const corps: Corps = { ...liste[0], colonnes: colonnesCorps };
   const gen = generateurIds(d);
   const l = largeur ?? largeurUtile(d.page);
   const nb = corps.colonnes.length;
@@ -254,6 +262,7 @@ export function tableauDepuisCorps(d: Definition, corps: Corps, x = 0, y = 0, la
   const reste = Math.round(((l - lib) / Math.max(nb, 1)) * 10) / 10;
   return {
     id: id ?? gen(`tableau_${corps.code}`), type: "TABLEAU", x, y, l, h: 20, jeu: "", corps: corps.code,
+    ...(liste.length > 1 ? { corps_suivants: liste.slice(1).map((c) => c.code) } : {}),
     colonnes: [
       { id: gen("col_libelle"), titre: "Désignation", largeur: Math.round((l - reste * nb) * 10) / 10, valeur: "libelle" },
       ...corps.colonnes.map((c) => ({

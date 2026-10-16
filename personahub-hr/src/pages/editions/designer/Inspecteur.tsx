@@ -369,31 +369,43 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
   const somme = t.colonnes.filter((c) => !c.masquee).reduce((s, c) => s + c.largeur, 0);
 
   const corpsLignes = (d.corps ?? []).filter((c) => c.nature === "LIGNES");
-  const lier = (code: string) => {
-    if (code === (t.corps ?? "")) return;
-    if (code && !confirm("Les colonnes du tableau seront recréées à partir de celles du corps. Continuer ?")) return;
+  const affiches = t.corps ? [t.corps, ...(t.corps_suivants ?? [])] : [];
+  /** Corps affichés, dans l'ordre de la définition ; [] = retour au jeu de lignes (mode expert). */
+  const lier = (codes: string[]) => {
+    const premierChangement = !t.corps && codes.length;
+    if (premierChangement && !confirm("Les colonnes du tableau seront recréées à partir de celles du corps. Continuer ?")) return;
     maj((e: ElTableau, b) => {
-      if (!code) { e.corps = null; delete e.corps; e.jeu = jeuxSecondaires[0]?.code ?? ""; return; }
-      const corps = d.corps!.find((c) => c.code === code)!;
-      const n = tableauDepuisCorps(d, corps, e.x, e.y, e.l, e.id);
-      e.corps = code; e.jeu = ""; e.colonnes = n.colonnes; delete e.sections; delete e.section_autres;
+      if (!codes.length) { delete e.corps; delete e.corps_suivants; e.jeu = jeuxSecondaires[0]?.code ?? ""; return; }
+      e.corps = codes[0]; e.jeu = "";
+      if (codes.length > 1) e.corps_suivants = codes.slice(1); else delete e.corps_suivants;
+      if (premierChangement) {
+        e.colonnes = tableauDepuisCorps(d, codes.map((code) => d.corps!.find((c) => c.code === code)!), e.x, e.y, e.l, e.id).colonnes;
+        delete e.sections; delete e.section_autres;
+      }
       b.hauteur = Math.max(b.hauteur, e.y + e.h);
     }, "source");
   };
   return (
     <>
-      <Ligne libelle="Lignes affichées : corps de données" aide="Définis à l'étape « 1. Données »">
-        <Choix value={t.corps ?? ""} disabled={ro} vide="— jeu de lignes (mode expert) —" onChange={(v) => lier(v ?? "")}
-          options={corpsLignes.map((c) => ({ v: c.code, l: c.libelle }))} />
-      </Ligne>
+      <div className="mb-2">
+        <div className="mb-0.5 text-[11px] font-medium text-muted-foreground">Lignes affichées : corps de données (dans l'ordre)</div>
+        {corpsLignes.length ? corpsLignes.map((c) => (
+          <label key={c.code} className="flex items-center gap-1.5 text-xs">
+            <input type="checkbox" disabled={ro} checked={affiches.includes(c.code)}
+              onChange={(e) => lier(corpsLignes.map((x) => x.code).filter((code) => (code === c.code ? e.target.checked : affiches.includes(code))))} />
+            {c.libelle}
+          </label>
+        )) : <p className="text-[11px] text-muted-foreground">Aucun corps « lignes » : définissez-en à l'étape « 1. Données ».</p>}
+        {!affiches.length && corpsLignes.length > 0 && <p className="mt-1 text-[10px] text-amber-700">Le tableau affiche encore un jeu de lignes (mode expert) : cochez vos corps pour qu'il imprime ce que vous avez défini.</p>}
+      </div>
       {t.corps ? (
         <div className="mb-2 rounded bg-primary/5 p-1.5 text-[11px]">
-          Les rubriques, leurs valeurs et leurs groupes viennent du corps : modifiez-les à l'étape « 1. Données ». Ici : largeur, titre, masque, style.
+          Les rubriques, leurs valeurs et leurs groupes viennent des corps : modifiez-les à l'étape « 1. Données ». Ici : largeur, titre, masque, style. Sans groupe, le titre est le libellé du corps.
           <div className="mt-1"><Case libelle="Un titre par groupe (Gains, Retenues…)" value={t.grouper ?? true} disabled={ro}
             onChange={(v) => maj((e) => poser(e, "grouper", v ? null : false), "grp")} />
           {!ro && <button type="button" className="text-primary underline" onClick={() => {
             if (confirm("Recréer les colonnes depuis le corps (largeurs et titres actuels perdus) ?")) {
-              maj((e: ElTableau) => { e.colonnes = tableauDepuisCorps(d, d.corps!.find((c) => c.code === t.corps)!, e.x, e.y, e.l, e.id).colonnes; }, "regen");
+              maj((e: ElTableau) => { e.colonnes = tableauDepuisCorps(d, affiches.map((code) => d.corps!.find((c) => c.code === code)!).filter(Boolean), e.x, e.y, e.l, e.id).colonnes; }, "regen");
             }
           }}>Recréer les colonnes</button>}</div>
         </div>
@@ -446,7 +458,7 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
                 <Ligne libelle="Largeur"><Nombre value={c.largeur} disabled={ro} min={1} onChange={(v) => majCol(c.id, (x) => { x.largeur = Math.max(1, v ?? 1); }, "larg")} /></Ligne>
               </div>
               <Ligne libelle="Valeur de chaque ligne (formule)" aide="Champs de la ligne : code_rubrique, libelle, base, nombre, taux, montant, montant_patronal, sens…">
-                <FormuleInput value={c.valeur} jeu={t.corps ? `corps:${t.corps}` : t.jeu} disabled={ro} onChange={(v) => majCol(c.id, (x) => { x.valeur = v; }, "val")} />
+                <FormuleInput value={c.valeur} jeu={t.corps ? `corps:${affiches.join(",")}` : t.jeu} disabled={ro} onChange={(v) => majCol(c.id, (x) => { x.valeur = v; }, "val")} />
               </Ligne>
               <div className="grid grid-cols-2 gap-1">
                 <Ligne libelle="Masque">

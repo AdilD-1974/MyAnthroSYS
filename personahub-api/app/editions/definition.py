@@ -183,6 +183,7 @@ class Tableau(ElementBase):
     type: Literal["TABLEAU"]
     jeu: str = ""                             # jeu SECONDAIRE affiché (mode expert)…
     corps: Optional[str] = None               # …ou corps de données « lignes » (RG-EDT-DONNEES-01)
+    corps_suivants: list[str] = []            # autres corps « lignes » imprimés à la suite, dans l'ordre
     grouper: bool = True                      # corps : un titre par groupe d'affectations
     colonnes: list[Colonne] = Field(min_length=1)
     sections: list[Section] = []
@@ -295,8 +296,10 @@ class Affectation(Strict):
     cibles: dict[str, str] = {}               # NB|MT|TX|BASE|PAT|VAL → colonne (LIGNES) ou « ligne.colonne » (CASES)
     groupe: Optional[str] = None              # titre d'impression (corps LIGNES)
     libelle: Optional[str] = None
-    negatif: bool = False                     # « en – »
+    negatif: bool = False                     # « en – » : soustraite (seule ou dans une ligne fusionnée)
     nulle: bool = False                       # « Nulls » : imprimée même nulle
+    fusion: bool = False                      # s'ajoute à la ligne de l'affectation précédente (une seule ligne imprimée)
+    gras: Optional[bool] = None               # défaut : gras pour une formule, normal pour une rubrique
 
 
 class Corps(Strict):

@@ -88,7 +88,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
         .map((r) => ({ texte: `[${r.code}]`, insertion: `[${r.code}].`, detail: r.libelle, genre: "Rubrique" }));
     }
     if (t.startsWith("#") || t.length < 2) return [];
-    const corpsCtx = jeu?.startsWith("corps:") ? (definition?.corps ?? []).find((c) => c.code === jeu.slice(6)) : undefined;
+    const corpsCtx = jeu?.startsWith("corps:") ? (definition?.corps ?? []).find((c) => c.code === jeu.slice(6).split(",")[0]) : undefined;
     const principal = sourceDuJeu(definition, undefined);
     const champs = [
       ...(corpsCtx ? [{ code: "libelle", libelle: "Libellé de la ligne" }, { code: "code_rubrique", libelle: "Code rubrique" },

@@ -130,3 +130,11 @@ def test_catalogue_valide_le_bulletin_classique(db):
                         .read_text(encoding="utf-8"))
     r = valider(modele, cat)
     assert r.valide, [(e.chemin, e.message) for e in r.erreurs]
+
+
+@base_requise
+def test_plan_de_paie_unique_ou_liste(db):
+    for valeur in (PLAN, [PLAN], {"id": PLAN}):
+        lignes = F("BULLETIN").lire(db, {"periode": P_SEP, "plan_paie": valeur}, sec())
+        assert len(lignes) == 2, valeur
+    assert F("BULLETIN").lire(db, {"periode": P_SEP, "plan_paie": ["00000000-0000-0000-0000-000000000000"]}, sec()) == []

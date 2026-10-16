@@ -112,7 +112,7 @@ def formules(d: Definition) -> Iterator[tuple[str, str, Optional[str], bool]]:
             elif hasattr(el, "valeur"):
                 yield f"{eb}.valeur", el.valeur, principal, False
             if isinstance(el, Tableau):
-                ctx_t = f"corps:{el.corps}" if el.corps else el.jeu
+                ctx_t = f"corps:{','.join([el.corps, *el.corps_suivants])}" if el.corps else el.jeu
                 for c, col in enumerate(el.colonnes):
                     yield f"{eb}.colonnes[{c}].valeur", col.valeur, ctx_t, False
                 for s, sec in enumerate(el.sections):
@@ -148,8 +148,8 @@ def _champ_ok(d: Definition, cat: CatalogueValidation, code_jeu: Optional[str], 
         return (c is not None and c.nature == "CASES" and len(p) == 4
                 and p[2] in {l.code for l in c.lignes} and p[3] in {col.code for col in c.colonnes})
     if code_jeu and code_jeu.startswith("corps:"):
-        c = d.corps_par_code(code_jeu[6:])
-        if c and champ in {"code_rubrique", "libelle", "groupe"} | {col.code for col in c.colonnes}:
+        cols = {col.code for code in code_jeu[6:].split(",") for c in [d.corps_par_code(code)] if c for col in c.colonnes}
+        if champ in {"code_rubrique", "libelle", "groupe"} | cols:
             return True
         principal = d.jeu_principal()                      # la ligne du bulletin reste lisible
         code_jeu = principal.code if principal else None
@@ -265,6 +265,8 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
         cases = {f"{l.code}.{col}" for l in c.lignes for col in cols}
         for k, a in enumerate(c.affectations):
             ch = f"{base}.affectations[{k}]"
+            if a.fusion and (k == 0 or a.formule or c.affectations[k - 1].formule):
+                rapport.ajouter(f"{ch}.fusion", "Seule une rubrique se fusionne, avec la rubrique qui la précède")
             if bool(a.rubrique) == bool(a.formule):
                 rapport.ajouter(ch, "Une affectation porte une rubrique OU une formule")
                 continue
@@ -290,9 +292,10 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
         for e, el in enumerate(bande.elements):
             eb = f"bandes[{b}].elements[{e}]"
             if isinstance(el, Tableau) and el.corps:
-                cp = d.corps_par_code(el.corps)
-                if cp is None or cp.nature != "LIGNES":
-                    rapport.ajouter(f"{eb}.corps", f"Un tableau affiche un corps « lignes » existant (« {el.corps} »)")
+                for code in [el.corps, *el.corps_suivants]:
+                    cp = d.corps_par_code(code)
+                    if cp is None or cp.nature != "LIGNES":
+                        rapport.ajouter(f"{eb}.corps", f"Un tableau affiche un corps « lignes » existant (« {code} »)")
             elif isinstance(el, Tableau):
                 jt = d.jeu(el.jeu)
                 if jt is None or jt.role != "SECONDAIRE":
