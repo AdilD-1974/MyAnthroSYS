@@ -23,7 +23,9 @@ export interface LigneBulletin {
   taux?: number | null;
   montant: number;
   montant_patronal?: number | null;
+  taux_patronal?: number | null;            // RG-PAIE-PATRONAL-01 (migration 076)
   montant_cumul?: number | null;
+  montant_patronal_cumul?: number | null;   // RG-PAIE-PATRONAL-02
   nombre_cumul?: number | null;
   sens?: string | null;
   est_cotisation: boolean;

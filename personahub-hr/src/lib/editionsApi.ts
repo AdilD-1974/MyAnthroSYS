@@ -177,7 +177,7 @@ export interface ApercuDonnees {
     variables: Record<string, unknown>;
     anomalies: { element: string; message: string }[];
     /** Contrôle : valeurs brutes des rubriques citées par les corps (avant affectation). */
-    rubriques?: ({ code: string; libelle: string; absente: boolean } & Record<"NB" | "BASE" | "TX" | "MT" | "PAT" | "CNB" | "CBASE" | "CMT", string | null>)[];
+    rubriques?: ({ code: string; libelle: string; absente: boolean } & Record<"NB" | "BASE" | "TX" | "MT" | "PAT" | "TXP" | "CNB" | "CBASE" | "CMT" | "CPAT", string | null>)[];
   }[];
 }
 

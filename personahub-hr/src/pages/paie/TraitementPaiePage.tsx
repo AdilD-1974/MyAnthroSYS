@@ -589,6 +589,8 @@ function exporterExcel(result: CalculBulletinResult, lignesParGroupe: Record<Gro
         "Nb (cumul)": !l.est_cotisation && estCumulee(l) ? _num(l.nombre_cumul) : null,
         "Montant (cumul)": estCumulee(l) ? _num(l.montant_cumul) : null,
         "Part patronale": _num(l.montant_patronal),
+        "Taux patronal": _num(l.taux_patronal),
+        "Part patronale (cumul)": estCumulee(l) ? _num(l.montant_patronal_cumul) : null,
         "Date": _dateExcel(l.date_valeur) ?? "",
         "Texte": l.texte ?? "",
         "Observation": l.observation ?? "",
@@ -945,7 +947,13 @@ export function Resultat({ result, prevTotaux, onDelete, deleting, onOpenCollab,
                                     )}
                                   </TableCell>
                                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                                    {l.montant_patronal != null ? formatNumber(l.montant_patronal) : ""}
+                                    <div>{l.montant_patronal != null ? formatNumber(l.montant_patronal) : ""}</div>
+                                    {l.taux_patronal != null && l.montant_patronal != null && (
+                                      <div className="text-[10px] font-normal" title="Taux patronal">taux {formatNumber(l.taux_patronal, 4)}</div>
+                                    )}
+                                    {vue === "TOUT" && estCumulee(l) && l.montant_patronal_cumul != null && (
+                                      <div className="text-[10px] font-normal">cumul {formatNumber(l.montant_patronal_cumul)}</div>
+                                    )}
                                   </TableCell>
                                   <TableCell className="tabular-nums text-muted-foreground">{formatDate(l.date_valeur)}</TableCell>
                                   <TableCell className="text-muted-foreground">{l.texte ?? ""}</TableCell>
@@ -985,7 +993,10 @@ export function Resultat({ result, prevTotaux, onDelete, deleting, onOpenCollab,
                                   <TableCell className="text-right tabular-nums font-medium" style={{ color: couleurMontant }}>
                                     {formatNumber(l.montant_cumul != null ? l.montant_cumul : l.montant)}
                                   </TableCell>
-                                  <TableCell /><TableCell /><TableCell /><TableCell />
+                                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                                    {l.montant_patronal_cumul != null ? formatNumber(l.montant_patronal_cumul) : ""}
+                                  </TableCell>
+                                  <TableCell /><TableCell /><TableCell />
                                   <TableCell className="p-0 text-center">
                                     <LigneDetail ligne={l} etape={result.trace.find((e) => e.rubrique === l.code_rubrique)} />
                                   </TableCell>
@@ -1127,6 +1138,8 @@ function LigneDetail({ ligne, etape }: { ligne: LigneBulletin; etape?: TraceEtap
           <Z k="Montant (période)" v={formatNumber(ligne.montant)} />
           {ligne.montant_cumul != null && <Z k="Cumul à date" v={formatNumber(ligne.montant_cumul)} />}
           {ligne.montant_patronal != null && <Z k="Part patronale" v={formatNumber(ligne.montant_patronal)} />}
+          {ligne.taux_patronal != null && <Z k="Taux patronal" v={formatNumber(ligne.taux_patronal, 4)} />}
+          {ligne.montant_patronal_cumul != null && <Z k="Part patronale cumulée" v={formatNumber(ligne.montant_patronal_cumul)} />}
           {ligne.date_valeur && <Z k="Date" v={formatDate(ligne.date_valeur)} />}
           {ligne.texte && <Z k="Texte" v={ligne.texte} />}
         </div>

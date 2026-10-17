@@ -1426,7 +1426,8 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
     for row in db.execute(text("""
         SELECT code_rubrique, mois,
                COALESCE(SUM(montant), 0) AS mt,
-               COALESCE(SUM(nombre), 0)  AS nb
+               COALESCE(SUM(nombre), 0)  AS nb,
+               COALESCE(SUM(montant_patronal), 0) AS pat
           FROM public.cumul
          WHERE collaborateur_id = :cid AND annee = :annee
            AND (mois IS NULL OR mois < :mois)
@@ -1435,7 +1436,7 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
     """), {"cid": str(collaborateur_id), "annee": ctx.annee, "mois": ctx.mois,
            "cp": code_plan}).mappings().all():
         cumuls_ant.setdefault(row["code_rubrique"].strip(), []).append(
-            (row["mois"] or 0, _dec(row["mt"]), _dec(row["nb"])))
+            (row["mois"] or 0, _dec(row["mt"]), _dec(row["nb"]), _dec(row["pat"])))
 
     # RG-SIM-POPULATION-08 : ajoute les cumuls SIMULÉS des périodes
     # précédentes du même exercice (jamais présents dans public.cumul,
@@ -1449,11 +1450,20 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
         # Mois de reprise du cumul selon la fréquence de RAZ paramétrée sur la rubrique
         mois_debut = _mois_debut_raz(freq_raz, ctx.mois)
         mt, nb = _dec(mt_periode), _dec(nb_periode)
-        for (m, cmt, cnb) in cumuls_ant.get(code, []):
+        for (m, cmt, cnb, *_) in cumuls_ant.get(code, []):
             if m >= mois_debut:            # dans la fenêtre courante de cumul
                 mt += cmt
                 nb += cnb
         return mt, nb
+
+    def cumul_pat_a_date(code: str, freq_raz, pat_periode) -> Decimal:
+        # RG-PAIE-PATRONAL-02 (Adil DAIA) : cumul de la part patronale, même fenêtre de RAZ
+        mois_debut = _mois_debut_raz(freq_raz, ctx.mois)
+        pat = _dec(pat_periode)
+        for (m, _cmt, _cnb, *reste) in cumuls_ant.get(code, []):
+            if m >= mois_debut and reste:
+                pat += _dec(reste[0])
+        return pat
 
     # Rubriques à calculer = toutes sauf les assiettes (accumulateurs, jamais
     # concernées par les populations — ce sont des accumulateurs internes,
@@ -1533,6 +1543,7 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
         etape["avert"] += av0
 
         mt_pat = None  # part patronale (cotisations)
+        tx_pat = None  # RG-PAIE-PATRONAL-01 (Adil DAIA) : taux patronal, distinct du taux salarial
 
         # ---- COTISATION -------------------------------------------------
         if code_type == "COT":
@@ -1561,6 +1572,7 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
             # montant — sinon Montant ≠ Base × Taux dès qu'un plafond
             # (ex. plafond CNSS) tronque l'assiette.
             base_retenue, taux_retenu = None, None
+            taux_sal_retenu, taux_pat_retenu = None, None
             for rg in regles:
                 try:
                     # ctx.surcharges_regime[code_regle] est un dict PLAT :
@@ -1600,16 +1612,22 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
                             tot_sal += _dec(compo.montant_salarial)
                             base_retenue = _dec(compo.base_appliquee)
                             if compo.taux_salarial is not None:
-                                taux_retenu = _dec(compo.taux_salarial)
+                                taux_sal_retenu = _dec(compo.taux_salarial)
                         if compo.code_rubrique_part_patronale and compo.code_rubrique_part_patronale.strip() == code:
                             tot_pat += _dec(compo.montant_patronal)
                             base_retenue = _dec(compo.base_appliquee)
                             if compo.taux_patronal is not None:
-                                taux_retenu = _dec(compo.taux_patronal)
+                                taux_pat_retenu = _dec(compo.taux_patronal)
                     etape["detail"].append(f"règle {rg['code']} sur assiette {q2(base_cot)}")
                 except HTTPException as e:
                     etape["avert"].append(f"cotisation {rg['code']}: {e.detail}")
             vals["MT"] = tot_sal
+            # RG-PAIE-PATRONAL-01 : Taux = taux salarial ; pour une rubrique purement
+            # patronale (pas de part salariale), Taux reprend le taux patronal comme avant.
+            # Le taux patronal est TOUJOURS conservé à part (bulletin_ligne.taux_patronal) :
+            # une rubrique portant les deux parts ne perd plus son taux salarial.
+            taux_retenu = taux_sal_retenu if taux_sal_retenu is not None else taux_pat_retenu
+            tx_pat = taux_pat_retenu
             if base_retenue is not None:
                 vals["BASE"] = base_retenue
             if taux_retenu is not None:
@@ -1716,6 +1734,8 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
 
         # Enregistrer le résultat + propager (NB/TY/MT/BASE) aux assiettes
         results[code] = {k: _dec(vals[k]) for k in ("MT", "NB", "TY", "BASE")}
+        results[code]["PAT"] = _dec(mt_pat) if mt_pat is not None else D0
+        results[code]["TXP"] = _dec(tx_pat) if tx_pat is not None else D0
         results[code]["DATE"] = vals.get("DATE")
         results[code]["TEXTE"] = vals.get("TEXTE")
         pousser_assiettes(code, results[code])
@@ -1740,6 +1760,9 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
             "montant_cumul": q2(cumul_a_date(code, r.get("frequence_raz_cumuls"), vals["MT"], vals["NB"])[0]),
             "nombre_cumul": q4(cumul_a_date(code, r.get("frequence_raz_cumuls"), vals["MT"], vals["NB"])[1]),
             "montant_patronal": q2(mt_pat) if mt_pat is not None else None,
+            "taux_patronal": q4(tx_pat) if tx_pat is not None else None,
+            "montant_patronal_cumul": (q2(cumul_pat_a_date(code, r.get("frequence_raz_cumuls"), mt_pat))
+                                       if mt_pat is not None else None),
             "sens": _sens_rubrique(r), "est_cotisation": code_type == "COT",
             "type_periodicite": _periodicite(r),
             "frequence_raz": r.get("frequence_raz_cumuls"),
@@ -1761,7 +1784,8 @@ def _calculer_bulletin_coeur(db: Session, collaborateur_id: UUID, periode_id: UU
                 "base": q2(acc["BASE"]) if acc["BASE"] else None,
                 "nombre": q4(acc["NB"]) if acc["NB"] else None,
                 "taux": q4(acc["TY"]) if acc["TY"] else None,
-                "montant": q2(acc["MT"]), "montant_patronal": None,
+                "montant": q2(acc["MT"]), "montant_patronal": None, "taux_patronal": None,
+                "montant_patronal_cumul": None,
                 "montant_cumul": q2(cumul_a_date(code, r.get("frequence_raz_cumuls"), acc["MT"], acc["NB"])[0]),
                 "nombre_cumul": q4(cumul_a_date(code, r.get("frequence_raz_cumuls"), acc["MT"], acc["NB"])[1]),
                 "sens": "NEUTRE", "est_cotisation": False,

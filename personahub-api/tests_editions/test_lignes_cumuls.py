@@ -135,7 +135,7 @@ def test_cumuls_des_rubriques(db):
     # août + septembre, plan MENS ; ni octobre, ni l'autre plan, ni 2025
     assert idx["SALBASE"]["CMT"] == Decimal("20000") and idx["SALBASE"]["CNB"] == Decimal("52")
     assert idx["SALBASE"]["MT"] == Decimal("10000")                 # la valeur du mois est intacte
-    assert idx["PRIM_CONGE"] == {"CMT": Decimal("1200"), "CNB": Decimal("0"), "CBASE": Decimal("0")}
+    assert idx["PRIM_CONGE"] == {"CMT": Decimal("1200"), "CNB": Decimal("0"), "CBASE": Decimal("0"), "CPAT": Decimal("0")}
     assert idx["TOTAL_BRUT"]["CMT"] == Decimal("20500")
 
 
@@ -176,3 +176,27 @@ def test_grille_de_cumuls_au_rendu(db):
     assert "Salaire brut" in t and "Cumul" in t
     assert "20 500,00" in t and "20 000,00" in t and "1 200,00" in t
     assert "52" in t
+
+
+
+@base_requise
+def test_taux_patronal_et_cumul_patronal(db):
+    """RG-PAIE-PATRONAL-01/02 (migration 076) : taux patronal et part patronale cumulée, affectables."""
+    from app.editions.moteur.executeur import donnees_brutes
+    from app.editions.sources import ContexteSecurite
+    from tests_editions.test_donnees import CAT, definition
+    d = definition()
+    d["corps"][0]["affectations"] += [
+        {"rubrique": "CNSS_SAL", "libelle": "Taux patronal CNSS", "cibles": {"TXP": "taux"}},
+        {"rubrique": "CNSS_SAL", "libelle": "Cumul patronal CNSS", "periode": "CUMUL", "cibles": {"PAT": "patronal"}},
+    ]
+    assert not valider(d, CAT).erreurs
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    res = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)["lignes"][0]
+    lignes = {l["libelle"]: l for l in res["corps"]["detail"]}
+    assert float(lignes["Taux patronal CNSS"]["taux"]) == 17.95
+    assert float(lignes["Cumul patronal CNSS"]["patronal"]) == 1077.12
+    cnss = next(r for r in res["rubriques"] if r["code"] == "CNSS_SAL")
+    assert cnss["TXP"] == "17.95" and float(cnss["CPAT"]) == 1077.12
+    d["corps"][0]["affectations"].append({"rubrique": "CNSS_SAL", "periode": "CUMUL", "cibles": {"TXP": "taux"}})
+    assert any("Pas de cumul pour un taux" in e.message for e in valider(d, CAT).erreurs)

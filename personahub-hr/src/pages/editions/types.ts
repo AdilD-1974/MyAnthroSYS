@@ -189,7 +189,7 @@ export interface Sortie {
 export type TypeColonneCorps = "MONTANT" | "NOMBRE" | "TAUX" | "TEXTE" | "DATE";
 export interface ColonneCorps { code: string; libelle: string; sigle?: string | null; type?: TypeColonneCorps; masque?: string | null; total?: boolean }
 export interface LigneCorps { code: string; libelle: string }
-export type AttributAffecte = "NB" | "MT" | "TX" | "BASE" | "PAT" | "VAL";
+export type AttributAffecte = "NB" | "MT" | "TX" | "BASE" | "PAT" | "TXP" | "VAL";
 export interface Affectation {
   rubrique?: string | null;
   formule?: Expr | null;
@@ -246,7 +246,8 @@ export interface Definition {
 
 export const ATTRIBUTS_AFFECTABLES: { code: Exclude<AttributAffecte, "VAL">; libelle: string; cumul: boolean }[] = [
   { code: "NB", libelle: "Nb", cumul: true }, { code: "MT", libelle: "Mt", cumul: true }, { code: "TX", libelle: "Tx", cumul: false },
-  { code: "BASE", libelle: "Base", cumul: true }, { code: "PAT", libelle: "Patronal", cumul: false },
+  { code: "BASE", libelle: "Base", cumul: true }, { code: "PAT", libelle: "Patronal", cumul: true },
+  { code: "TXP", libelle: "Tx pat.", cumul: false },
 ];
 
 /** Masque par défaut d'une colonne de corps placée dans un tableau. */
@@ -372,6 +373,7 @@ export const ATTRIBUTS_RUBRIQUE: { code: string; libelle: string }[] = [
   { code: "TX", libelle: "taux" }, { code: "BASE", libelle: "base du mois" },
   { code: "PAT", libelle: "part patronale du mois" }, { code: "CMT", libelle: "cumul annuel du montant" },
   { code: "CNB", libelle: "cumul annuel du nombre" }, { code: "CBASE", libelle: "cumul annuel de la base" },
+  { code: "TXP", libelle: "taux patronal" }, { code: "CPAT", libelle: "cumul annuel de la part patronale" },
 ];
 
 export const LIBELLES_PARAMETRE: Record<TypeParametre, string> = {

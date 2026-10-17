@@ -279,8 +279,8 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
             for attribut, cible in a.cibles.items():
                 if attribut not in permis:
                     rapport.ajouter(f"{ch}.cibles", f"Attribut {attribut} impossible ici (attendu : {', '.join(sorted(permis))})")
-                elif a.periode == "CUMUL" and attribut in ("TX", "PAT"):
-                    rapport.ajouter(f"{ch}.cibles", f"Pas de cumul pour {attribut} (seulement Nb, Mt, Base)")
+                elif a.periode == "CUMUL" and attribut in ("TX", "TXP"):
+                    rapport.ajouter(f"{ch}.cibles", f"Pas de cumul pour un taux ({attribut}) : seulement Nb, Mt, Base, Patronal")
                 if (c.nature == "LIGNES" and cible not in cols) or (c.nature == "CASES" and cible not in cases):
                     attendu = "une colonne" if c.nature == "LIGNES" else "ligne.colonne"
                     rapport.ajouter(f"{ch}.cibles", f"Cible inconnue : {cible} ({attendu} du corps)")

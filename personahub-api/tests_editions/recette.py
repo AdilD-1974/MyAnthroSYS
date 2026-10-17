@@ -42,6 +42,7 @@ INSERT INTO cumul (collaborateur_id, code_rubrique, type_cumul, annee, mois, cod
   ('{SARA}', 'SALBASE', 'MENSUEL', 2026, 10, 'MENS', 10000, 26, 10000),
   ('{SARA}', 'SALBASE', 'MENSUEL', 2026, 9, 'AUTRE', 777, 1, 777),
   ('{SARA}', 'PRIM_CONGE', 'MENSUEL', 2026, 7, 'MENS', 1200, 0, 0),
+  ('{SARA}', 'CNSS_SAL', 'MENSUEL', 2026, 8, 'MENS', 268.80, 0, 6000),
   ('{SARA}', 'SALBASE', 'MENSUEL', 2025, 12, 'MENS', 9000, 26, 9000);
 INSERT INTO calendrier_paie (id, plan_paie_id, annee, mois, date_debut, date_fin, intitule, societe_id) VALUES
   ('aaaaaaaa-0000-0000-0000-000000000008', '{PLAN}', 2026, 8, '2026-08-01', '2026-08-31', 'Août 2026', '{S1}'),
@@ -115,6 +116,7 @@ def creer_base():
             curseur.execute(_sans_public((ICI / "schema_recette.sql").read_text(encoding="utf-8")))
             curseur.execute(migration)
             curseur.execute(DONNEES)
+            curseur.execute(SQL_PATRONAL)
         session = Session(moteur)
         yield session
         session.close()
@@ -128,3 +130,9 @@ def creer_base():
 
 
 base_requise = pytest.mark.skipif(not URL, reason="EDITIONS_TEST_DB_URL non défini (tests base de données)")
+
+# RG-PAIE-PATRONAL-01/02 : taux patronal de la ligne et part patronale cumulée (migration 076)
+SQL_PATRONAL = f"""
+UPDATE bulletin_ligne SET taux_patronal = 17.95 WHERE bulletin_id = '{B_SARA_SEP}' AND code_rubrique = 'CNSS_SAL';
+UPDATE cumul SET montant_patronal = 1077.12 WHERE collaborateur_id = '{SARA}' AND code_rubrique = 'CNSS_SAL';
+"""

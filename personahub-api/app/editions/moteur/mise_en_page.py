@@ -397,8 +397,8 @@ class Composeur:
             resultat["var"][v.code] = self._evaluer(v.valeur, r, f"var.{v.code}")
         return resultat
 
-    _ATTRIBUTS = {"MOIS": {"NB": "NB", "MT": "MT", "TX": "TX", "BASE": "BASE", "PAT": "PAT"},
-                  "CUMUL": {"NB": "CNB", "MT": "CMT", "BASE": "CBASE"}}
+    _ATTRIBUTS = {"MOIS": {"NB": "NB", "MT": "MT", "TX": "TX", "BASE": "BASE", "PAT": "PAT", "TXP": "TXP"},
+                  "CUMUL": {"NB": "CNB", "MT": "CMT", "BASE": "CBASE", "PAT": "CPAT"}}   # RG-PAIE-PATRONAL-02
 
     def _valeur_affectee(self, c: Corps, a, attribut: str, rub: dict, r) -> Any:
         if a.formule:

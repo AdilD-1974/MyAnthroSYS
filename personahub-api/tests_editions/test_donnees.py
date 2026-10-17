@@ -111,7 +111,7 @@ def test_v1_sans_donnees_reste_valide():
 
 @pytest.mark.parametrize("modifier, attendu", [
     (lambda d: d["corps"][0]["affectations"][0]["cibles"].update(MT="inconnue"), "Cible inconnue : inconnue"),
-    (lambda d: d["corps"][1]["affectations"][1]["cibles"].update(TX="cumul.base"), "Pas de cumul pour TX"),
+    (lambda d: d["corps"][1]["affectations"][1]["cibles"].update(TX="cumul.base"), "Pas de cumul pour un taux (TX)"),
     (lambda d: d["corps"][0]["affectations"][0].update(formule="1"), "une rubrique OU une formule"),
     (lambda d: d["corps"][1]["affectations"][5]["cibles"].update(MT="cumul.nb"), "Attribut MT impossible"),
     (lambda d: d["corps"][0]["affectations"][0].update(rubrique="FANTOME"), "Rubrique inconnue ou archivée : FANTOME"),

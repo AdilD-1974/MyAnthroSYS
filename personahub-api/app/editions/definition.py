@@ -291,7 +291,7 @@ class Sortie(Strict):
 # Données de l'état, définies AVANT la forme (lot 2 bis, Report Manager AGIRH)
 # ---------------------------------------------------------------------------
 CodeDonnee = Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_]*$", max_length=40)]
-ATTRIBUTS_AFFECTABLES = ("NB", "MT", "TX", "BASE", "PAT")
+ATTRIBUTS_AFFECTABLES = ("NB", "MT", "TX", "BASE", "PAT", "TXP")   # TXP : taux patronal
 
 
 class ColonneCorps(Strict):

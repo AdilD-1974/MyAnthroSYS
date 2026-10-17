@@ -69,6 +69,7 @@ CREATE TABLE public.bulletin_ligne (
   "taux" numeric,
   "montant" numeric,
   "montant_patronal" numeric,
+  "taux_patronal" numeric,
   "sens" text,
   "est_cotisation" boolean,
   "created_at" timestamptz DEFAULT now(),
@@ -92,6 +93,7 @@ CREATE TABLE public.bulletin_historique_ligne (
   "taux" numeric,
   "montant" numeric,
   "montant_patronal" numeric,
+  "taux_patronal" numeric,
   "sens" text,
   "est_cotisation" boolean,
   "created_at" timestamptz DEFAULT now(),
@@ -279,5 +281,6 @@ CREATE TABLE public.cumul (
   "code_plan" text,
   "montant" numeric,
   "nombre" numeric,
-  "base" numeric
+  "base" numeric,
+  "montant_patronal" numeric DEFAULT 0
 );

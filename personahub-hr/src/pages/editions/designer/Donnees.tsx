@@ -508,7 +508,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
   }, "ao-dnd"), !ro);
 
   const selCible = (a: Affectation, i: number, attr: AttributAffecte) => {
-    const interdit = a.periode === "CUMUL" && (attr === "TX" || attr === "PAT");
+    const interdit = a.periode === "CUMUL" && (attr === "TX" || attr === "TXP");
     return (
       <select className={`${classeChamp} min-w-[88px] ${a.cibles[attr] ? "bg-primary/5 font-medium" : ""}`} disabled={ro || interdit}
         title={interdit ? "Pas de cumul pour cet attribut" : undefined} value={a.cibles[attr] ?? ""}
@@ -568,7 +568,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                       <select className={classeChamp} disabled={ro} value={a.periode ?? "MOIS"}
                         onChange={(e) => majA(i, (z) => {
                           poser(z, "periode", e.target.value === "MOIS" ? null : e.target.value);
-                          if (e.target.value === "CUMUL") { delete z.cibles.TX; delete z.cibles.PAT; }
+                          if (e.target.value === "CUMUL") { delete z.cibles.TX; delete z.cibles.TXP; }
                         }, "p")}>
                         <option value="MOIS">Mois</option><option value="CUMUL">Cumul</option>
                       </select>
@@ -666,7 +666,7 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
             <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Répartition commune</div>
             <Ligne libelle="Période">
               <Choix value={modele.periode ?? "MOIS"} options={[{ v: "MOIS", l: "Mois" }, { v: "CUMUL", l: "Cumul annuel" }]}
-                onChange={(v) => setModele((m) => { const n = { ...m, periode: v ?? "MOIS", cibles: { ...m.cibles } }; if (v === "CUMUL") { delete n.cibles.TX; delete n.cibles.PAT; } return n; })} />
+                onChange={(v) => setModele((m) => { const n = { ...m, periode: v ?? "MOIS", cibles: { ...m.cibles } }; if (v === "CUMUL") { delete n.cibles.TX; delete n.cibles.TXP; } return n; })} />
             </Ligne>
             {ATTRIBUTS_AFFECTABLES.map((x) => (
               <Ligne key={x.code} libelle={`${x.libelle} →`}>
@@ -884,12 +884,12 @@ function OngletApercu({ d, version, ro, enregistrer }: { d: Definition; version:
                     Contrôle des rubriques <span className="font-normal text-muted-foreground">— valeurs brutes du bulletin, avant affectation (Mt = montant de la ligne, Patronal = montant patronal)</span>
                   </summary>
                   <table className="mt-2 border text-xs">
-                    <thead><tr>{["Rubrique", "Libellé", "Nb", "Base", "Taux", "Mt", "Patronal", "Cumul Nb", "Cumul Base", "Cumul Mt"].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+                    <thead><tr>{["Rubrique", "Libellé", "Nb", "Base", "Taux", "Mt", "Patronal", "Taux pat.", "Cumul Nb", "Cumul Base", "Cumul Mt", "Cumul pat."].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
                     <tbody>{(l.rubriques ?? []).map((r) => (
                       <tr key={r.code} className={r.absente ? "text-muted-foreground" : ""}>
                         <td className={`${td} px-2 font-mono`}>{r.code}</td>
                         <td className={`${td} px-2`}>{r.absente ? <i>absente du bulletin et des cumuls</i> : r.libelle}</td>
-                        {(["NB", "BASE", "TX", "MT", "PAT", "CNB", "CBASE", "CMT"] as const).map((k) => (
+                        {(["NB", "BASE", "TX", "MT", "PAT", "TXP", "CNB", "CBASE", "CMT", "CPAT"] as const).map((k) => (
                           <td key={k} className={`${td} px-2 text-right tabular-nums ${r[k] != null && Number(r[k]) !== 0 ? "font-medium" : "text-muted-foreground/60"}`}>
                             {r[k] == null ? "" : affiche(Number(r[k]))}</td>
                         ))}

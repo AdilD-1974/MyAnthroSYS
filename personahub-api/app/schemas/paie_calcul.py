@@ -29,7 +29,9 @@ class LigneBulletinOut(BaseModel):
     taux: Optional[Decimal] = None
     montant: Decimal = Decimal("0")
     montant_patronal: Optional[Decimal] = None
+    taux_patronal: Optional[Decimal] = None
     montant_cumul: Optional[Decimal] = None
+    montant_patronal_cumul: Optional[Decimal] = None
     nombre_cumul: Optional[Decimal] = None
     sens: Optional[str] = None
     est_cotisation: bool = False

@@ -286,7 +286,7 @@ def donnees_brutes(db: Session, d: Definition, parametres_bruts: dict, sec: Cont
     return {"nb_lignes": len(prep.lignes), "lignes": resultat}
 
 
-ATTRIBUTS_CONTROLE = ("NB", "BASE", "TX", "MT", "PAT", "CNB", "CBASE", "CMT")
+ATTRIBUTS_CONTROLE = ("NB", "BASE", "TX", "MT", "PAT", "TXP", "CNB", "CBASE", "CMT", "CPAT")
 
 
 def _valeurs_rubriques(prep: "Preparation", d: Definition, ligne: dict) -> list[dict]:

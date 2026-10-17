@@ -50,7 +50,7 @@ from app.editions import format as fmt
 
 VIDE = None
 BUDGET_PAR_DEFAUT = 10_000
-ATTRIBUTS_RUBRIQUE = ("MT", "NB", "TX", "BASE", "PAT", "CMT", "CNB", "CBASE")
+ATTRIBUTS_RUBRIQUE = ("MT", "NB", "TX", "BASE", "PAT", "TXP", "CMT", "CNB", "CBASE", "CPAT")   # TXP / CPAT : migration 076
 PORTEES = ("GROUPE", "PAGE", "REPORT", "ETAT")
 
 

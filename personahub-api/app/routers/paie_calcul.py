@@ -126,7 +126,7 @@ _COLS_BULLETIN = """
 """
 _COLS_LIGNE = """
     id, bulletin_id, code_rubrique, libelle, code_type, type_regle,
-    ordre_calcul, ordre_affichage, base, nombre, taux, montant, montant_patronal,
+    ordre_calcul, ordre_affichage, base, nombre, taux, montant, montant_patronal, taux_patronal,
     sens, est_cotisation, type_periodicite, date_valeur, texte, observation, created_at
 """
 
@@ -529,6 +529,7 @@ def _persister(db: Session, res: dict, periode_id: UUID, collaborateur_id: UUID,
             ordre_calcul=l["ordre_calcul"], ordre_affichage=l["ordre_affichage"],
             base=l["base"], nombre=l["nombre"], taux=l["taux"],
             montant=l["montant"], montant_patronal=l["montant_patronal"],
+            taux_patronal=l.get("taux_patronal"),
             sens=l["sens"], est_cotisation=l["est_cotisation"],
             type_periodicite=l.get("type_periodicite"),
             date_valeur=(_date.fromisoformat(l["date_valeur"]) if l.get("date_valeur") else None),
@@ -540,17 +541,19 @@ def _persister(db: Session, res: dict, periode_id: UUID, collaborateur_id: UUID,
             db.execute(text("""
                 INSERT INTO public.cumul
                     (collaborateur_id, code_rubrique, type_cumul, annee, mois, code_plan,
-                     periode_id, montant, nombre, base)
-                VALUES (:cid, :code, 'MENSUEL', :annee, :mois, :code_plan, :pid, :mt, :nb, :base)
+                     periode_id, montant, nombre, base, montant_patronal)
+                VALUES (:cid, :code, 'MENSUEL', :annee, :mois, :code_plan, :pid, :mt, :nb, :base, :pat)
                 ON CONFLICT (collaborateur_id, code_rubrique, type_cumul, annee, mois, code_plan)
                 DO UPDATE SET montant = EXCLUDED.montant, nombre = EXCLUDED.nombre,
-                              base = EXCLUDED.base, periode_id = EXCLUDED.periode_id,
+                              base = EXCLUDED.base, montant_patronal = EXCLUDED.montant_patronal,
+                              periode_id = EXCLUDED.periode_id,
                               updated_at = now()
             """), {
                 "cid": str(collaborateur_id), "code": l["code_rubrique"],
                 "annee": annee, "mois": mois, "code_plan": code_plan,
                 "pid": str(periode_id),
                 "mt": l["montant"], "nb": l["nombre"] or D0, "base": l["base"] or D0,
+                "pat": l.get("montant_patronal") or D0,
             })
 
     db.commit()
@@ -1783,7 +1786,7 @@ def _traiter_collaborateur_population(
                 cot_patronale_avant_cumul += cot_patronale_avant_p
                 for l in avant["lignes"]:
                     cumuls_simules_avant.setdefault(l["code_rubrique"], []).append(
-                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0)))
+                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0), _dec(l.get("montant_patronal") or 0)))
                 lignes_pour_pourcentage = avant["lignes"]
                 net_apres_fusion_p, cout_apres_fusion_p = net_avant_p, cout_avant_p
                 brut_imposable_apres_fusion_p, cot_patronale_apres_fusion_p = brut_imposable_avant_p, cot_patronale_avant_p
@@ -1821,7 +1824,7 @@ def _traiter_collaborateur_population(
                 cot_patronale_apres_fusion_p = _dec(apres_fusion["totaux"]["total_cot_patronale"])
                 for l in apres_fusion["lignes"]:
                     cumuls_simules_apres_fusion.setdefault(l["code_rubrique"], []).append(
-                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0)))
+                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0), _dec(l.get("montant_patronal") or 0)))
             elif calculer_avant:
                 # Sans scénario applicable, "après fusion" == "avant" à
                 # l'identique (déjà le cas plus haut) — la chaîne de cumul
@@ -1830,7 +1833,7 @@ def _traiter_collaborateur_population(
                 # suivante où un scénario redeviendrait applicable.
                 for l in avant["lignes"]:
                     cumuls_simules_apres_fusion.setdefault(l["code_rubrique"], []).append(
-                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0)))
+                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0), _dec(l.get("montant_patronal") or 0)))
             else:
                 # calculer_avant=False ET aucun scénario applicable à CE
                 # collaborateur POUR CETTE période (peut varier période par
@@ -1848,7 +1851,7 @@ def _traiter_collaborateur_population(
                 cot_patronale_apres_fusion_p = _dec(tel_quel["totaux"]["total_cot_patronale"])
                 for l in tel_quel["lignes"]:
                     cumuls_simules_apres_fusion.setdefault(l["code_rubrique"], []).append(
-                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0)))
+                        (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0), _dec(l.get("montant_patronal") or 0)))
             net_apres_fusion_cumul += net_apres_fusion_p
             cout_apres_fusion_cumul += cout_apres_fusion_p
             brut_imposable_apres_fusion_cumul += brut_imposable_apres_fusion_p
@@ -1869,7 +1872,7 @@ def _traiter_collaborateur_population(
                     cout_apres_s = _dec(apres_s["totaux"]["cout_employeur"])
                     for l in apres_s["lignes"]:
                         cumuls_simules_par_scenario[sid].setdefault(l["code_rubrique"], []).append(
-                            (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0)))
+                            (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0), _dec(l.get("montant_patronal") or 0)))
                     par_scenario_periode.append({
                         "scenario_id": str(s["id"]), "scenario_nom": s["nom"],
                         "net_apres": str(net_apres_s),
@@ -1918,7 +1921,7 @@ def _traiter_collaborateur_population(
                     # pour un scénario restreint à une sous-population.
                     for l in lignes_tel_quel_s:
                         cumuls_simules_par_scenario[sid].setdefault(l["code_rubrique"], []).append(
-                            (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0)))
+                            (pinfo["mois"], _dec(l["montant"]), _dec(l.get("nombre") or 0), _dec(l.get("montant_patronal") or 0)))
                 par_scenario_cumul[sid]["net_apres"] += net_apres_s
                 par_scenario_cumul[sid]["cout_apres"] += cout_apres_s
 

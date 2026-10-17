@@ -247,6 +247,7 @@ class BulletinLigne(Base):
     taux: Mapped[float | None] = mapped_column(Numeric(18, 4))
     montant: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     montant_patronal: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    taux_patronal: Mapped[float | None] = mapped_column(Numeric(18, 4))   # migration 076
 
     sens: Mapped[str | None] = mapped_column(Text)
     est_cotisation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -284,6 +285,7 @@ class Cumul(Base):
     montant: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     nombre: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     base: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    montant_patronal: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)   # migration 076
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -422,6 +424,7 @@ class BulletinTempLigne(Base):
     taux: Mapped[float | None] = mapped_column(Numeric(18, 4))
     montant: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     montant_patronal: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    taux_patronal: Mapped[float | None] = mapped_column(Numeric(18, 4))   # migration 076
 
     sens: Mapped[str | None] = mapped_column(Text)
     est_cotisation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -501,6 +504,7 @@ class BulletinHistoriqueLigne(Base):
     taux: Mapped[float | None] = mapped_column(Numeric(18, 4))
     montant: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
     montant_patronal: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    taux_patronal: Mapped[float | None] = mapped_column(Numeric(18, 4))   # migration 076
 
     sens: Mapped[str | None] = mapped_column(Text)
     est_cotisation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

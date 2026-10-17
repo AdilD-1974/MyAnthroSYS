@@ -322,9 +322,10 @@ def _cumuls_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str
     annees = sorted({int(b["periode"]["annee"]) for b in bulletins if (b.get("periode") or {}).get("annee")})
     if not collabs or not annees:
         return res
-    q = text("""
+    pat = "SUM(montant_patronal)" if colonne_existe(db, "cumul", "montant_patronal") else "0"
+    q = text(f"""
         SELECT collaborateur_id, annee, mois, code_plan, code_rubrique,
-               SUM(montant) AS mt, SUM(nombre) AS nb, SUM(base) AS base
+               SUM(montant) AS mt, SUM(nombre) AS nb, SUM(base) AS base, {pat} AS pat
         FROM cumul
         WHERE collaborateur_id IN :collabs AND annee IN :annees AND type_cumul = 'MENSUEL'
         GROUP BY collaborateur_id, annee, mois, code_plan, code_rubrique
@@ -344,7 +345,8 @@ def _cumuls_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str
             if plan and r["code_plan"] and r["code_plan"] != plan:
                 continue
             c = res[b["id"]].setdefault(r["code_rubrique"].strip(),
-                                        {"CMT": Decimal(0), "CNB": Decimal(0), "CBASE": Decimal(0)})
+                                        {"CMT": Decimal(0), "CNB": Decimal(0), "CBASE": Decimal(0), "CPAT": Decimal(0)})
+            c["CPAT"] += Decimal(str(r["pat"] or 0))           # RG-PAIE-PATRONAL-02
             c["CMT"] += Decimal(str(r["mt"] or 0))
             c["CNB"] += Decimal(str(r["nb"] or 0))
             c["CBASE"] += Decimal(str(r["base"] or 0))
@@ -362,7 +364,7 @@ CHAMPS_LIGNE = [
     _t("bulletin_id", "Bulletin", "Ligne"), _t("code_rubrique", "Code rubrique", "Ligne"),
     _t("libelle", "Libellé", "Ligne"), _t("code_type", "Type de rubrique", "Ligne"),
     _n("base", "Base", "Ligne", masque_defaut="MONTANT"), _n("nombre", "Nombre", "Ligne"),
-    _n("taux", "Taux", "Ligne"), _m("montant", "Montant", "Ligne"),
+    _n("taux", "Taux", "Ligne"), _n("taux_patronal", "Taux patronal", "Ligne"), _m("montant", "Montant", "Ligne"),
     _m("montant_patronal", "Montant patronal", "Ligne"), _t("sens", "Sens (GAIN, RETENUE)", "Ligne"),
     _n("ordre_affichage", "Ordre d'affichage", "Ligne"),
     ChampDecl("est_cotisation", "Est une cotisation", "BOOLEEN", "Ligne"),
@@ -370,10 +372,26 @@ CHAMPS_LIGNE = [
 ]
 
 
+_COLONNES_PRESENTES: dict[tuple[str, str], bool] = {}
+
+
+def colonne_existe(db: Session, table: str, colonne: str) -> bool:
+    """Migration 076 appliquée ? (taux_patronal, cumul.montant_patronal) — mémorisé par processus."""
+    cle = (table, colonne)
+    if cle not in _COLONNES_PRESENTES:
+        _COLONNES_PRESENTES[cle] = bool(db.execute(text(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+            "AND table_name = :t AND column_name = :c"), {"t": table, "c": colonne}).first())
+    return _COLONNES_PRESENTES[cle]
+
+
 def _lignes_brutes(db: Session, bulletin_ids: list[str], sens: Optional[tuple] = None) -> list[Ligne]:
     """Lignes live ∪ historique ; les lignes historiques d'un bulletin encore
     présent dans `bulletin` sont ignorées (la ligne live fait foi)."""
-    cols = ", ".join(f"l.{c}" for c in _COLS_LIGNE)
+    # RG-PAIE-PATRONAL-01 : taux patronal de la ligne (migration 076), NULL avant
+    extra = (", l.taux_patronal" if colonne_existe(db, "bulletin_ligne", "taux_patronal")
+             and colonne_existe(db, "bulletin_historique_ligne", "taux_patronal") else ", NULL::numeric AS taux_patronal")
+    cols = ", ".join(f"l.{c}" for c in _COLS_LIGNE) + extra
     filtre_sens = "AND l.sens IN :sens" if sens else ""
     q = text(f"""
         SELECT {cols} FROM bulletin_ligne l
@@ -467,6 +485,8 @@ def index_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, 
             r["BASE"] = Decimal(str(l["base"]))
         if l["taux"] is not None:
             r["TX"] = Decimal(str(l["taux"]))
+        if l.get("taux_patronal") is not None:
+            r["TXP"] = Decimal(str(l["taux_patronal"]))
         if l.get("ordre_affichage") is not None:
             r["ORDRE"] = min(r.get("ORDRE", l["ordre_affichage"]), l["ordre_affichage"])
     for b in bulletins:
