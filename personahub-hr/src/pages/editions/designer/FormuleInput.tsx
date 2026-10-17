@@ -23,6 +23,7 @@ interface Props {
   lignes?: number;
   disabled?: boolean;
   verifier?: boolean;           // false : pas d'appel serveur (ex. texte à variables)
+  corpsCourant?: string | null; // formule d'une affectation : ce corps est proposé en premier dans l'assistant
 }
 
 interface Suggestion { texte: string; insertion: string; detail: string; genre: string }
@@ -30,7 +31,7 @@ interface Suggestion { texte: string; insertion: string; detail: string; genre: 
 const cache = new Map<string, Analyse>();
 const MOTIF_JETON = /(\[[A-Za-z0-9_]+\]\.[A-Za-z]*|@[A-Za-z0-9_.]*|\[[A-Za-z0-9_]*|#[A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_.]*)$/;
 
-export default function FormuleInput({ value, onChange, jeu, placeholder, lignes = 1, disabled, verifier = true }: Props) {
+export default function FormuleInput({ value, onChange, jeu, placeholder, lignes = 1, disabled, verifier = true, corpsCourant }: Props) {
   const { sources, fonctions, rubriques, definition } = useReferentiels();
   const zone = useRef<HTMLTextAreaElement>(null);
   const [jeton, setJeton] = useState<{ texte: string; debut: number } | null>(null);
@@ -166,7 +167,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
           onClick={() => setAssistant(true)}
           className="absolute right-1 top-1 rounded px-1 font-serif text-xs italic text-primary hover:bg-primary/10">ƒx</button>
       )}
-      {assistant && <AssistantFormule valeur={value ?? ""} jeu={jeu} onValider={onChange} onFermer={() => setAssistant(false)} />}
+      {assistant && <AssistantFormule valeur={value ?? ""} jeu={jeu} corpsCourant={corpsCourant} onValider={onChange} onFermer={() => setAssistant(false)} />}
       {jeton && suggestions.length > 0 && (
         <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-auto rounded-md border bg-popover shadow-lg">
           {suggestions.map((s, i) => (

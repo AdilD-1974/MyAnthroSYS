@@ -547,7 +547,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
                     <td className={`${td} min-w-[240px]`} colSpan={2}>
-                      <FormuleInput value={a.formule ?? ""} disabled={ro} placeholder="Formule (ex. cumul.total_brut)"
+                      <FormuleInput value={a.formule ?? ""} disabled={ro} placeholder="Formule (ex. cumul.total_brut)" corpsCourant={c.code}
                         onChange={(v) => majA(i, (z) => { z.formule = v; }, "f")} />
                     </td>
                     <td className={td} colSpan={ATTRIBUTS_AFFECTABLES.length}>

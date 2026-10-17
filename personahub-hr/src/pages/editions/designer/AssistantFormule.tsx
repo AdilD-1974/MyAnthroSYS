@@ -64,8 +64,8 @@ const OPERATEURS: Element[] = [
   { insert: "VRAI", titre: "VRAI", detail: "" }, { insert: "FAUX", titre: "FAUX", detail: "" },
 ];
 
-export default function AssistantFormule({ valeur, jeu, onValider, onFermer }: {
-  valeur: string; jeu?: string | null; onValider: (v: string) => void; onFermer: () => void;
+export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider, onFermer }: {
+  valeur: string; jeu?: string | null; corpsCourant?: string | null; onValider: (v: string) => void; onFermer: () => void;
 }) {
   const { sources, fonctions, rubriques, definition } = useReferentiels();
   const [formule, setFormule] = useState(valeur ?? "");
@@ -116,13 +116,16 @@ export default function AssistantFormule({ valeur, jeu, onValider, onFermer }: {
             .map(([c, l]) => ({ groupe: `Ligne du corps « ${corpsCtx.libelle} »`, insert: c, titre: l, detail: c })));
           items.push(...corpsCtx.colonnes.map((c) => ({ groupe: `Ligne du corps « ${corpsCtx.libelle} »`, insert: c.code, titre: c.libelle, detail: c.code })));
         }
-        (definition?.variables ?? []).forEach((v) => items.push({ groupe: "Variables", insert: `var.${v.code}`, titre: v.libelle, detail: `var.${v.code}` }));
-        (definition?.corps ?? []).forEach((c) => {
+        // le corps en cours d'édition d'abord, puis les autres, chacun avec TOUTES ses colonnes
+        [...(definition?.corps ?? [])].sort((a, b) => Number(b.code === corpsCourant) - Number(a.code === corpsCourant)).forEach((c) => {
           if (c.nature === "CASES") (c.lignes ?? []).forEach((l) => c.colonnes.forEach((col) => items.push({
             groupe: `Cases du corps « ${c.libelle} »`, insert: `corps.${c.code}.${l.code}.${col.code}`, titre: `${l.libelle} · ${col.libelle}`, detail: `corps.${c.code}.${l.code}.${col.code}` })));
-          else c.colonnes.forEach((col) => items.push({ groupe: `Totaux du corps « ${c.libelle} »`, insert: `TOTAL_CORPS("${c.code}", "${col.code}")`,
-            titre: `Total ${col.libelle}`, detail: `ajoutez un 3e argument pour un seul groupe` }));
+          else c.colonnes.forEach((col) => items.push({
+            groupe: c.code === corpsCourant ? `Totaux de CE corps « ${c.libelle} »` : `Totaux du corps « ${c.libelle} »`,
+            insert: `TOTAL_CORPS("${c.code}", "${col.code}")`,
+            titre: `Total ${col.libelle}`, detail: `colonne ${col.code} · ajoutez un 3e argument pour un seul groupe` }));
         });
+        (definition?.variables ?? []).forEach((v) => items.push({ groupe: "Variables", insert: `var.${v.code}`, titre: v.libelle, detail: `var.${v.code}` }));
         return parGroupe(items.filter((i) => filtre(i.titre, i.insert, i.groupe)));
       }
       case "parametres": {
