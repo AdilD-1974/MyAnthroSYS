@@ -7,12 +7,12 @@
  *   Paramètres et sélection · Sources · Usages · Aperçu des données (tableau brut, sans format).
  * RG-EDT-DONNEES-01 à 05 ; affectations saisies à la main (décision du 16/10/2026).
  */
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Copy, Loader2, Play, Plus, Search, Trash2 } from "lucide-react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, Copy, Loader2, Play, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { editionsApi, type ApercuDonnees, type Version } from "@/lib/editionsApi";
+import { editionsApi, type ApercuDonnees, type ErreurValidation, type Version } from "@/lib/editionsApi";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
 import {
   ATTRIBUTS_AFFECTABLES, RUBRIQUES_EN_TETE, VARIABLES_BULLETIN,
@@ -35,15 +35,76 @@ const ONGLETS: [Onglet, string, string][] = [
   ["apercu", "Aperçu des données", "Le contenu, sans format"],
 ];
 
+// ── erreurs de validation : lignes en rouge et navigation vers l'anomalie ──────
+export type CibleErreur = { chemin: string; n: number } | null;
+const AUCUNE: ErreurValidation[] = [];
+const CtxErreurs = createContext<ErreurValidation[]>(AUCUNE);
+const CtxCible = createContext<CibleErreur>(null);
+const sousChemin = (c: string, p: string) => c === p || c.startsWith(`${p}.`) || c.startsWith(`${p}[`);
+/** Messages des erreurs situées sur (ou sous) un chemin, ex. « corps[2].affectations[5] ». */
+const messagesDe = (erreurs: ErreurValidation[], p: string) => erreurs.filter((e) => sousChemin(e.chemin, p)).map((e) => e.message);
+/** Attributs d'une ligne de tableau : repère pour la navigation, fond rouge et info-bulle si erreur. */
+function ligneErreur(erreurs: ErreurValidation[], p: string) {
+  const m = messagesDe(erreurs, p);
+  return {
+    "data-chemin": p,
+    title: m.length ? m.join("\n") : undefined,
+    rouge: m.length ? "bg-destructive/10 hover:bg-destructive/15 [&>td:first-child]:border-l-2 [&>td:first-child]:border-l-destructive" : "",
+    icone: m.length ? <AlertTriangle className="mr-0.5 inline h-3 w-3 text-destructive" /> : null,
+  };
+}
+/** Du plus précis au plus large : a.b[2].c → a.b[2] → a.b → a */
+function prefixes(chemin: string): string[] {
+  const r: string[] = [];
+  let c = chemin;
+  while (c) { r.push(c); const k = Math.max(c.lastIndexOf("."), c.lastIndexOf("[")); c = k > 0 ? c.slice(0, k) : ""; }
+  return r;
+}
+function allerVers(chemin: string) {
+  for (const p of prefixes(chemin)) {
+    const el = document.querySelector<HTMLElement>(`[data-chemin="${CSS.escape(p)}"]`);
+    if (!el) continue;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.style.outline = "2px solid hsl(var(--destructive))";
+    el.style.outlineOffset = "-2px";
+    setTimeout(() => { el.style.outline = ""; el.style.outlineOffset = ""; }, 2500);
+    el.querySelector<HTMLElement>("input:not([disabled]),select:not([disabled]),textarea:not([disabled])")?.focus({ preventScroll: true });
+    return;
+  }
+}
+
 const CODE = (v: string) => v.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "_$1").slice(0, 40);
 
-export default function Donnees({ editeur, version, lectureSeule, enregistrer }: {
+export default function Donnees({ editeur, version, lectureSeule, enregistrer, erreurs = AUCUNE, cible = null }: {
   editeur: Editeur; version: Version; lectureSeule: boolean; enregistrer: (silencieux?: boolean) => Promise<boolean>;
+  erreurs?: ErreurValidation[]; cible?: CibleErreur;
 }) {
   const [onglet, setOnglet] = useState<Onglet>("definition");
   const [corpsActif, setCorpsActif] = useState<string | null>(editeur.definition?.corps?.[0]?.code ?? null);
+  const [sousCorps, setSousCorps] = useState<SousCorps>("rubriques");
   const d = editeur.definition!;
   const ouvrirCorps = (code: string) => { setCorpsActif(code); setOnglet("corps"); };
+
+  // clic sur une erreur : ouvrir l'onglet concerné puis amener la ligne fautive à l'écran
+  useEffect(() => {
+    if (!cible) return;
+    const ch = cible.chemin;
+    const m = /^corps\[(\d+)\](?:\.(affectations|colonnes|lignes))?/.exec(ch);
+    if (m) {
+      const c = d.corps?.[Number(m[1])];
+      if (c) setCorpsActif(c.code);
+      setSousCorps(m[2] === "colonnes" ? "colonnes" : m[2] === "lignes" ? "lignes" : "rubriques");
+      setOnglet(m[2] ? "corps" : "definition");
+    } else if (ch.startsWith("variables")) setOnglet("variables");
+    else if (ch.startsWith("parametres")) setOnglet("parametres");
+    else if (ch.startsWith("jeux")) setOnglet("sources");
+    else if (ch.startsWith("usages")) setOnglet("usages");
+    else setOnglet("definition");
+    const t = setTimeout(() => allerVers(ch), 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cible]);
+  const nbErreurs = (prefixe: string) => erreurs.filter((e) => e.chemin.startsWith(prefixe)).length;
 
   return (
     <div className="flex h-full min-h-0">
@@ -52,21 +113,26 @@ export default function Donnees({ editeur, version, lectureSeule, enregistrer }:
         {ONGLETS.map(([k, l, aide]) => (
           <button key={k} type="button" onClick={() => setOnglet(k)}
             className={`mb-0.5 block w-full rounded px-2 py-1.5 text-left ${onglet === k ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
-            <div className="text-sm">{l}</div>
+            <div className="flex items-center text-sm">{l}
+              {(() => { const n = nbErreurs(({ definition: "#", corps: "corps", variables: "variables", parametres: "parametres", sources: "jeux", usages: "usages", apercu: "#" } as Record<Onglet, string>)[k]);
+                return n ? <span className="ml-auto rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground" title={`${n} erreur(s)`}>{n}</span> : null; })()}
+            </div>
             <div className={`text-[10px] ${onglet === k ? "opacity-80" : "text-muted-foreground"}`}>{aide}</div>
           </button>
         ))}
       </nav>
+      <CtxErreurs.Provider value={erreurs}><CtxCible.Provider value={cible}>
       <div className="min-w-0 flex-1 overflow-auto p-5">
         {onglet === "definition" && <OngletDefinition d={d} editeur={editeur} version={version} ro={lectureSeule} ouvrirCorps={ouvrirCorps} />}
-        {onglet === "corps" && <OngletCorps d={d} editeur={editeur} ro={lectureSeule} actif={corpsActif} setActif={setCorpsActif} />}
+        {onglet === "corps" && <OngletCorps d={d} editeur={editeur} ro={lectureSeule} actif={corpsActif} setActif={setCorpsActif} sous={sousCorps} setSous={setSousCorps} />}
         {onglet === "variables" && <OngletVariables d={d} editeur={editeur} ro={lectureSeule} />}
         {onglet === "parametres" && <Cadre titre="Paramètres et sélection" aide="Demandés au lancement (période, collaborateurs, plan de paie…) ; utilisables dans les formules sous la forme @code.">
-          <div className="max-w-xl"><ParametresEditeur d={d} ro={lectureSeule} m={editeur.modifier} /></div></Cadre>}
+          <div className="max-w-xl" data-chemin="parametres"><ParametresEditeur d={d} ro={lectureSeule} m={editeur.modifier} /></div></Cadre>}
         {onglet === "sources" && <OngletSources d={d} editeur={editeur} ro={lectureSeule} />}
         {onglet === "usages" && <OngletUsages d={d} editeur={editeur} ro={lectureSeule} />}
         {onglet === "apercu" && <OngletApercu d={d} version={version} ro={lectureSeule} enregistrer={enregistrer} />}
       </div>
+      </CtxCible.Provider></CtxErreurs.Provider>
     </div>
   );
 }
@@ -93,6 +159,7 @@ const td = "border-b px-1 py-0.5 align-middle";
 function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definition; editeur: Editeur; version: Version; ro: boolean; ouvrirCorps: (c: string) => void }) {
   const [nouveau, setNouveau] = useState<{ libelle: string; nature: Corps["nature"] }>({ libelle: "", nature: "LIGNES" });
   const corps = d.corps ?? [];
+  const erreurs = useContext(CtxErreurs);
   const dndCorps = useGlisser((de, vers) => editeur.modifier((x) => { deplacer(x.corps!, de, vers); }, "co-dnd"), !ro);
   const ajouter = () => {
     const code = CODE(nouveau.libelle) || `corps_${corps.length + 1}`;
@@ -125,8 +192,9 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
           <thead><tr>{["#", "Code", "Libellé", "Nature", "Colonnes", "Lignes", "Rubriques", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
             {corps.map((c, i) => (
-              <tr key={c.code} {...dndCorps.ligne(i)} className={`hover:bg-muted/30 ${dndCorps.ligne(i).className}`}>
-                <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dndCorps.poignee(i)} {i + 1}</td>
+              <tr key={c.code} {...dndCorps.ligne(i)} data-chemin={`corps[${i}]`} title={ligneErreur(erreurs, `corps[${i}]`).title}
+                className={`hover:bg-muted/30 ${ligneErreur(erreurs, `corps[${i}]`).rouge} ${dndCorps.ligne(i).className}`}>
+                <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dndCorps.poignee(i)} {ligneErreur(erreurs, `corps[${i}]`).icone}{i + 1}</td>
                 <td className={`${td} font-mono text-xs`}>{c.code}</td>
                 <td className={td}>{c.libelle}</td>
                 <td className={td}>{c.nature === "LIGNES" ? "Lignes de rubriques" : "Cases"}</td>
@@ -191,10 +259,14 @@ function renommerDansCorps(x: Definition, corps: string, genre: "colonne" | "lig
   }
 }
 
-function OngletCorps({ d, editeur, ro, actif, setActif }: { d: Definition; editeur: Editeur; ro: boolean; actif: string | null; setActif: (c: string) => void }) {
+type SousCorps = "rubriques" | "colonnes" | "lignes";
+function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
+  d: Definition; editeur: Editeur; ro: boolean; actif: string | null; setActif: (c: string) => void; sous: SousCorps; setSous: (s: SousCorps) => void;
+}) {
+  const erreurs = useContext(CtxErreurs);
   const corps = d.corps ?? [];
   const c = corps.find((z) => z.code === actif) ?? corps[0];
-  const [sous, setSous] = useState<"rubriques" | "colonnes" | "lignes">("rubriques");
+  const ci = c ? corps.indexOf(c) : -1;
   if (!c) return <p className="text-sm text-muted-foreground">Aucun corps. Ajoutez-en un dans l'onglet Définition.</p>;
   const majC = (fn: (c: Corps) => void, cle: string) => editeur.modifier((x) => { const z = x.corps!.find((y) => y.code === c.code); if (z) fn(z); }, `${cle}:${c.code}`);
 
@@ -225,20 +297,23 @@ function OngletCorps({ d, editeur, ro, actif, setActif }: { d: Definition; edite
           {([["rubriques", `Rubriques (${(c.affectations ?? []).length})`], ["colonnes", `Colonnes (${c.colonnes.length})`],
             ...(c.nature === "CASES" ? [["lignes", `Lignes (${(c.lignes ?? []).length})`]] : [])] as [typeof sous, string][]).map(([k, l]) => (
             <button key={k} type="button" onClick={() => setSous(k)}
-              className={`-mb-px border-b-2 px-3 py-1.5 ${sous === k ? "border-primary font-medium" : "border-transparent text-muted-foreground"}`}>{l}</button>
+              className={`-mb-px border-b-2 px-3 py-1.5 ${sous === k ? "border-primary font-medium" : "border-transparent text-muted-foreground"}`}>{l}
+              {(() => { const n = messagesDe(erreurs, `corps[${ci}].${k === "rubriques" ? "affectations" : k}`).length;
+                return n ? <span className="ml-1 rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground">{n}</span> : null; })()}</button>
           ))}
         </div>
-        {sous === "colonnes" && <GrilleColonnes c={c} ro={ro} majC={majC} editeur={editeur} />}
-        {sous === "lignes" && c.nature === "CASES" && <GrilleLignes c={c} ro={ro} majC={majC} editeur={editeur} />}
-        {sous === "rubriques" && <GrilleAffectations c={c} d={d} ro={ro} majC={majC} editeur={editeur} />}
+        {sous === "colonnes" && <GrilleColonnes c={c} ci={ci} ro={ro} majC={majC} editeur={editeur} />}
+        {sous === "lignes" && c.nature === "CASES" && <GrilleLignes c={c} ci={ci} ro={ro} majC={majC} editeur={editeur} />}
+        {sous === "rubriques" && <GrilleAffectations c={c} ci={ci} d={d} ro={ro} majC={majC} editeur={editeur} />}
       </div>
       <aside className="w-40 shrink-0">
         <div className="rounded border p-2">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">Corps</div>
-          {corps.map((z) => (
-            <label key={z.code} className="flex cursor-pointer items-center gap-1.5 py-0.5 text-sm">
+          {corps.map((z, zi) => (
+            <label key={z.code} className={`flex cursor-pointer items-center gap-1.5 py-0.5 text-sm ${messagesDe(erreurs, `corps[${zi}]`).length ? "text-destructive" : ""}`}>
               <input type="radio" checked={z.code === c.code} onChange={() => setActif(z.code)} />
               <span className="truncate">{z.libelle}</span>
+              {messagesDe(erreurs, `corps[${zi}]`).length > 0 && <AlertTriangle className="ml-auto h-3 w-3 shrink-0" />}
             </label>
           ))}
         </div>
@@ -251,8 +326,9 @@ const TYPES_COLONNE: { v: TypeColonneCorps; l: string }[] = [
   { v: "MONTANT", l: "Montant" }, { v: "NOMBRE", l: "Nombre" }, { v: "TAUX", l: "Taux" }, { v: "TEXTE", l: "Texte" }, { v: "DATE", l: "Date" },
 ];
 
-function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
+function GrilleColonnes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
   const dnd = useGlisser((de, vers) => majC((z) => { deplacer(z.colonnes, de, vers); }, "co-dnd"), !ro);
+  const erreurs = useContext(CtxErreurs);
   const { masques } = useReferentiels();
   const [codes, setCodes] = useState<Record<number, string>>({});
   const renommer = (i: number) => {
@@ -269,9 +345,9 @@ function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC:
       <table className="w-full max-w-4xl border text-sm">
         <thead><tr>{["#", "Code", "Intitulé colonne", "Sigle", "Type", "Masque", "Total", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
-          {c.colonnes.map((col, i) => (
-            <tr key={i} {...dnd.ligne(i)}>
-              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {i + 1}</td>
+          {c.colonnes.map((col, i) => { const er = ligneErreur(erreurs, `corps[${ci}].colonnes[${i}]`); return (
+            <tr key={i} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title} className={`${er.rouge} ${dnd.ligne(i).className}`}>
+              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{i + 1}</td>
               <td className={`${td} w-32`}><input className={`${classeChamp} font-mono`} disabled={ro} value={codes[i] ?? col.code}
                 onChange={(e) => setCodes({ ...codes, [i]: e.target.value })} onBlur={() => codes[i] !== undefined && renommer(i)}
                 onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") renommer(i); }} /></td>
@@ -299,7 +375,7 @@ function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC:
                     }, "csup");
                 }}><Trash2 className="inline h-3 w-3 text-destructive" /></button></>}</td>
             </tr>
-          ))}
+          ); })}
         </tbody>
       </table>
       {!ro && <Button size="sm" variant="outline" className="mt-2" onClick={() => majC((z) => {
@@ -310,9 +386,10 @@ function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC:
   );
 }
 
-function GrilleLignes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
+function GrilleLignes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
   const lignes = c.lignes ?? [];
   const dnd = useGlisser((de, vers) => majC((z) => { deplacer(z.lignes!, de, vers); }, "lo-dnd"), !ro);
+  const erreurs = useContext(CtxErreurs);
   const [codes, setCodes] = useState<Record<number, string>>({});
   const renommer = (i: number) => {
     const nouveau = CODE(codes[i] ?? "");
@@ -328,9 +405,9 @@ function GrilleLignes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (
       <table className="w-full max-w-2xl border text-sm">
         <thead><tr>{["#", "Code", "Intitulé ligne", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
-          {lignes.map((l, i) => (
-            <tr key={i} {...dnd.ligne(i)}>
-              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {i + 1}</td>
+          {lignes.map((l, i) => { const er = ligneErreur(erreurs, `corps[${ci}].lignes[${i}]`); return (
+            <tr key={i} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title} className={`${er.rouge} ${dnd.ligne(i).className}`}>
+              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{i + 1}</td>
               <td className={`${td} w-40`}><input className={`${classeChamp} font-mono`} disabled={ro} value={codes[i] ?? l.code}
                 onChange={(e) => setCodes({ ...codes, [i]: e.target.value })} onBlur={() => codes[i] !== undefined && renommer(i)}
                 onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") renommer(i); }} /></td>
@@ -344,7 +421,7 @@ function GrilleLignes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (
                   (z.affectations ?? []).forEach((a) => (Object.keys(a.cibles) as AttributAffecte[]).forEach((k) => { if (a.cibles[k]!.startsWith(`${l.code}.`)) delete a.cibles[k]; }));
                 }, "lsup")}><Trash2 className="inline h-3 w-3 text-destructive" /></button></>}</td>
             </tr>
-          ))}
+          ); })}
         </tbody>
       </table>
       {!ro && <Button size="sm" variant="outline" className="mt-2" onClick={() => majC((z) => {
@@ -362,7 +439,7 @@ function ciblesDuCorps(c: Corps): { v: string; l: string }[] {
     : (c.lignes ?? []).flatMap((l) => c.colonnes.map((col) => ({ v: `${l.code}.${col.code}`, l: `${l.libelle} · ${col.libelle}` })));
 }
 
-function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definition; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
+function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: number; d: Definition; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
   const { rubriques } = useReferentiels();
   const [q, setQ] = useState("");
   const [ajout, setAjout] = useState(false);
@@ -374,6 +451,9 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
     || nomRub(a.rubrique).toLowerCase().includes(bas) || (a.groupe ?? "").toLowerCase().includes(bas) || (a.formule ?? "").toLowerCase().includes(bas));
   const majA = (i: number, fn: (a: Affectation) => void, cle: string) => majC((z) => fn(z.affectations![i]), `${cle}${i}`);
   const autres = (d.corps ?? []).filter((z) => z.code !== c.code);
+  const erreurs = useContext(CtxErreurs);
+  const cible = useContext(CtxCible);
+  useEffect(() => { if (cible?.chemin.startsWith(`corps[${ci}].affectations`)) setQ(""); }, [cible, ci]);   // la ligne visée ne reste pas cachée par le filtre
   // RG-EDT-LIGNES-02 (Adil DAIA) : une ligne fusionnée voyage avec les rubriques qui lui sont jointes ;
   // on ne dépose jamais entre une rubrique et ses fusions, et une fusion sans rubrique au-dessus est défaite.
   const dnd = useGlisser((de, vers) => majC((z) => {
@@ -418,9 +498,10 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
                 title={h === "Nulls" ? "Imprimée même quand ses valeurs sont à zéro. Une rubrique sans aucune valeur n'est jamais imprimée." : h === "Fusion ↑" ? "S'ajoute à la ligne au-dessus : une seule ligne imprimée (somme ; « en – » soustrait)" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {visibles.map(({ a, i }) => (
-              <tr key={i} {...dnd.ligne(i)} className={`hover:bg-muted/30 ${a.fusion ? "bg-sky-50/60" : ""} ${dnd.ligne(i).className}`}>
-                <td className={`${td} w-12 whitespace-nowrap text-center text-xs text-muted-foreground`}>{dnd.poignee(i)} {a.fusion ? "↳" : i + 1}</td>
+            {visibles.map(({ a, i }) => { const er = ligneErreur(erreurs, `corps[${ci}].affectations[${i}]`); return (
+              <tr key={i} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title}
+                className={`hover:bg-muted/30 ${a.fusion && !er.rouge ? "bg-sky-50/60" : ""} ${er.rouge} ${dnd.ligne(i).className}`}>
+                <td className={`${td} w-12 whitespace-nowrap text-center text-xs text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{a.fusion ? "↳" : i + 1}</td>
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
                     <td className={`${td} min-w-[240px]`} colSpan={2}>
@@ -482,7 +563,7 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
                   <button type="button" className="ml-1" title="Retirer" onClick={() => majC((z) => { z.affectations!.splice(i, 1); }, "as")}><Trash2 className="inline h-3 w-3 text-destructive" /></button>
                 </>}</td>
               </tr>
-            ))}
+            ); })}
             {!affs.length && <tr><td colSpan={14} className="p-6 text-center text-sm text-muted-foreground">
               Aucune rubrique. « Ajouter des rubriques » permet d'en choisir plusieurs et de leur donner la même répartition.</td></tr>}
           </tbody>
@@ -585,6 +666,7 @@ function OngletVariables({ d, editeur, ro }: { d: Definition; editeur: Editeur; 
   const vars = d.variables ?? [];
   const majV = (i: number, fn: (v: Variable) => void, cle: string) => editeur.modifier((x) => fn(x.variables![i]), `v${i}:${cle}`);
   const dnd = useGlisser((de, vers) => editeur.modifier((x) => { deplacer(x.variables!, de, vers); }, "vo-dnd"), !ro);
+  const erreurs = useContext(CtxErreurs);
   const manquantes = VARIABLES_BULLETIN.filter((v) => !vars.some((x) => x.code === v.code));
   return (
     <Cadre titre="Variables" aide="Valeurs nommées que les mises en forme affichent (var.code), sans connaître leur origine : changer la source ne touche aucune mise en forme."
@@ -600,8 +682,9 @@ function OngletVariables({ d, editeur, ro }: { d: Definition; editeur: Editeur; 
         <thead><tr>{["#", "Code", "Libellé", "Type", "Valeur (formule)", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
           {vars.map((v, i) => (
-            <tr key={i} {...dnd.ligne(i)} className={`align-top ${dnd.ligne(i).className}`}>
-              <td className={`${td} w-8 pt-2 text-center`}>{dnd.poignee(i)}</td>
+            <tr key={i} {...dnd.ligne(i)} data-chemin={`variables[${i}]`} title={ligneErreur(erreurs, `variables[${i}]`).title}
+              className={`align-top ${ligneErreur(erreurs, `variables[${i}]`).rouge} ${dnd.ligne(i).className}`}>
+              <td className={`${td} w-8 whitespace-nowrap pt-2 text-center`}>{dnd.poignee(i)}{ligneErreur(erreurs, `variables[${i}]`).icone}</td>
               <td className={`${td} w-44`}><input className={`${classeChamp} font-mono`} disabled={ro} value={v.code} onKeyDown={(e) => e.stopPropagation()}
                 onChange={(e) => majV(i, (z) => { z.code = CODE(e.target.value) || z.code; }, "c")} /><div className="mt-0.5 text-[10px] text-muted-foreground">var.{v.code}</div></td>
               <td className={`${td} w-52`}><input className={classeChamp} disabled={ro} value={v.libelle} onKeyDown={(e) => e.stopPropagation()}

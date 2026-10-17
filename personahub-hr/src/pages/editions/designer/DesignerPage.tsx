@@ -25,7 +25,7 @@ import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editi
 import Canevas from "./Canevas";
 import Inspecteur, { renommerSousParties } from "./Inspecteur";
 import Structure from "./Structure";
-import Donnees from "./Donnees";
+import Donnees, { type CibleErreur } from "./Donnees";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
 
@@ -52,6 +52,7 @@ export default function DesignerPage() {
   const [zoom, setZoom] = useState(1);
   // RG-EDT-DONNEES-01 : on définit ce que l'état contient (Données) avant sa mise en forme
   const [etape, setEtape] = useState<"donnees" | "forme">("donnees");
+  const [cibleDonnees, setCibleDonnees] = useState<CibleErreur>(null);
   const [apercu, setApercu] = useState<{ ouvert: boolean; url?: string; valeurs: Valeurs }>({ ouvert: false, valeurs: {} });
   const [json, setJson] = useState<{ ouvert: boolean; texte: string; erreur?: string }>({ ouvert: false, texte: "" });
   const [copieDlg, setCopieDlg] = useState<{ ouvert: boolean; code: string; libelle: string }>({ ouvert: false, code: "", libelle: "" });
@@ -264,6 +265,13 @@ export default function DesignerPage() {
   const allerA = (err: ErreurValidation) => {
     const d = editeur.definition;
     if (!d) return;
+    // RG-EDT-DONNEES (Adil DAIA) : une erreur de données ouvre l'étape 1 sur la ligne fautive
+    if (/^(parametres|jeux|corps|variables|usages)\b/.test(err.chemin)) {
+      setEtape("donnees");
+      setCibleDonnees({ chemin: err.chemin, n: Date.now() });
+      return;
+    }
+    setEtape("forme");
     const c = cibleErreur(err.chemin);
     const b = c.bande !== undefined ? d.bandes[c.bande] : undefined;
     const el = b && c.element !== undefined ? b.elements[c.element] : undefined;
@@ -346,7 +354,7 @@ export default function DesignerPage() {
         </div>
 
         {etape === "donnees" ? (
-          <div className="min-h-0 flex-1"><Donnees editeur={editeur} version={version} lectureSeule={lectureSeule} enregistrer={enregistrer} /></div>
+          <div className="min-h-0 flex-1"><Donnees editeur={editeur} version={version} lectureSeule={lectureSeule} enregistrer={enregistrer} erreurs={erreurs ?? undefined} cible={cibleDonnees} /></div>
         ) : (
           <div className="flex min-h-0 flex-1">
             <aside className="w-64 shrink-0 border-r"><Structure editeur={editeur} lectureSeule={lectureSeule} /></aside>
@@ -366,8 +374,9 @@ export default function DesignerPage() {
               <button type="button" className="ml-auto font-normal text-muted-foreground" onClick={() => setErreurs(null)}>Masquer</button>
             </div>
             {erreurs.map((err, i) => (
-              <button key={i} type="button" onClick={() => allerA(err)} className="block w-full truncate text-left text-xs hover:underline">
-                <span className="font-mono text-muted-foreground">{err.chemin}</span> — {err.message}
+              <button key={i} type="button" onClick={() => allerA(err)} title="Aller à l'anomalie"
+                className="block w-full truncate rounded px-1 text-left text-xs text-destructive hover:bg-destructive/10 hover:underline">
+                <span className="font-mono text-destructive/70">{err.chemin}</span> — {err.message} <span className="text-muted-foreground">→</span>
               </button>
             ))}
           </div>
