@@ -19,6 +19,8 @@ import {
 import type { Editeur } from "./useEditeur";
 import { ApercuImage, DialogueRognage, TYPE_DND_IMAGE, deposerFichier, tailleNaturelle, urlDe } from "./BibliothequeImages";
 import { PLANS, changerPlan } from "./plans";
+import { aligner, dansLeLasso, idsSelection, memeBande, repartir, trouver, type Alignement } from "./selection";
+import { aimanter, poserGuides, useGuides } from "./guides";
 import { cssPolice } from "./Polices";
 import { cssBordures, hexDe } from "./Couleurs";
 
@@ -41,14 +43,54 @@ export default function Canevas({ editeur, zoom, lectureSeule, erreursParElement
   const d = editeur.definition!;
   const mm = PX_PAR_MM * zoom;
   const largeur = largeurUtile(d.page);
+  const racine = useRef<HTMLDivElement>(null);
+  const guides = useGuides();
+  const [lasso, setLasso] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+
+  /** Lasso : tirer sur le fond d'une bande sélectionne tous les objets touchés (Maj : ajoute). */
+  const demarrerLasso = (e: React.PointerEvent, bandeId: string) => {
+    if (e.button !== 0) return;
+    const x1 = e.clientX, y1 = e.clientY, ajout = e.shiftKey || e.ctrlKey || e.metaKey;
+    const avant = idsSelection(editeur.selection);
+    const cible = e.currentTarget as HTMLElement;
+    cible.setPointerCapture(e.pointerId);
+    let r = { x1, y1, x2: x1, y2: y1 };
+    const bouger = (ev: PointerEvent) => { r = { x1, y1, x2: ev.clientX, y2: ev.clientY }; setLasso(r); };
+    const finir = () => {
+      cible.removeEventListener("pointermove", bouger);
+      cible.removeEventListener("pointerup", finir);
+      setLasso(null);
+      if (Math.abs(r.x2 - r.x1) < 4 && Math.abs(r.y2 - r.y1) < 4) {           // simple clic : la bande
+        if (!ajout) editeur.setSelection({ bande: bandeId, element: null });
+        return;
+      }
+      const touches = dansLeLasso(racine.current!, r);
+      const ids = ajout ? [...new Set([...avant, ...touches])] : touches;
+      if (!ids.length) { editeur.setSelection({ bande: bandeId, element: null }); return; }
+      const principal = ids[0];
+      const b = d.bandes.find((x) => x.elements.some((z) => z.id === principal));
+      editeur.setSelection({ bande: b?.id ?? bandeId, element: principal, multi: ids.length > 1 ? ids : null });
+    };
+    cible.addEventListener("pointermove", bouger);
+    cible.addEventListener("pointerup", finir);
+  };
 
   return (
-    <div className="mx-auto w-fit pb-24" style={{ minWidth: largeur * mm + 160 }}>
+    <div ref={racine} className="relative mx-auto w-fit pb-24" style={{ minWidth: largeur * mm + 160 }}>
       <Regle largeur={largeur} mm={mm} />
       {d.bandes.map((b) => (
         <BandeVue key={b.id} bande={b} editeur={editeur} mm={mm} largeur={largeur}
-          lectureSeule={lectureSeule} erreursParElement={erreursParElement} />
+          lectureSeule={lectureSeule} erreursParElement={erreursParElement} demarrerLasso={demarrerLasso}
+          guidesY={guides.y.filter((g) => g.bande === b.id).map((g) => g.v)} />
       ))}
+      {/* repères verticaux : toute la hauteur de la page */}
+      {guides.x.map((x) => (
+        <div key={x} className="pointer-events-none absolute bottom-24 top-5 z-30 w-px bg-fuchsia-500" style={{ left: 150 + x * mm }} />
+      ))}
+      {lasso && (
+        <div className="pointer-events-none fixed z-40 border border-primary bg-primary/10"
+          style={{ left: Math.min(lasso.x1, lasso.x2), top: Math.min(lasso.y1, lasso.y2), width: Math.abs(lasso.x2 - lasso.x1), height: Math.abs(lasso.y2 - lasso.y1) }} />
+      )}
       {d.bandes.length === 0 && (
         <div className="ml-[150px] rounded border border-dashed p-8 text-center text-sm text-muted-foreground" style={{ width: largeur * mm }}>
           Aucune bande : ajoutez-en une depuis le panneau de gauche.
@@ -72,8 +114,9 @@ function Regle({ largeur, mm }: { largeur: number; mm: number }) {
   );
 }
 
-function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement }: {
+function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement, demarrerLasso, guidesY }: {
   bande: Bande; editeur: Editeur; mm: number; largeur: number; lectureSeule: boolean; erreursParElement: Map<string, string>;
+  demarrerLasso: (e: React.PointerEvent, bandeId: string) => void; guidesY: number[];
 }) {
   const corps = useRef<HTMLDivElement>(null);
   const selectionnee = editeur.selection.bande === bande.id && !editeur.selection.element;
@@ -191,7 +234,7 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
           data-bande={bande.id}
           onDragOver={(e) => { if (!lectureSeule) e.preventDefault(); }}
           onDrop={deposer}
-          onPointerDown={(e) => { if (e.target === corps.current) editeur.setSelection({ bande: bande.id, element: null }); }}
+          onPointerDown={(e) => { if (e.target === corps.current) demarrerLasso(e, bande.id); }}
           className={`relative overflow-visible border-b border-dashed bg-white ${selectionnee ? "outline outline-2 outline-primary/40" : ""}`}
           style={{
             width: largeur * mm,
@@ -204,6 +247,7 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
             <ElementVue key={el.id} el={el} bande={bande} editeur={editeur} mm={mm} largeur={largeur}
               lectureSeule={lectureSeule} erreur={erreursParElement.get(el.id)} />
           ))}
+          {guidesY.map((y) => <div key={y} className="pointer-events-none absolute left-0 right-0 z-30 h-px bg-fuchsia-500" style={{ top: y * mm }} />)}
         </div>
         {!lectureSeule && (
           <div onPointerDown={tirerBord} title="Hauteur de la bande"
@@ -218,38 +262,74 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
   el: Element; bande: Bande; editeur: Editeur; mm: number; largeur: number; lectureSeule: boolean; erreur?: string;
 }) {
   const selectionne = editeur.selection.element === el.id;
+  const multi = editeur.selection.multi ?? [];
+  const dansMulti = multi.length > 1 && multi.includes(el.id);
 
   const tirer = (e: React.PointerEvent, mode: "deplacer" | "taille") => {
     e.stopPropagation();
+    if (e.button !== 0 && dansMulti) return;                          // clic droit sur une sélection : on la garde
+    // Maj ou Ctrl + clic : ajoute / retire l'objet de la sélection (RG-EDT-FORME-05)
+    if (mode === "deplacer" && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+      const actuels = idsSelection(editeur.selection);
+      const ids = actuels.includes(el.id) ? actuels.filter((x) => x !== el.id) : [...actuels, el.id];
+      const principal = ids.includes(editeur.selection.element ?? "") ? editeur.selection.element : ids[ids.length - 1] ?? null;
+      const bandePrincipale = principal ? editeur.definition!.bandes.find((b) => b.elements.some((x) => x.id === principal))?.id ?? null : null;
+      editeur.setSelection({ bande: bandePrincipale, element: principal, multi: ids.length > 1 ? ids : null });
+      return;
+    }
     // un clic sur une colonne de tableau ou de grille la sélectionne (propriétés à droite)
     const colonne = (e.target as HTMLElement).closest("[data-colonne]")?.getAttribute("data-colonne") ?? null;
-    editeur.setSelection({ bande: bande.id, element: el.id, colonne });
+    const groupe = dansMulti && mode === "deplacer" ? multi : [el.id];
+    editeur.setSelection(dansMulti && mode === "deplacer"
+      ? { bande: bande.id, element: el.id, multi }
+      : { bande: bande.id, element: el.id, colonne });
     if (lectureSeule || e.button !== 0) return;
     e.preventDefault();
     const x0 = e.clientX, y0 = e.clientY;
     const { x, y, l, h } = el;
+    const depart = new Map(trouver(editeur.definition!, groupe).map((o) => [o.el.id, { x: o.el.x, y: o.el.y }]));
     const cible = e.currentTarget as HTMLElement;
     const hauteurBande0 = bande.hauteur;
     const prise = (y0 - cible.getBoundingClientRect().top) / mm;      // point saisi, depuis le haut de l'élément
+    const seuil = 6 / mm;                                              // ~6 px d'aimantation, quel que soit le zoom
     cible.setPointerCapture(e.pointerId);
+    let bouge = false;
     const bouger = (ev: PointerEvent) => {
-      const dx = (ev.clientX - x0) / mm, dy = (ev.clientY - y0) / mm;
-      editeur.modifierElement(el.id, (z, b) => {
-        if (mode === "deplacer") {
-          z.x = Math.min(Math.max(0, arrondir(x + dx, ev.altKey)), Math.max(0, largeur - z.l));
-          z.y = Math.max(0, arrondir(y + dy, ev.altKey));
-        } else {
+      let dx = (ev.clientX - x0) / mm, dy = (ev.clientY - y0) / mm;
+      if (!bouge && Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3) return;   // un simple clic ne déplace rien
+      bouge = true;
+      if (mode === "deplacer") {
+        // aimantation sur les bords et centres des autres objets (Alt : libre)
+        let nx = arrondir(x + dx, ev.altKey), ny = arrondir(y + dy, ev.altKey);
+        if (!ev.altKey) {
+          const a = aimanter(editeur.definition!, bande.id, groupe, { x: nx, y: ny, l, h }, largeur, seuil);
+          nx += a.dx; ny += a.dy;
+          poserGuides(a.guides);
+        }
+        dx = nx - x; dy = ny - y;
+        editeur.modifier((d) => {
+          for (const { el: z, bande: b } of trouver(d, groupe)) {
+            const p0 = depart.get(z.id)!;
+            z.x = Math.min(Math.max(0, Math.round((p0.x + dx) * 10) / 10), Math.max(0, largeur - z.l));
+            z.y = Math.max(0, Math.round((p0.y + dy) * 10) / 10);
+            b.hauteur = Math.max(b.hauteur, z.y + z.h);
+          }
+        }, `deplacer:${groupe.join(",")}`);
+      } else {
+        editeur.modifierElement(el.id, (z, b) => {
           z.l = Math.max(z.type === "LIGNE" ? 0.5 : 1, Math.min(arrondir(l + dx, ev.altKey), largeur - z.x));
           z.h = Math.max(z.type === "LIGNE" ? 0.1 : 1, arrondir(h + dy, ev.altKey));
           if (z.type === "TABLEAU") ajusterColonnes(z);
-        }
-        b.hauteur = Math.max(b.hauteur, z.y + z.h);
-      }, `${mode}:${el.id}`);
+          b.hauteur = Math.max(b.hauteur, z.y + z.h);
+        }, `taille:${el.id}`);
+      }
     };
     const finir = (ev: PointerEvent) => {
       cible.removeEventListener("pointermove", bouger);
       cible.removeEventListener("pointerup", finir);
-      if (mode !== "deplacer") return;
+      poserGuides({ x: [], y: [] });
+      if (!bouge && groupe.length > 1) { editeur.setSelection({ bande: bande.id, element: el.id, colonne }); return; }   // clic : cet objet seul
+      if (mode !== "deplacer" || !bouge || groupe.length > 1) return;
       // RG-EDT-FORME (Adil DAIA) : lâché au-dessus d'une autre bande (en-tête, détail, pied…), l'élément y passe
       const sous = document.elementsFromPoint(ev.clientX, ev.clientY)
         .filter((n) => !cible.contains(n))
@@ -288,30 +368,45 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
 
   return (
     <div
+      data-element={el.id}
       onPointerDown={(e) => tirer(e, "deplacer")}
       onContextMenu={(e) => {
         if (lectureSeule) return;
         e.preventDefault();
-        editeur.setSelection({ bande: bande.id, element: el.id });
+        if (!dansMulti) editeur.setSelection({ bande: bande.id, element: el.id });
         setMenu({ x: e.clientX, y: e.clientY });
       }}
       onDoubleClick={() => { if (!lectureSeule && el.type === "IMAGE") setRogner(true); }}
       title={`${el.id}${erreur ? ` — ${erreur}` : ""}${el.type === "IMAGE" ? " — double-clic : rogner" : ""}`}
       className={`absolute select-none ${lectureSeule ? "cursor-default" : "cursor-move"} ${
-        selectionne ? "z-10 outline outline-2 outline-primary" : erreur ? "outline outline-1 outline-destructive" : "hover:outline hover:outline-1 hover:outline-primary/50"}`}
+        selectionne && !dansMulti ? "z-10 outline outline-2 outline-primary"
+          : dansMulti ? `z-10 outline outline-2 ${selectionne ? "outline-primary" : "outline-dashed outline-primary/70"} bg-primary/5`
+          : erreur ? "outline outline-1 outline-destructive" : "hover:outline hover:outline-1 hover:outline-primary/50"}`}
       style={{ left: el.x * mm, top: el.y * mm, width: el.l * mm, height: Math.max(el.h * mm, 2) }}
     >
       <Contenu el={el} mm={mm} colonne={selectionne ? editeur.selection.colonne ?? null : null} />
       {(el.verrou && el.verrou !== "AUCUN") && <Lock className="absolute -right-1 -top-1 h-3 w-3 rounded bg-amber-100 text-amber-700" />}
       {el.condition && <Filter className="absolute -left-1 -top-1 h-3 w-3 rounded bg-sky-100 text-sky-700" />}
-      {selectionne && !lectureSeule && (
+      {selectionne && !dansMulti && !lectureSeule && (
         <div onPointerDown={(e) => tirer(e, "taille")}
           className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize border border-primary bg-white" />
       )}
       {menu && (
         <div className="fixed z-[100] w-60 rounded-md border bg-popover py-1 text-xs shadow-lg" style={{ left: menu.x, top: menu.y }}
           onPointerDown={(e) => e.stopPropagation()}>
-          {PLANS.map((p) => (
+          {dansMulti && <>
+            <div className="px-3 pb-1 pt-0.5 text-[10px] uppercase text-muted-foreground">{multi.length} objets sélectionnés</div>
+            {([["GAUCHE", "Aligner à gauche"], ["CENTRE_H", "Centrer horizontalement"], ["DROITE", "Aligner à droite"],
+               ["HAUT", "Aligner en haut"], ["MILIEU_V", "Centrer verticalement"], ["BAS", "Aligner en bas"]] as [Alignement, string][]).map(([m, l]) => (
+              <button key={m} type="button" className="w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+                disabled={["HAUT", "MILIEU_V", "BAS"].includes(m) && !memeBande(editeur.definition!, multi)}
+                onClick={() => { editeur.modifier((d) => aligner(d, multi, m, editeur.selection.element ?? undefined), `aligner`); setMenu(null); }}>{l}</button>
+            ))}
+            <button type="button" className="w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40" disabled={multi.length < 3}
+              onClick={() => { editeur.modifier((d) => repartir(d, multi, "H"), "repartir"); setMenu(null); }}>Répartir horizontalement</button>
+            <div className="my-1 border-t" />
+          </>}
+          {!dansMulti && PLANS.map((p) => (
             <button key={p.v} type="button" className="flex w-full items-center px-3 py-1.5 text-left hover:bg-accent"
               onClick={() => { editeur.modifier((d) => changerPlan(d, bande.id, el.id, p.v), `plan:${el.id}`); setMenu(null); }}>
               {p.l}<span className="ml-auto text-muted-foreground">{p.raccourci}</span>

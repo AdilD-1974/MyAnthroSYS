@@ -14,6 +14,7 @@ export interface Selection {
   bande: string | null;    // id de bande
   element: string | null;  // id d'élément
   colonne?: string | null; // id de colonne (tableau)
+  multi?: string[] | null;  // sélection multiple (≥ 2 objets, toutes bandes) ; `element` en est l'objet de référence
 }
 
 const HISTORIQUE_MAX = 100;

@@ -8,16 +8,25 @@
  * backend refuse les valeurs hors schéma, et la définition reste lisible.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
+import {
+  AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter,
+  AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ArrowDown, ArrowUp, Copy, MoveHorizontal, MoveVertical,
+  Maximize2, Plus, Trash2, X,
+} from "lucide-react";
 import {
   LIBELLES_BANDE, LIBELLES_ELEMENT, LIBELLES_PARAMETRE, RUBRIQUES_EN_TETE, copie, enLitteral, generateurIds, grilleDepuisCorps, identifiants, largeurUtile, nouvelId, tableauDepuisCorps,
   texteLitteral, type Affichage, type Bande, type Colonne, type Definition, type Element, type ElGrille, type ElImage, type ElTableau,
   type Jeu, type LigneRubrique, type Parametre, type Section, type Style, type TypeParametre,
 } from "@/pages/editions/types";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
 import FormuleInput from "./FormuleInput";
 import { ChoixImage, DialogueRognage } from "./BibliothequeImages";
 import { PLANS, changerPlan, rangPlan } from "./plans";
+import {
+  aligner, alignerPage, copier, dupliquer, memeBande, memeTaille, pleineLargeur, repartir, supprimer as supprimerObjets, trouver,
+  type Alignement, type AlignementPage,
+} from "./selection";
 import { ChoixPolice } from "./Polices";
 import { ChoixBordures, ChoixCouleur } from "./Couleurs";
 import { useReferentiels } from "./contexte";
@@ -107,6 +116,7 @@ export function nettoyer<T extends object>(obj: T | undefined): T | undefined {
 
 // ── panneau ─────────────────────────────────────────────────────────────────
 export default function Inspecteur({ editeur, lectureSeule }: { editeur: Editeur; lectureSeule: boolean }) {
+  if ((editeur.selection.multi?.length ?? 0) > 1) return <InspecteurMulti editeur={editeur} ro={lectureSeule} />;
   if (editeur.element && editeur.bande) return <InspecteurElement key={editeur.element.id} editeur={editeur} el={editeur.element} bande={editeur.bande} ro={lectureSeule} />;
   if (editeur.bande) return <InspecteurBande editeur={editeur} bande={editeur.bande} ro={lectureSeule} />;
   return <InspecteurModele editeur={editeur} ro={lectureSeule} />;
@@ -196,6 +206,7 @@ function InspecteurElement({ editeur, el, bande, ro }: { editeur: Editeur; el: E
           </Ligne>
         ))}
       </div>
+      {!ro && <AlignementPageBoutons editeur={editeur} ids={[el.id]} />}
       <div className="mb-2 grid grid-cols-2 gap-1">
         <Ligne libelle={`Superposition · plan ${rangPlan(d, bande.id, el.id).join(" / ")}`} aide="Ordre d'impression dans la bande (clic droit sur l'objet : mêmes commandes)">
           <div className="flex gap-0.5">
@@ -979,5 +990,146 @@ function RognageImage({ el, ro, maj }: { el: ElImage; ro: boolean; maj: (fn: (e:
       <DialogueRognage el={el} ouvert={ouvert} onFermer={() => setOuvert(false)}
         onValider={(x) => maj((e) => { if (x) e.rognage = x; else delete e.rognage; }, "rogn")} />
     </Ligne>
+  );
+}
+
+
+// ── sélection multiple (RG-EDT-FORME-05) ─────────────────────────────────────
+function Outil({ titre, onClick, disabled, children }: { titre: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button type="button" title={titre} disabled={disabled} onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded border border-input hover:bg-muted disabled:cursor-not-allowed disabled:opacity-35">
+      {children}
+    </button>
+  );
+}
+
+function AlignementPageBoutons({ editeur, ids }: { editeur: Editeur; ids: string[] }) {
+  const largeur = largeurUtile(editeur.definition!.page);
+  const page = (m: AlignementPage) => editeur.modifier((d) => alignerPage(d, ids, m, largeur), `page:${ids.join(",")}`);
+  return (
+    <Ligne libelle="Sur la page" aide="Aligne sur la largeur utile de la page (entre les marges)">
+      <div className="flex gap-1">
+        <Outil titre="Contre la marge gauche" onClick={() => page("GAUCHE")}><AlignStartVertical className="h-4 w-4" /></Outil>
+        <Outil titre="Centré sur la page" onClick={() => page("CENTRE")}><AlignCenterVertical className="h-4 w-4" /></Outil>
+        <Outil titre="Contre la marge droite" onClick={() => page("DROITE")}><AlignEndVertical className="h-4 w-4" /></Outil>
+        <Outil titre="Toute la largeur de la page" onClick={() => editeur.modifier((d) => pleineLargeur(d, ids, largeur), `pleine:${ids.join(",")}`)}>
+          <MoveHorizontal className="h-4 w-4" /></Outil>
+      </div>
+    </Ligne>
+  );
+}
+
+function InspecteurMulti({ editeur, ro }: { editeur: Editeur; ro: boolean }) {
+  const d = editeur.definition!;
+  const ids = editeur.selection.multi ?? [];
+  const objets = trouver(d, ids);
+  const ref = editeur.selection.element ?? ids[0];
+  const vertical = memeBande(d, ids);
+  const m = (fn: (x: Definition) => void, cle: string) => editeur.modifier(fn, `${cle}:${ids.join(",")}`);
+  const al = (a: Alignement) => m((x) => aligner(x, ids, a, ref), "al");
+  const refEl = objets.find((o) => o.el.id === ref)?.el;
+  const avecStyle = objets.filter((o) => !["LIGNE", "IMAGE", "CODE_BARRE"].includes(o.el.type));
+  const retirer = (id: string) => {
+    const reste = ids.filter((x) => x !== id);
+    const principal = reste.includes(ref) ? ref : reste[0];
+    const b = d.bandes.find((x) => x.elements.some((z) => z.id === principal));
+    editeur.setSelection({ bande: b?.id ?? null, element: principal ?? null, multi: reste.length > 1 ? reste : null });
+  };
+  return (
+    <div className="p-3">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary">{ids.length} objets</span>
+        {!ro && <>
+          <button type="button" title="Dupliquer (Ctrl+D)" className="ml-auto rounded p-1 hover:bg-muted" onClick={() => {
+            let n: string[] = [];
+            editeur.modifier((x) => { n = dupliquer(x, ids); });
+            editeur.setSelection({ bande: editeur.selection.bande, element: n[0] ?? null, multi: n.length > 1 ? n : null });
+          }}><Copy className="h-3.5 w-3.5" /></button>
+          <button type="button" title="Supprimer (Suppr)" className="rounded p-1 text-destructive hover:bg-destructive/10" onClick={() => {
+            editeur.modifier((x) => supprimerObjets(x, ids));
+            editeur.setSelection({ bande: editeur.selection.bande, element: null });
+          }}><Trash2 className="h-3.5 w-3.5" /></button>
+        </>}
+      </div>
+      <p className="mb-3 text-[11px] text-muted-foreground">
+        Référence : <b className="font-mono">{ref}</b> (contour plein) — les autres s'alignent sur elle. Maj+clic ajoute ou retire un objet ;
+        tirer sur le fond d'une bande sélectionne au lasso ; Ctrl+A tout sélectionne.
+      </p>
+
+      <Titre>Aligner</Titre>
+      <div className="mb-1 flex gap-1">
+        <Outil titre="Aligner à gauche" disabled={ro} onClick={() => al("GAUCHE")}><AlignStartVertical className="h-4 w-4" /></Outil>
+        <Outil titre="Centrer horizontalement" disabled={ro} onClick={() => al("CENTRE_H")}><AlignCenterVertical className="h-4 w-4" /></Outil>
+        <Outil titre="Aligner à droite" disabled={ro} onClick={() => al("DROITE")}><AlignEndVertical className="h-4 w-4" /></Outil>
+        <span className="mx-1 w-px bg-border" />
+        <Outil titre={vertical ? "Aligner en haut" : "Objets de bandes différentes : alignement vertical impossible"} disabled={ro || !vertical} onClick={() => al("HAUT")}><AlignStartHorizontal className="h-4 w-4" /></Outil>
+        <Outil titre={vertical ? "Centrer verticalement" : "Objets de bandes différentes"} disabled={ro || !vertical} onClick={() => al("MILIEU_V")}><AlignCenterHorizontal className="h-4 w-4" /></Outil>
+        <Outil titre={vertical ? "Aligner en bas" : "Objets de bandes différentes"} disabled={ro || !vertical} onClick={() => al("BAS")}><AlignEndHorizontal className="h-4 w-4" /></Outil>
+      </div>
+
+      <Titre>Répartir et uniformiser</Titre>
+      <div className="mb-1 flex gap-1">
+        <Outil titre="Répartir horizontalement (espaces égaux, 3 objets au moins)" disabled={ro || ids.length < 3} onClick={() => m((x) => repartir(x, ids, "H"), "rh")}>
+          <AlignHorizontalDistributeCenter className="h-4 w-4" /></Outil>
+        <Outil titre={vertical ? "Répartir verticalement (3 objets au moins)" : "Objets de bandes différentes"} disabled={ro || ids.length < 3 || !vertical} onClick={() => m((x) => repartir(x, ids, "V"), "rv")}>
+          <AlignVerticalDistributeCenter className="h-4 w-4" /></Outil>
+        <span className="mx-1 w-px bg-border" />
+        <Outil titre="Même largeur que la référence" disabled={ro} onClick={() => m((x) => memeTaille(x, ids, "LARGEUR", ref), "tl")}><MoveHorizontal className="h-4 w-4" /></Outil>
+        <Outil titre="Même hauteur que la référence" disabled={ro} onClick={() => m((x) => memeTaille(x, ids, "HAUTEUR", ref), "th")}><MoveVertical className="h-4 w-4" /></Outil>
+        <Outil titre="Même taille que la référence" disabled={ro} onClick={() => m((x) => memeTaille(x, ids, "LES_DEUX", ref), "tt")}><Maximize2 className="h-4 w-4" /></Outil>
+      </div>
+      {!ro && <AlignementPageBoutons editeur={editeur} ids={ids} />}
+
+      <Titre>Superposition</Titre>
+      <div className="mb-2 flex gap-1">
+        {PLANS.map((p) => (
+          <button key={p.v} type="button" disabled={ro} title={`${p.l} (${p.raccourci})`}
+            onClick={() => m((x) => { for (const o of trouver(x, ids)) changerPlan(x, o.bande.id, o.el.id, p.v); }, `plan${p.v}`)}
+            className="flex h-8 flex-1 items-center justify-center rounded border border-input text-xs hover:bg-muted disabled:opacity-50">
+            {{ PREMIER: "⤒", AVANCER: "↑", RECULER: "↓", ARRIERE: "⤓" }[p.v]}
+          </button>
+        ))}
+      </div>
+
+      {avecStyle.length > 0 && refEl && <>
+        <Titre>Style commun ({avecStyle.length} objet{avecStyle.length > 1 ? "s" : ""} de texte)</Titre>
+        <p className="mb-1 text-[11px] text-muted-foreground">Ce que vous changez ici s'applique à tous ; le reste de leur style est conservé.</p>
+        <StyleEditeur s={avecStyle.find((o) => o.el.id === ref)?.el.style ?? avecStyle[0].el.style} ro={ro}
+          onChange={(nouveau) => {
+            const avant = (avecStyle.find((o) => o.el.id === ref)?.el.style ?? avecStyle[0].el.style ?? {}) as Record<string, unknown>;
+            const n = nouveau as Record<string, unknown>;
+            const cles = [...new Set([...Object.keys(avant), ...Object.keys(n)])].filter((k) => JSON.stringify(avant[k]) !== JSON.stringify(n[k]));
+            if (!cles.length) return;
+            m((x) => {
+              for (const { el } of trouver(x, avecStyle.map((o) => o.el.id))) {
+                const st = { ...(el.style ?? {}) } as Record<string, unknown>;
+                for (const k of cles) { if (n[k] === undefined || n[k] === null) delete st[k]; else st[k] = n[k]; }
+                poser(el, "style", nettoyer(st as Style));
+              }
+            }, `style:${cles.join(",")}`);
+          }} />
+      </>}
+
+      <Titre>Objets sélectionnés</Titre>
+      <div className="space-y-0.5">
+        {objets.map(({ el, bande }) => (
+          <div key={el.id} className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs ${el.id === ref ? "bg-primary/10" : "hover:bg-muted"}`}>
+            <button type="button" className="truncate text-left" title="Faire de cet objet la référence d'alignement"
+              onClick={() => editeur.setSelection({ bande: bande.id, element: el.id, multi: ids })}>
+              <span className="font-mono">{el.id}</span> <span className="text-muted-foreground">· {LIBELLES_ELEMENT[el.type]} · {LIBELLES_BANDE[bande.type]}</span>
+            </button>
+            <button type="button" className="ml-auto text-muted-foreground hover:text-foreground" title="Retirer de la sélection" onClick={() => retirer(el.id)}>
+              <X className="h-3 w-3" /></button>
+          </div>
+        ))}
+      </div>
+      {!ro && (
+        <Button size="sm" variant="ghost" className="mt-2 w-full" onClick={() => {
+          const n = copier(d, ids);
+          toast({ title: `${n} objet(s) copié(s)`, description: "Ctrl+V pour coller, ici ou dans un autre modèle." });
+        }}>Copier (Ctrl+C)</Button>
+      )}
+    </div>
   );
 }

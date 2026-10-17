@@ -20,13 +20,14 @@ import { toast } from "@/hooks/use-toast";
 import {
   editionsApi, ErreurEdition, type ErreurValidation, type Fonction, type Masque, type SourceCatalogue, type Version,
 } from "@/lib/editionsApi";
-import { activerForme, cibleErreur, copie, type Definition, type Element } from "@/pages/editions/types";
+import { activerForme, cibleErreur, copie, largeurUtile, type Definition, type Element } from "@/pages/editions/types";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
 import Canevas from "./Canevas";
 import Inspecteur, { renommerSousParties } from "./Inspecteur";
 import Structure from "./Structure";
 import Donnees, { type CibleErreur } from "./Donnees";
 import { changerPlan } from "./plans";
+import { coller, copier as copierObjets, deplacer as deplacerObjets, dupliquer, idsSelection, supprimer as supprimerObjets, trouver } from "./selection";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
 
@@ -212,33 +213,61 @@ export default function DesignerPage() {
       if (ctrl && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); editeur.annuler(); return; }
       if (ctrl && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); editeur.retablir(); return; }
       const sel = editeur.selection;
+      const ids = idsSelection(sel);
+      const d0 = editeur.definition!;
       if (e.key === "Escape") { editeur.setSelection({ bande: sel.bande, element: null }); return; }
-      if (!sel.element || !sel.bande) return;
+      // Ctrl+A : tous les objets de la bande sélectionnée (sinon de toute la page)
+      if (ctrl && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        const bandes = sel.bande ? d0.bandes.filter((b) => b.id === sel.bande) : d0.bandes;
+        const tous = bandes.flatMap((b) => b.elements.map((x) => x.id));
+        if (!tous.length) return;
+        const b0 = d0.bandes.find((b) => b.elements.some((x) => x.id === tous[0]))!;
+        editeur.setSelection({ bande: b0.id, element: tous[0], multi: tous.length > 1 ? tous : null });
+        return;
+      }
+      // Ctrl+V : colle dans la bande sélectionnée (même dans un autre modèle)
+      if (ctrl && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        let res: { bande: string; ids: string[] } | null = null;
+        editeur.modifier((d) => { res = coller(d, sel.bande); });
+        const r = res as { bande: string; ids: string[] } | null;
+        if (r) editeur.setSelection({ bande: r.bande, element: r.ids[0], multi: r.ids.length > 1 ? r.ids : null });
+        else toast({ title: "Rien à coller", description: "Copiez d'abord des objets (Ctrl+C)." });
+        return;
+      }
+      if (!ids.length) return;
+      if (ctrl && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x")) {
+        e.preventDefault();
+        const n = copierObjets(d0, ids);
+        if (e.key.toLowerCase() === "x") {
+          editeur.modifier((d) => supprimerObjets(d, ids));
+          editeur.setSelection({ bande: sel.bande, element: null });
+        }
+        toast({ title: `${n} objet(s) ${e.key.toLowerCase() === "x" ? "coupé(s)" : "copié(s)"}`, description: "Ctrl+V pour coller, ici ou dans un autre modèle." });
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        editeur.modifier((d) => { const b = d.bandes.find((x) => x.id === sel.bande)!; b.elements = b.elements.filter((x) => x.id !== sel.element); });
+        editeur.modifier((d) => supprimerObjets(d, ids));
         editeur.setSelection({ bande: sel.bande, element: null });
         return;
       }
       if (ctrl && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        let id = "";
-        editeur.modifier((d) => {
-          const b = d.bandes.find((x) => x.id === sel.bande)!;
-          const n = copie(b.elements.find((x) => x.id === sel.element)!) as Element;
-          renommerSousParties(d, n);
-          n.x += 2; n.y += 2; id = n.id;
-          b.elements.push(n);
-          b.hauteur = Math.max(b.hauteur, n.y + n.h);
-        });
-        editeur.setSelection({ bande: sel.bande, element: id });
+        let nouveaux: string[] = [];
+        editeur.modifier((d) => { nouveaux = dupliquer(d, ids); });
+        const b0 = editeur.definition ? sel.bande : null;
+        editeur.setSelection({ bande: b0, element: nouveaux[0] ?? null, multi: nouveaux.length > 1 ? nouveaux : null });
         return;
       }
       // RG-EDT-FORME-04 : Ctrl+↑/↓ avancer/reculer, Ctrl+Maj+↑/↓ premier plan/arrière-plan
       if (ctrl && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
         const plan = e.key === "ArrowUp" ? (e.shiftKey ? "PREMIER" : "AVANCER") : (e.shiftKey ? "ARRIERE" : "RECULER");
-        editeur.modifier((d) => changerPlan(d, sel.bande!, sel.element!, plan), `plan:${sel.element}`);
+        editeur.modifier((d) => {
+          for (const { el, bande } of trouver(d, ids)) changerPlan(d, bande.id, el.id, plan);
+        }, `plan:${ids.join(",")}`);
         return;
       }
       const fleches: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -246,11 +275,7 @@ export default function DesignerPage() {
         e.preventDefault();
         const pas = e.shiftKey ? 5 : 0.5;
         const [dx, dy] = fleches[e.key];
-        editeur.modifierElement(sel.element, (el, b) => {
-          el.x = Math.max(0, Math.round((el.x + dx * pas) * 10) / 10);
-          el.y = Math.max(0, Math.round((el.y + dy * pas) * 10) / 10);
-          b.hauteur = Math.max(b.hauteur, el.y + el.h);
-        }, `fleche:${sel.element}`);
+        editeur.modifier((d) => deplacerObjets(d, ids, dx * pas, dy * pas, largeurUtile(d.page)), `fleche:${ids.join(",")}`);
       }
     };
     window.addEventListener("keydown", touche);
