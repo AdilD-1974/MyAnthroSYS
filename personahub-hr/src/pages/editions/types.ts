@@ -52,6 +52,7 @@ export interface Style {
   alignement?: "GAUCHE" | "CENTRE" | "DROITE" | "JUSTIFIE" | null;
   alignement_vertical?: "HAUT" | "MILIEU" | "BAS" | null;
   bordures?: string | null;
+  couleur_bordure?: string | null;
   epaisseur_bordure?: number | null;
   rotation?: 0 | 90 | 180 | 270;
   langue?: "FR" | "AR" | "AUTO";

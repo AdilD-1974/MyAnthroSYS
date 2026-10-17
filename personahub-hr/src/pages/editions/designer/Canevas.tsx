@@ -16,6 +16,7 @@ import {
 import type { Editeur } from "./useEditeur";
 import { ApercuImage } from "./BibliothequeImages";
 import { cssPolice } from "./Polices";
+import { cssBordures, hexDe } from "./Couleurs";
 
 export const PX_PAR_MM = 3.7795;
 const PAS_MM = 0.5;
@@ -262,8 +263,9 @@ function styleTexte(s: Style | undefined, mm: number): React.CSSProperties {
     fontWeight: s?.gras ? 700 : 400,
     fontStyle: s?.italique ? "italic" : "normal",
     textDecoration: s?.souligne ? "underline" : "none",
-    color: s?.couleur ?? "#111",
-    background: s?.fond ?? "transparent",
+    color: hexDe(s?.couleur) ?? "#111",
+    background: hexDe(s?.fond) ?? "transparent",
+    ...cssBordures(s?.bordures, s?.couleur_bordure ?? s?.couleur, s?.epaisseur_bordure, mm),
     textAlign: s?.alignement === "DROITE" ? "right" : s?.alignement === "CENTRE" ? "center" : s?.alignement === "JUSTIFIE" ? "justify" : "left",
     fontFamily: cssPolice(s?.police),
     direction: s?.langue === "AR" ? "rtl" : undefined,

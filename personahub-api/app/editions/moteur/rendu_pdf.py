@@ -94,7 +94,7 @@ class RenduPDF:
             c.rect(x, y, l, h, stroke=0, fill=1)
         bordures = (getattr(s, "bordures", None) or "") if s else ""
         epaisseur = (getattr(s, "epaisseur_bordure", None) or 0.5) if s else 0.5
-        couleur = _couleur(getattr(s, "couleur", None), self.charte) if s else None
+        couleur = _couleur(getattr(s, "couleur_bordure", None) or getattr(s, "couleur", None), self.charte) if s else None
         c.setStrokeColor(couleur or black)
         c.setLineWidth(epaisseur)
         if force_bordure or bordures.upper() in ("TOUT", "H,B,G,D"):
