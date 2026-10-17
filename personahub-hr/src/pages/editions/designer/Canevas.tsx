@@ -15,6 +15,7 @@ import {
 } from "@/pages/editions/types";
 import type { Editeur } from "./useEditeur";
 import { ApercuImage } from "./BibliothequeImages";
+import { cssPolice } from "./Polices";
 
 export const PX_PAR_MM = 3.7795;
 const PAS_MM = 0.5;
@@ -264,7 +265,7 @@ function styleTexte(s: Style | undefined, mm: number): React.CSSProperties {
     color: s?.couleur ?? "#111",
     background: s?.fond ?? "transparent",
     textAlign: s?.alignement === "DROITE" ? "right" : s?.alignement === "CENTRE" ? "center" : s?.alignement === "JUSTIFIE" ? "justify" : "left",
-    fontFamily: "Helvetica, Arial, sans-serif",
+    fontFamily: cssPolice(s?.police),
     direction: s?.langue === "AR" ? "rtl" : undefined,
   };
 }
@@ -313,7 +314,8 @@ function ApercuTableau({ t, mm, colonne }: { t: ElTableau; mm: number; colonne: 
       {cols.map((c) => (
         <div key={c.id} data-colonne={c.id}
           className={`overflow-hidden whitespace-nowrap px-0.5 ${traits} ${colonne === c.id ? "bg-primary/15" : ""}`}
-          style={{ width: c.largeur * mm, fontSize: fs, lineHeight: `${hl}px`, fontWeight: gras ? 700 : 400 }}>
+          style={{ width: c.largeur * mm, fontSize: (c.style?.taille ?? t.style?.taille) ? (c.style?.taille ?? t.style?.taille)! * 0.3528 * mm : fs,
+            lineHeight: `${hl}px`, fontWeight: gras ? 700 : 400, fontFamily: cssPolice(c.style?.police ?? t.style?.police) }}>
           {contenu(c)}
         </div>
       ))}

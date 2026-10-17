@@ -103,6 +103,13 @@ def fonctions(u: sv.Utilisateur = Depends(utilisateur)):
     return ex.catalogue()
 
 
+@router.get("/polices")
+def polices(u: sv.Utilisateur = Depends(utilisateur)):
+    """Polices utilisables : 3 polices PDF standard + polices TrueType du serveur (RG-EDT-RENDU-02)."""
+    from app.editions.moteur.texte import polices_disponibles
+    return polices_disponibles()
+
+
 @router.get("/masques")
 def masques(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
     return sv.masques(db, u)

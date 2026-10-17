@@ -66,3 +66,38 @@ def test_asset_imprime_et_fichier_hors_bibliotheque_refuse(db, biblio):
 
     assert b"/Subtype /Image" in rendu('ASSET("CACHET")')
     assert b"/Subtype /Image" not in rendu(f'"{dehors}"')            # RG-EDT-SECU-06
+
+
+def test_polices_truetype_et_repli(tmp_path, monkeypatch):
+    """RG-EDT-RENDU-02 : police TrueType du répertoire de l'entreprise, repli Helvetica sinon."""
+    import shutil
+    from app.editions.moteur import texte as tx
+    source = next(iter(p for d in tx._dossiers_systeme() for p in d.rglob("DejaVuSans.ttf")), None)
+    if source is None:
+        pytest.skip("aucune police TrueType de test sur ce poste")
+    monkeypatch.setenv("EDITIONS_POLICES", str(tmp_path))
+    shutil.copy(source, tmp_path / "MaPolice-Regular.ttf")
+    tx.rafraichir_polices()
+    try:
+        noms = [p["nom"] for p in tx.polices_disponibles()]
+        assert noms[:3] == ["Helvetica", "Times", "Courier"] and "Ma Police" in noms
+        assert tx.nom_police("Ma Police", True, False) == "Ma Police-regular"   # pas de gras : normal
+        assert tx.nom_police("Absente", False, False) == "Helvetica"
+        assert tx.largeur_pt("Bulletin", "Ma Police-regular", 10) > 0
+    finally:
+        tx.rafraichir_polices()
+
+
+@base_requise
+def test_police_incorporee_au_pdf(db):
+    from app.editions.moteur import texte as tx
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    if "DejaVu Sans" not in [p["nom"] for p in tx.polices_disponibles()]:
+        pytest.skip("DejaVu Sans absente")
+    d = definition()
+    d["bandes"][0]["elements"].append({"id": "t", "type": "TEXTE", "x": 0, "y": 100, "l": 60, "h": 6,
+                                       "valeur": '"Bulletin"', "style": {"police": "DejaVu Sans", "gras": True}})
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    assert b"DejaVuSans-Bold" in pdf

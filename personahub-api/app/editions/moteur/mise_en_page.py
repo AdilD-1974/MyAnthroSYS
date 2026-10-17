@@ -319,6 +319,9 @@ class Composeur:
             maj = {k: v for k, v in (("gras", gras or style.gras), ("fond", fond or style.fond),
                                      ("alignement", style.alignement or alignement), ("bordures", style.bordures or bordures))
                    if v is not None}
+            for k in ("police", "taille", "couleur"):          # RG-EDT-RENDU-02 : héritées de la grille
+                if getattr(style, k) is None and getattr(g.style, k) is not None:
+                    maj[k] = getattr(g.style, k)
             st = style.model_copy(update=maj)
             police, taille = self._style_police(st, txt)
             lignes = tx.decouper(txt, police, taille, max(l - 1.6, 1), multiligne=False)
@@ -559,6 +562,10 @@ class Composeur:
             prepares = []
             for col, txt in cellules:
                 maj = {"gras": gras or col.style.gras, "fond": fond or col.style.fond}
+                # RG-EDT-RENDU-02 : police et taille du tableau, sauf si la colonne a les siennes
+                for k in ("police", "taille", "couleur"):
+                    if getattr(col.style, k) is None and getattr(tab.style, k) is not None:
+                        maj[k] = getattr(tab.style, k)
                 if col.style.alignement is None and _colonne_numerique(col):
                     maj["alignement"] = "DROITE"            # RG-EDT-RENDU-06
                 if bordures or bord:

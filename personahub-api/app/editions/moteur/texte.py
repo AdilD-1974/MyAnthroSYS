@@ -72,11 +72,119 @@ def preparer_arabe(t: str) -> str:
     return get_display(arabic_reshaper.reshape(t))
 
 
+# ---------------------------------------------------------------- polices TrueType
+# RG-EDT-RENDU-02 (Adil DAIA) : en plus des 3 polices PDF standard, toute police TrueType
+# présente sur le serveur est utilisable : polices Windows (Arial, Calibri, Verdana…),
+# polices Linux, app/assets/fonts, et le répertoire des polices de l'entreprise
+# (variable EDITIONS_POLICES, défaut donnees_privees/editions_polices) où l'on dépose
+# « Famille-Regular.ttf », « Famille-Bold.ttf », « Famille-Italic.ttf », « Famille-BoldItalic.ttf ».
+# La police est incorporée (sous-ensemble) dans le PDF : il s'imprime pareil partout.
+# Police inconnue sur ce serveur : Helvetica, sans erreur.
+FAMILLES_CONNUES: dict[str, tuple[Optional[str], ...]] = {
+    # nom : fichiers (sans extension, casse indifférente) normal, gras, italique, gras italique
+    "Arial": ("arial", "arialbd", "ariali", "arialbi"),
+    "Arial Narrow": ("arialn", "arialnb", "arialni", "arialnbi"),
+    "Calibri": ("calibri", "calibrib", "calibrii", "calibriz"),
+    "Candara": ("candara", "candarab", "candarai", "candaraz"),
+    "Century Gothic": ("gothic", "gothicb", "gothici", "gothicbi"),
+    "Consolas": ("consola", "consolab", "consolai", "consolaz"),
+    "Corbel": ("corbel", "corbelb", "corbeli", "corbelz"),
+    "Courier New": ("cour", "courbd", "couri", "courbi"),
+    "Garamond": ("gara", "garabd", "garait", None),
+    "Georgia": ("georgia", "georgiab", "georgiai", "georgiaz"),
+    "Book Antiqua": ("bkant", "antquab", "antquai", "antquabi"),
+    "Segoe UI": ("segoeui", "segoeuib", "segoeuii", "segoeuiz"),
+    "Tahoma": ("tahoma", "tahomabd", None, None),
+    "Times New Roman": ("times", "timesbd", "timesi", "timesbi"),
+    "Trebuchet MS": ("trebuc", "trebucbd", "trebucit", "trebucbi"),
+    "Verdana": ("verdana", "verdanab", "verdanai", "verdanaz"),
+    "DejaVu Sans": ("dejavusans", "dejavusans-bold", "dejavusans-oblique", "dejavusans-boldoblique"),
+    "DejaVu Serif": ("dejavuserif", "dejavuserif-bold", "dejavuserif-italic", "dejavuserif-bolditalic"),
+    "Liberation Sans": ("liberationsans-regular", "liberationsans-bold", "liberationsans-italic", "liberationsans-bolditalic"),
+    "Liberation Serif": ("liberationserif-regular", "liberationserif-bold", "liberationserif-italic", "liberationserif-bolditalic"),
+}
+_VARIANTES = ("regular", "bold", "italic", "bolditalic")
+
+
+def dossier_polices_entreprise() -> Path:
+    import os
+    return Path(os.environ.get("EDITIONS_POLICES", "donnees_privees/editions_polices"))
+
+
+def _dossiers_systeme() -> list[Path]:
+    import os
+    d = [DOSSIER_POLICES, dossier_polices_entreprise()]
+    if os.environ.get("WINDIR"):
+        d.append(Path(os.environ["WINDIR"]) / "Fonts")
+    if os.environ.get("LOCALAPPDATA"):
+        d.append(Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "Windows" / "Fonts")
+    d += [Path("/usr/share/fonts"), Path("/usr/local/share/fonts"), Path.home() / ".fonts"]
+    return [x for x in d if x.is_dir()]
+
+
+@lru_cache(maxsize=1)
+def _index_polices() -> dict[str, tuple[Optional[Path], ...]]:
+    """{famille: (normal, gras, italique, gras italique)} des polices TrueType trouvées."""
+    fichiers: dict[str, Path] = {}
+    for d in _dossiers_systeme():
+        for f in d.rglob("*"):
+            if f.suffix.lower() == ".ttf" and f.is_file():
+                fichiers.setdefault(f.stem.lower(), f)
+    familles: dict[str, tuple[Optional[Path], ...]] = {}
+    for nom, noms in FAMILLES_CONNUES.items():
+        v = tuple(fichiers.get(n) if n else None for n in noms)
+        if v[0]:
+            familles[nom] = v
+    # répertoire de l'entreprise et assets : convention Famille-Regular / -Bold / -Italic / -BoldItalic
+    for d in (DOSSIER_POLICES, dossier_polices_entreprise()):
+        if not d.is_dir():
+            continue
+        for f in d.glob("*-Regular.ttf"):
+            famille = f.stem[: -len("-Regular")]
+            if famille.startswith("NotoNaskhArabic"):
+                continue
+            nom = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", famille)          # OpenSans → Open Sans
+            v = [f] + [d / f"{famille}-{s}.ttf" for s in ("Bold", "Italic", "BoldItalic")]
+            familles[nom] = tuple(x if x.is_file() else None for x in v)
+    return familles
+
+
+def rafraichir_polices() -> None:
+    _index_polices.cache_clear()
+
+
+def polices_disponibles() -> list[dict]:
+    std = [{"nom": n, "origine": "PDF", "gras": True, "italique": True} for n in _POLICES_STANDARD]
+    ttf = [{"nom": n, "origine": "TrueType", "gras": bool(v[1]), "italique": bool(v[2])}
+           for n, v in sorted(_index_polices().items())]
+    return std + ttf
+
+
+def _enregistrer_ttf(famille: str, i: int) -> Optional[str]:
+    v = _index_polices().get(famille)
+    if not v:
+        return None
+    fichier = v[i] or (v[1] if i == 3 and v[1] else None) or v[0]   # gras italique absent : gras, sinon normal
+    nom = f"{famille}-{_VARIANTES[v.index(fichier)]}"
+    if nom not in pdfmetrics.getRegisteredFontNames():
+        try:
+            pdfmetrics.registerFont(TTFont(nom, str(fichier)))
+        except Exception as e:                       # police refusée (ex. contours CFF) : on se replie
+            log.warning("Police %s refusée par ReportLab : %s", fichier, e)
+            return None
+    return nom
+
+
 def nom_police(police: Optional[str], gras: bool, italique: bool, arabe: bool = False) -> str:
     if arabe and arabe_disponible():
         return POLICE_ARABE
+    i = (1 if gras else 0) + (2 if italique else 0)
+    if police and police not in _POLICES_STANDARD:
+        nom = _enregistrer_ttf(police, i)
+        if nom:
+            return nom
     famille = _POLICES_STANDARD.get(police or "Helvetica", _POLICES_STANDARD["Helvetica"])
-    return famille[(1 if gras else 0) + (2 if italique else 0)]
+    return famille[i]
 
 
 def largeur_pt(texte: str, police: str, taille: float) -> float:

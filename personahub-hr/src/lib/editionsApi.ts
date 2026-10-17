@@ -49,6 +49,7 @@ async function appel<T>(methode: string, chemin: string, corps?: unknown, entete
 }
 
 // ── Types de réponse ────────────────────────────────────────────────────────
+export interface PoliceEdition { nom: string; origine: "PDF" | "TrueType"; gras: boolean; italique: boolean }
 export interface ImageEdition { code: string; format: string; taille: number; modifie_le: string; formule: string }
 export type Categorie = "BULLETIN" | "JOURNAL" | "ATTESTATION" | "COURRIER" | "LISTE" | "DECLARATION" | "AUTRE";
 export const CATEGORIES: { code: Categorie; libelle: string }[] = [
@@ -229,6 +230,7 @@ export const editionsApi = {
     appel<ApercuDonnees>("POST", `/versions/${versionId}/donnees`, { parametres }),
 
   /** Ouvre un document produit dans un nouvel onglet (le fichier exige le jeton : on passe par un blob). */
+  polices: () => appel<PoliceEdition[]>("GET", "/polices"),
   // ── bibliothèque d'images (RG-EDT-IMAGE-01..03) ──
   images: () => appel<ImageEdition[]>("GET", "/images"),
   supprimerImage: (code: string) => appel<void>("DELETE", `/images/${encodeURIComponent(code)}`),

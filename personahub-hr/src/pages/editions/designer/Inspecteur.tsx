@@ -16,6 +16,7 @@ import {
 } from "@/pages/editions/types";
 import FormuleInput from "./FormuleInput";
 import { ChoixImage } from "./BibliothequeImages";
+import { ChoixPolice } from "./Polices";
 import { useReferentiels } from "./contexte";
 import { ajusterColonnes } from "./Canevas";
 import type { Editeur } from "./useEditeur";
@@ -329,6 +330,7 @@ function StyleEditeur({ s, ro, cadre, onChange }: { s?: Style; ro: boolean; cadr
   return (
     <>
       {!cadre && <>
+        <Ligne libelle="Police"><ChoixPolice value={v.police} disabled={ro} onChange={(x) => set("police", x)} /></Ligne>
         <div className="grid grid-cols-2 gap-1">
           <Ligne libelle="Taille (pt)"><Nombre value={v.taille} pas={0.5} min={1} disabled={ro} onChange={(x) => set("taille", x)} /></Ligne>
           <Ligne libelle="Alignement">
@@ -486,6 +488,10 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
                     onChange={(v) => majCol(c.id, (x) => { const s = { ...(x.style ?? {}) }; poser(s, "taille", v); poser(x, "style", nettoyer(s)); }, "ta")} />
                 </Ligne>
               </div>
+              <Ligne libelle="Police">
+                <ChoixPolice value={c.style?.police} disabled={ro} vide="Celle du tableau"
+                  onChange={(v) => majCol(c.id, (x) => { const s = { ...(x.style ?? {}) }; poser(s, "police", v); poser(x, "style", nettoyer(s)); }, "po")} />
+              </Ligne>
               <Case libelle="Masquée" value={c.masquee} disabled={ro} onChange={(v) => majCol(c.id, (x) => poser(x, "masquee", v || null), "masq")} />
             </div>
           )}
