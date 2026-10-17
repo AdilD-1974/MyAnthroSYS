@@ -8,12 +8,13 @@
  * On dépose dans une bande un champ du catalogue ou un type d'élément de la palette.
  */
 import { useRef } from "react";
-import { Lock, Image as IconeImage, QrCode, Filter } from "lucide-react";
+import { Lock, QrCode, Filter } from "lucide-react";
 import {
   LIBELLES_BANDE, elementParDefaut, grilleDepuisCorps, largeurUtile, tableauDepuisCorps, texteLitteral,
   type Bande, type Element, type ElGrille, type ElTableau, type Style, type TypeElement,
 } from "@/pages/editions/types";
 import type { Editeur } from "./useEditeur";
+import { ApercuImage } from "./BibliothequeImages";
 
 export const PX_PAR_MM = 3.7795;
 const PAS_MM = 0.5;
@@ -284,9 +285,7 @@ function Contenu({ el, mm, colonne }: { el: Element; mm: number; colonne: string
     case "TEXTE_RICHE":
       return <div className="h-full w-full overflow-hidden whitespace-pre-wrap bg-violet-50/50" style={st}>{el.contenu}</div>;
     case "IMAGE":
-      return <div className="flex h-full w-full items-center justify-center border border-dashed border-muted-foreground/40 text-[10px] text-muted-foreground">
-        <IconeImage className="mr-1 h-3 w-3" />image
-      </div>;
+      return <ApercuImage valeur={el.valeur} />;
     case "LIGNE":
       return <div className="w-full" style={{ borderTop: `${Math.max(1, (el.h || 0.3) * mm)}px solid ${el.style?.couleur ?? "#111"}` }} />;
     case "CADRE":

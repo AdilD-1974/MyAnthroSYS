@@ -27,6 +27,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from app.editions.definition import FORMATS_PAGE_MM, Page as PageDef
+from app.editions.images import autorise
 from app.editions.moteur import texte as tx
 from app.editions.moteur.mise_en_page import Boite, Page
 
@@ -158,6 +159,9 @@ class RenduPDF:
             chemin = self.racine / b.valeur
         if not chemin.exists():
             log.info("Image introuvable : %s", chemin)
+            return
+        if not autorise(chemin, self.racine):               # RG-EDT-SECU-06
+            log.warning("Image hors des dossiers autorisés, ignorée : %s", chemin)
             return
         img = ImageReader(str(chemin))
         iw, ih = img.getSize()

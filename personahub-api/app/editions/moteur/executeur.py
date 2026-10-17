@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.editions import expressions as ex
 from app.editions import format as fmt
 from app.editions.definition import Definition, Jeu, Tableau
+from app.editions.images import chemins_assets
 from app.editions.moteur.mise_en_page import Anomalie, Composeur, Contexte, composer
 from app.editions.moteur.rendu_pdf import RenduPDF
 from app.editions.sources import REGISTRE, ContexteSecurite, ErreurSource
@@ -205,7 +206,9 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
     libelles = {code: (r.get("libelle_edition") or r.get("libelle")) for code, r in parametrage.items()}
 
     logo = societe.get("logo_path")
-    fixe = {"CHARTE.logo": _chemin_relatif(logo) if logo else None, **(contexte_fixe or {})}
+    fixe = {"CHARTE.logo": _chemin_relatif(logo) if logo else None,
+            **chemins_assets(sec.societe_id),                # ASSET("CODE") : bibliothèque d'images
+            **(contexte_fixe or {})}
     return Preparation(d, parametres, lignes, dict(
         enfants=enfants, parametres=parametres, societe=societe, constantes=constantes, rubriques=rubriques,
         contexte_fixe=fixe, registre_masques=registre_masques, racine_fichiers=racine_fichiers,

@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -247,3 +247,31 @@ def fichier(document_id: str, telecharger: bool = Query(False), u: sv.Utilisateu
     mode = "attachment" if telecharger else "inline"
     return FileResponse(chemin, media_type="application/pdf", headers={
         "Content-Disposition": f"{mode}; filename*=UTF-8''{quote(nom)}", "Cache-Control": "private, no-store"})
+
+
+# ---------------------------------------------------------------- bibliothèque d'images
+# RG-EDT-IMAGE-01..03 : images de la société (cachet, signature…), utilisées par ASSET("CODE")
+@router.get("/images")
+def images(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, sv.lister_images, u)
+
+
+@router.post("/images", status_code=201)
+async def deposer_image(fichier: UploadFile = File(...), code: str = Form(...), remplacer: bool = Form(False),
+                        u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    from app.editions.images import TAILLE_MAX
+    contenu = await fichier.read(TAILLE_MAX + 1)
+    return _ecriture(db, sv.deposer_image, u, code, contenu, remplacer)
+
+
+@router.delete("/images/{code}", status_code=204)
+def supprimer_image(code: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    _ecriture(db, sv.supprimer_image, u, code)
+    return Response(status_code=204)
+
+
+@router.get("/images/{code}/fichier")
+def fichier_image(code: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    p = _lecture(db, sv.fichier_image, u, code)
+    return FileResponse(p, media_type="image/png" if p.suffix == ".png" else "image/jpeg",
+                        headers={"Cache-Control": "private, no-store"})

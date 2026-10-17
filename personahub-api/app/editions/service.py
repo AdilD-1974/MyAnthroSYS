@@ -836,3 +836,44 @@ def plans_paie(db: Session, u: Utilisateur) -> list[dict]:
         ORDER BY p.code"""), {"s": u.societe_id}).mappings().all()
     return [_propre(r) for r in rows]
 
+
+
+# ---------------------------------------------------------------- bibliothèque d'images
+# RG-EDT-IMAGE-01..03 (Adil DAIA) : images de la société, utilisées par ASSET("CODE").
+def _image_err(fn, *a, **k):
+    from app.editions import images as im
+    try:
+        return fn(*a, **k)
+    except im.ImageInvalide as e:
+        raise Invalide(str(e))
+
+
+def lister_images(db: Session, u: Utilisateur) -> list[dict]:
+    from app.editions import images as im
+    exiger(db, u, "VOIR")
+    return _image_err(im.lister, u.societe_id)
+
+
+def deposer_image(db: Session, u: Utilisateur, code: str, contenu: bytes, remplacer: bool = False) -> dict:
+    from app.editions import images as im
+    exiger(db, u, "CONCEVOIR")
+    res = _image_err(im.enregistrer, u.societe_id, code, contenu, remplacer)
+    auditer(db, u, "IMAGE_DEPOSEE", "IMAGE", None, {"code": res["code"], "taille": res["taille"], "remplacee": remplacer})
+    return res
+
+
+def supprimer_image(db: Session, u: Utilisateur, code: str) -> None:
+    from app.editions import images as im
+    exiger(db, u, "CONCEVOIR")
+    if not _image_err(im.supprimer, u.societe_id, code):
+        raise Introuvable(f"Image « {code} » introuvable")
+    auditer(db, u, "IMAGE_SUPPRIMEE", "IMAGE", None, {"code": code.upper()})
+
+
+def fichier_image(db: Session, u: Utilisateur, code: str):
+    from app.editions import images as im
+    exiger(db, u, "VOIR")
+    p = _image_err(lambda: im.chemin(u.societe_id, im.normaliser_code(code)))
+    if not p:
+        raise Introuvable(f"Image « {code} » introuvable")
+    return p

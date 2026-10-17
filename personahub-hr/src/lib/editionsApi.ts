@@ -49,6 +49,7 @@ async function appel<T>(methode: string, chemin: string, corps?: unknown, entete
 }
 
 // ── Types de réponse ────────────────────────────────────────────────────────
+export interface ImageEdition { code: string; format: string; taille: number; modifie_le: string; formule: string }
 export type Categorie = "BULLETIN" | "JOURNAL" | "ATTESTATION" | "COURRIER" | "LISTE" | "DECLARATION" | "AUTRE";
 export const CATEGORIES: { code: Categorie; libelle: string }[] = [
   { code: "BULLETIN", libelle: "Bulletins" },
@@ -228,6 +229,30 @@ export const editionsApi = {
     appel<ApercuDonnees>("POST", `/versions/${versionId}/donnees`, { parametres }),
 
   /** Ouvre un document produit dans un nouvel onglet (le fichier exige le jeton : on passe par un blob). */
+  // ── bibliothèque d'images (RG-EDT-IMAGE-01..03) ──
+  images: () => appel<ImageEdition[]>("GET", "/images"),
+  supprimerImage: (code: string) => appel<void>("DELETE", `/images/${encodeURIComponent(code)}`),
+  async deposerImage(fichier: File, code: string, remplacer = false): Promise<ImageEdition> {
+    const token = tokenStore.get();
+    const f = new FormData();
+    f.append("fichier", fichier);
+    f.append("code", code);
+    f.append("remplacer", remplacer ? "true" : "false");
+    const r = await fetch(`${API_BASE}/editions/images`, { method: "POST", body: f, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      const d = e?.detail;
+      throw new ErreurEdition(r.status, (d && typeof d === "object" && !Array.isArray(d) ? d.message : null) ?? `Erreur ${r.status}`);
+    }
+    return r.json();
+  },
+  /** Image de la bibliothèque en URL locale (blob) : le fichier exige le jeton. */
+  async urlImage(code: string): Promise<string | null> {
+    const token = tokenStore.get();
+    const r = await fetch(`${API_BASE}/editions/images/${encodeURIComponent(code)}/fichier`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    return r.ok ? URL.createObjectURL(await r.blob()) : null;
+  },
+
   async ouvrirDocument(documentId: string, telecharger = false, nom = "document.pdf") {
     const token = tokenStore.get();
     const r = await fetch(`${API_BASE}/editions/documents/${documentId}/fichier`, {

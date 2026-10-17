@@ -15,6 +15,7 @@ import {
   type Jeu, type LigneRubrique, type Parametre, type Section, type Style, type TypeParametre,
 } from "@/pages/editions/types";
 import FormuleInput from "./FormuleInput";
+import { ChoixImage } from "./BibliothequeImages";
 import { useReferentiels } from "./contexte";
 import { ajusterColonnes } from "./Canevas";
 import type { Editeur } from "./useEditeur";
@@ -257,7 +258,8 @@ function ContenuElement({ el, ro, maj, colonne }: { el: Element; ro: boolean; ma
       </Ligne>;
     case "IMAGE":
       return <>
-        <Ligne libelle="Image (formule)" aide='CHARTE("logo") ou ASSET("CODE")'><FormuleInput value={el.valeur} disabled={ro} onChange={(v) => maj((e) => { e.valeur = v; }, "valeur")} /></Ligne>
+        <div className="mb-3"><ChoixImage valeur={el.valeur} ro={ro} onChoisir={(f) => maj((e) => { e.valeur = f; }, "valeur")} /></div>
+        <Ligne libelle="Image (formule)" aide='CHARTE("logo"), ASSET("CODE"), ou une formule qui choisit selon le document'><FormuleInput value={el.valeur} disabled={ro} onChange={(v) => maj((e) => { e.valeur = v; }, "valeur")} /></Ligne>
         <Ligne libelle="Ajustement"><Choix value={el.ajustement ?? "CONTENIR"} disabled={ro} onChange={(v) => maj((e) => { e.ajustement = v; }, "ajustement")}
           options={[{ v: "CONTENIR", l: "Contenir" }, { v: "REMPLIR", l: "Remplir" }, { v: "ETIRER", l: "Étirer" }]} /></Ligne>
       </>;
