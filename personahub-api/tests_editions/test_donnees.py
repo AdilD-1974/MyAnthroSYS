@@ -355,3 +355,19 @@ def test_total_corps_colonne_inconnue():
     messages = [e.message for e in valider(d, CAT).erreurs]
     assert any("colonne inconnue « patronales »" in m and "patronal" in m for m in messages)
     assert any("corps inconnu « absent »" in m for m in messages)
+
+
+@base_requise
+def test_total_corps_par_libelle(db):
+    """RG-EDT-DONNEES-08 : TOTAL_CORPS accepte le libellé du corps et de la colonne."""
+    from app.editions.moteur.executeur import donnees_brutes
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    d["corps"][0]["affectations"].append({"formule": 'TOTAL_CORPS("Détail", "Part patronale")', "libelle": "Total patronal",
+                                          "cibles": {"VAL": "patronal"}})
+    assert not [e for e in valider(d, CAT).erreurs if "TOTAL_CORPS" in e.message]
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    lignes = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)["lignes"][0]["corps"]["detail"]
+    total = next(l for l in lignes if l["libelle"] == "Total patronal")
+    assert abs(float(total["patronal"]) - sum(float(l.get("patronal") or 0) for l in lignes if l is not total)) < 0.01
+    assert float(total["patronal"]) != 0

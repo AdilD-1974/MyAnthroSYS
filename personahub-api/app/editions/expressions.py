@@ -402,8 +402,12 @@ def _total_corps(a: list, r: "ResolverEdition") -> Any:
     code, col = _txt(a[0]), _txt(a[1])
     filtre = _txt(a[2]) if len(a) > 2 and not _est_vide(a[2]) else None
     tous = r.ligne.get("corps") or {}
+    alias = (getattr(r, "contexte_valeurs", None) or {}).get("CORPS_ALIAS") or {}
+    if code.strip().lower() in alias:                     # code ou libellé, casse indifférente
+        code, colonnes = alias[code.strip().lower()]
+        col = colonnes.get(col.strip().lower(), col)
     corps = tous.get(code)
-    if corps is None:                                     # codes insensibles à la casse
+    if corps is None:
         corps = next((v for k, v in tous.items() if str(k).lower() == code.lower()), None)
     col = {str(k).lower(): k for k in _cles(corps)}.get(col.lower(), col)
     if isinstance(corps, dict):

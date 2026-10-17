@@ -193,6 +193,18 @@ class Contexte:
     parametrage_rubriques: dict = field(default_factory=dict)  # code → rubrique_paie (ne_editer_si_*)
 
 
+def alias_corps(d) -> dict:
+    """{corps (code ou libellé, minuscules): (code, {colonne (code ou libellé, minuscules): code})}.
+    Un code l'emporte toujours sur un libellé homonyme."""
+    def colonnes(c):
+        cols = {col.libelle.strip().lower(): col.code for col in c.colonnes}
+        cols.update({col.code.lower(): col.code for col in c.colonnes})
+        return cols
+    res = {c.libelle.strip().lower(): (c.code, colonnes(c)) for c in reversed(d.corps)}
+    res.update({c.code.lower(): (c.code, colonnes(c)) for c in d.corps})
+    return res
+
+
 class Composeur:
     """Compose un document (un ensemble de lignes principales) en pages."""
 
@@ -205,6 +217,8 @@ class Composeur:
         self.principal = self.d.jeu_principal()
         self.specs = specs_agregats(self.d)
         self.anomalies: list[Anomalie] = []
+        # RG-EDT-DONNEES-08 : TOTAL_CORPS accepte le code OU le libellé du corps et de la colonne
+        self.ctx.contexte_fixe = {**self.ctx.contexte_fixe, "CORPS_ALIAS": alias_corps(self.d)}
         self.bandes = {t: [b for b in self.d.bandes if b.type == t] for t in
                        ("FOND", "EN_TETE_ETAT", "EN_TETE_PAGE", "EN_TETE_GROUPE", "CORPS",
                         "PIED_GROUPE", "PIED_PAGE", "PIED_ETAT")}

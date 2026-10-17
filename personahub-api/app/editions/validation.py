@@ -291,13 +291,13 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
                 rapport.dependances.add(("RUBRIQUE", code))
 
     # 3 ter) TOTAL_CORPS("corps", "colonne") : le corps et la colonne doivent exister (RG-EDT-DONNEES-08)
-    par_code = {c.code.lower(): c for c in d.corps}
+    par_code = {**{c.libelle.strip().lower(): c for c in d.corps}, **{c.code.lower(): c for c in d.corps}}
     for chemin, f, _, _ in formules(d):
         for m in re.finditer(r'TOTAL_CORPS\(\s*"([^"]*)"\s*,\s*"([^"]*)"', f or "", flags=re.IGNORECASE):
-            cp = par_code.get(m.group(1).lower())
+            cp = par_code.get(m.group(1).strip().lower())
             if cp is None:
                 rapport.ajouter(chemin, f"TOTAL_CORPS : corps inconnu « {m.group(1)} » ({', '.join(c.code for c in d.corps) or 'aucun corps'})")
-            elif m.group(2).lower() not in {col.code.lower() for col in cp.colonnes}:
+            elif m.group(2).strip().lower() not in {x.lower() for col in cp.colonnes for x in (col.code, col.libelle.strip())}:
                 rapport.ajouter(chemin, f"TOTAL_CORPS : colonne inconnue « {m.group(2)} » dans « {cp.code} » "
                                         f"(colonnes : {', '.join(col.code for col in cp.colonnes)})")
 
