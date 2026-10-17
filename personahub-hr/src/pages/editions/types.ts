@@ -120,6 +120,7 @@ export interface ElTableau extends ElementBase {
   jeu: string;                      // jeu SECONDAIRE (mode expert)…
   corps?: string | null;            // …ou corps de données « lignes »
   corps_suivants?: string[];        // autres corps « lignes » imprimés à la suite
+  entete?: boolean;                 // ligne des titres de colonnes (défaut : oui)
   grouper?: boolean;
   colonnes: Colonne[];
   sections?: Section[];
@@ -193,7 +194,7 @@ export interface Affectation {
   groupe?: string | null;
   libelle?: string | null;
   negatif?: boolean;                // « en – » : soustraite (seule ou dans une ligne fusionnée)
-  nulle?: boolean;
+  nulle?: boolean;                  // imprimée même à zéro (jamais sans aucune valeur)
   fusion?: boolean;                 // s'ajoute à la ligne de l'affectation précédente
   gras?: boolean | null;            // défaut : gras pour une formule
 }
@@ -205,6 +206,7 @@ export interface Corps {
   lignes?: LigneCorps[];
   affectations?: Affectation[];
   tri?: "AFFECTATION" | "PAIE" | "CODE";
+  afficher_titre?: boolean;         // titre du corps imprimé (défaut : oui)
 }
 export interface Variable { code: string; libelle: string; type?: "TEXTE" | "NOMBRE" | "MONTANT" | "DATE" | "BOOLEEN"; valeur: Expr }
 export interface Usages {

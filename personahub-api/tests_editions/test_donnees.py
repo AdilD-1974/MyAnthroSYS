@@ -158,7 +158,7 @@ def test_corps_lignes_et_cases_au_rendu(db):
     assert "ALAMI Sara !" in t                                           # variable lisant une variable
     # corps LIGNES : groupes, ordre des affectations, lignes non nulles
     assert t.index("Gains") < t.index("Salaire de base") < t.index("Prime d'ancienneté (SOLGEIS)") < t.index("SALAIRE BRUT")
-    assert "Prime exceptionnelle" in t                                  # « Nulls »
+    assert "Prime exceptionnelle" not in t                              # aucune valeur : jamais imprimée, même « Nulls »
     assert "Avance" not in t                                            # ne_editer_si_mt_zero
     assert "ABSENTE" not in t                                           # absente du bulletin
     assert t.index("Retenues") < t.index("Cotisation CNSS")
@@ -278,3 +278,25 @@ def test_lignes_fusionnees_gras_et_corps_a_la_suite(db):
     assert docs[0].anomalies == []
     assert "Salaire et ancienneté" in t and "10 231,20" in t
     assert t.index("Retenues") < t.index("Indemnités non imposables") < t.index("Indemnité test")
+
+
+@base_requise
+def test_nulls_titre_du_corps_et_entete(db):
+    from app.editions.moteur.executeur import donnees_brutes, executer
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    affs = d["corps"][0]["affectations"]
+    affs[4]["nulle"] = True                       # AVANCE : présente sur le bulletin, montant 0 → imprimée
+    affs[4]["libelle"] = "Avance à zéro"
+    for a in affs:
+        a.pop("groupe", None)                     # sans groupe : le titre serait le libellé du corps…
+    d["corps"][0]["afficher_titre"] = False       # …masqué
+    d["bandes"][0]["elements"][1]["entete"] = False
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    lignes = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)["lignes"][0]["corps"]["detail"]
+    libelles = [l["libelle"] for l in lignes]
+    assert "Avance à zéro" in libelles and "Prime exceptionnelle" not in libelles and "ABSENTE" not in libelles
+    t = textes(executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)
+    assert "Détail" not in t                      # pas de titre de corps
+    assert "Désignation" not in t                 # pas de ligne d'en-tête de colonnes
+    assert "Salaire de base" in t and "Avance à zéro" in t

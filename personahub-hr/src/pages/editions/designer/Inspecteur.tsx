@@ -426,6 +426,7 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
         </Ligne>
       </div>
       <div className="mb-2">
+        <Case libelle="Ligne d'en-tête des colonnes" value={t.entete ?? true} disabled={ro} onChange={(v) => maj((e) => poser(e, "entete", v ? null : false), "ent")} />
         <Case libelle="Zébré" value={t.zebre} disabled={ro} onChange={(v) => maj((e) => poser(e, "zebre", v || null), "zebre")} />
         <Case libelle="En-tête répété" value={t.repeter_entete ?? true} disabled={ro} onChange={(v) => maj((e) => poser(e, "repeter_entete", v ? null : false), "rep")} />
       </div>

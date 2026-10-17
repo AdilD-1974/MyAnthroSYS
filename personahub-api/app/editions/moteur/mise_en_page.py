@@ -440,14 +440,19 @@ class Composeur:
             ligne = {"code_rubrique": "+".join((a.rubrique or "").strip().upper() for _, a in bloc if a.rubrique),
                      "groupe": a0.groupe, "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
                      "libelle": a0.libelle or (self.ctx.libelles_rubriques.get(code0) or code0 if code0 else "")}
-            utile = False
+            utile = present = False
             for _, a in bloc:
                 for attribut, col in a.cibles.items():
                     v = self._valeur_affectee(c, a, attribut, rub, r)
-                    if v is None:
+                    if v is None or v == "":
                         continue
+                    present = True
                     ligne[col] = self._ajouter(ligne.get(col), v)
                     utile = utile or self._non_nul(v)
+            # RG-EDT-DONNEES-05 : aucune valeur dans les attributs affectés → jamais imprimée,
+            # même « Nulls » ; « Nulls » n'imprime que des valeurs à zéro
+            if not present:
+                return None
             if any(a.nulle for _, a in bloc):
                 return ligne
             # RG-EDT-DONNEES-05 : paramétrage de la rubrique, pour une ligne d'une seule rubrique du mois
@@ -534,8 +539,9 @@ class Composeur:
                 donnees = self._donnees(ligne)["corps"]
                 for code in [tab.corps, *tab.corps_suivants]:
                     cp = self.d.corps_par_code(code)
+                    titre = (cp.libelle if cp else code) if (cp is None or cp.afficher_titre) else None
                     for l in donnees.get(code) or []:
-                        lignes.append({**l, "groupe": l.get("groupe") or (cp.libelle if cp else code)})
+                        lignes.append({**l, "groupe": l.get("groupe") or titre})
             cle = (ligne or {}).get("id")
         else:
             jeu = self.d.jeu(tab.jeu)
@@ -576,7 +582,7 @@ class Composeur:
             return rangee([(t, titre)], gras=True, fond="#F4F4F4", bordures="TOUT" if bord else None)
 
         tranches = [rangee([(c, c.titre) for c in colonnes], gras=True, fond="#E8E8E8", genre="ENTETE_TABLEAU",
-                           bordures="TOUT" if bord else None)]
+                           bordures="TOUT" if bord else None)] if tab.entete else []
         totaux = Accumulateur()
         nb_lignes = 0
         imprimees: set[int] = set()
@@ -649,7 +655,7 @@ class Composeur:
             fond = "#FAFAFA" if tab.zebre and (nb_lignes + i) % 2 else None
             tranches.append(rangee([(c, "") for c in colonnes], fond=fond))
         # quadrillage par colonnes : la dernière ligne ferme le tableau
-        if bord == "G,D" and len(tranches) > 1:
+        if bord == "G,D" and tranches and tranches[-1].genre != "ENTETE_TABLEAU":
             dernier = tranches[-1]
             dernier.boites = [copy.copy(b) for b in dernier.boites]
             for b in dernier.boites:

@@ -205,6 +205,13 @@ function OngletCorps({ d, editeur, ro, actif, setActif }: { d: Definition; edite
           <div className="text-xs"><div className="text-muted-foreground">Code · nature</div>
             <div className="mt-1 py-1 text-sm"><span className="font-mono">{c.code}</span> · {c.nature === "LIGNES" ? "lignes de rubriques" : "cases"}</div></div>
           {c.nature === "LIGNES" && (
+            <label className="flex items-center gap-1.5 self-center pt-4 text-xs" title="Titre imprimé au-dessus des lignes du corps qui n'ont pas de groupe">
+              <input type="checkbox" disabled={ro} checked={c.afficher_titre ?? true}
+                onChange={(e) => majC((z) => poser(z, "afficher_titre", e.target.checked ? null : false), "titre")} />
+              Imprimer le titre du corps
+            </label>
+          )}
+          {c.nature === "LIGNES" && (
             <label className="text-xs">Tri des lignes
               <select className={`${classeChamp} mt-1 w-56`} disabled={ro} value={c.tri ?? "AFFECTATION"}
                 onChange={(e) => majC((z) => poser(z, "tri", e.target.value === "AFFECTATION" ? null : e.target.value), "tri")}>
@@ -383,7 +390,7 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
           <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
           <input className={`${classeChamp} pl-7`} placeholder="Filtrer les affectations…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
         </div>
-        <span className="text-xs text-muted-foreground">Nb, Mt, Tx, Base, Patronal : colonne qui reçoit la valeur. Vide = non imprimée.</span>
+        <span className="text-xs text-muted-foreground">Nb, Mt, Tx, Base, Patronal : colonne qui reçoit la valeur. Une rubrique sans aucune valeur n'est jamais imprimée ; à zéro, seulement si « Nulls ».</span>
         {!ro && <div className="ml-auto flex gap-2">
           <Button size="sm" onClick={() => setAjout(true)}><Plus className="mr-1 h-4 w-4" />Ajouter des rubriques</Button>
           <Button size="sm" variant="outline" onClick={() => majC((z) => { z.affectations = [...(z.affectations ?? []), { formule: "", cibles: {} }]; }, "fadd")}>Ajouter une formule</Button>
@@ -394,7 +401,7 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
           <thead className="sticky top-0 z-10"><tr>
             {["#", "Rubrique", "Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`), ...(c.nature === "LIGNES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls",
               ...(c.nature === "LIGNES" ? ["Fusion ↑", "Gras"] : []), ""].map((h) => <th key={h} className={th}
-                title={h === "Fusion ↑" ? "S'ajoute à la ligne au-dessus : une seule ligne imprimée (somme ; « en – » soustrait)" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
+                title={h === "Nulls" ? "Imprimée même quand ses valeurs sont à zéro. Une rubrique sans aucune valeur n'est jamais imprimée." : h === "Fusion ↑" ? "S'ajoute à la ligne au-dessus : une seule ligne imprimée (somme ; « en – » soustrait)" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
           </tr></thead>
           <tbody>
             {visibles.map(({ a, i }) => (

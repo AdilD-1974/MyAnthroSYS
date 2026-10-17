@@ -300,7 +300,9 @@ function ApercuTableau({ t, mm, colonne }: { t: ElTableau; mm: number; colonne: 
   let lignes = 0;
   return (
     <div className="h-full w-full overflow-hidden border border-muted-foreground/30 bg-white">
-      {ligne((c) => <b title="Cliquer pour modifier la colonne">{c.titre}</b>, "bg-muted")}
+      {(t.entete ?? true)
+        ? ligne((c) => <b title="Cliquer pour modifier la colonne">{c.titre}</b>, "bg-muted")
+        : ligne((c) => <span className="text-[0.85em] text-muted-foreground/60" title="En-tête masqué à l'impression">{c.titre}</span>, "bg-muted/20 border-b border-dashed")}
       {sections.map((s, i) => (
         <div key={s?.id ?? i}>
           {s?.titre && titre(s.titre, `t${i}`)}
