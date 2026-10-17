@@ -312,6 +312,9 @@ class Corps(Strict):
     affectations: list[Affectation] = []
     tri: Literal["AFFECTATION", "PAIE", "CODE"] = "AFFECTATION"
     afficher_titre: bool = True               # titre du corps imprimé au-dessus de ses lignes sans groupe
+    # RG-EDT-DONNEES-07 (Adil DAIA) : emplacement à l'impression, appliqué par le designer à la mise
+    # en forme (None : DETAIL pour un corps « lignes », BAS_DE_PAGE pour un corps « cases »)
+    emplacement: Optional[Literal["DETAIL", "BAS_DE_PAGE", "MASQUE"]] = None
 
 
 class Variable(Strict):

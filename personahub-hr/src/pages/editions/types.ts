@@ -207,6 +207,7 @@ export interface Corps {
   affectations?: Affectation[];
   tri?: "AFFECTATION" | "PAIE" | "CODE";
   afficher_titre?: boolean;         // titre du corps imprimé (défaut : oui)
+  emplacement?: "DETAIL" | "BAS_DE_PAGE" | "MASQUE" | null;   // défaut : DETAIL (lignes), BAS_DE_PAGE (cases)
 }
 export interface Variable { code: string; libelle: string; type?: "TEXTE" | "NOMBRE" | "MONTANT" | "DATE" | "BOOLEEN"; valeur: Expr }
 export interface Usages {

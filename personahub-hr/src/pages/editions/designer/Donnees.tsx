@@ -21,6 +21,7 @@ import {
 import FormuleInput from "./FormuleInput";
 import { useReferentiels } from "./contexte";
 import { deplacer, useGlisser } from "./glisser";
+import { EMPLACEMENTS, emplacementDe, libelleBande, placementConforme, placerCorps, usagesDuCorps, type Emplacement } from "@/pages/editions/placement";
 import { Case, Choix, JeuxEditeur, Ligne, Nombre, ParametresEditeur, Texte, classeChamp, poser } from "./Inspecteur";
 import type { Editeur } from "./useEditeur";
 
@@ -189,7 +190,7 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
       </Cadre>
       <Cadre titre="Corps de l'état" aide="Un corps = un bloc de données. « Lignes » : une ligne par rubrique affectée (détail du bulletin). « Cases » : un tableau fixe lignes × colonnes (cumuls, mois / cumul).">
         <table className="w-full max-w-4xl border text-sm">
-          <thead><tr>{["#", "Code", "Libellé", "Nature", "Colonnes", "Lignes", "Rubriques", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["#", "Code", "Libellé", "Nature", "Impression", "Colonnes", "Lignes", "Rubriques", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
             {corps.map((c, i) => (
               <tr key={c.code} {...dndCorps.ligne(i)} data-chemin={`corps[${i}]`} title={ligneErreur(erreurs, `corps[${i}]`).title}
@@ -198,6 +199,7 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
                 <td className={`${td} font-mono text-xs`}>{c.code}</td>
                 <td className={td}>{c.libelle}</td>
                 <td className={td}>{c.nature === "LIGNES" ? "Lignes de rubriques" : "Cases"}</td>
+                <td className={td}><EmplacementCorps d={d} c={c} editeur={editeur} ro={ro} compact /></td>
                 <td className={`${td} text-center`}>{c.colonnes.length}</td>
                 <td className={`${td} text-center`}>{c.nature === "CASES" ? (c.lignes ?? []).length : "variable"}</td>
                 <td className={`${td} text-center`}>{(c.affectations ?? []).length}</td>
@@ -212,7 +214,7 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
                 </td>
               </tr>
             ))}
-            {!corps.length && <tr><td colSpan={8} className="p-4 text-center text-sm text-muted-foreground">Aucun corps : ajoutez par exemple « Détail » (lignes) et « Cumuls » (cases).</td></tr>}
+            {!corps.length && <tr><td colSpan={9} className="p-4 text-center text-sm text-muted-foreground">Aucun corps : ajoutez par exemple « Détail » (lignes) et « Cumuls » (cases).</td></tr>}
           </tbody>
         </table>
         {!ro && (
@@ -260,6 +262,43 @@ function renommerDansCorps(x: Definition, corps: string, genre: "colonne" | "lig
 }
 
 type SousCorps = "rubriques" | "colonnes" | "lignes";
+
+/** Emplacement à l'impression d'un corps et son état dans la mise en forme courante (RG-EDT-DONNEES-07). */
+function EmplacementCorps({ d, c, editeur, ro, compact }: { d: Definition; c: Corps; editeur: Editeur; ro: boolean; compact?: boolean }) {
+  const e = emplacementDe(c);
+  const ok = placementConforme(d, c);
+  const usages = usagesDuCorps(d, c.code);
+  const appliquer = (nouveau?: Emplacement) => {
+    let compte = "";
+    editeur.modifier((x) => {
+      const z = x.corps!.find((y) => y.code === c.code)!;
+      if (nouveau) poser(z, "emplacement", nouveau === (z.nature === "LIGNES" ? "DETAIL" : "BAS_DE_PAGE") ? null : nouveau);
+      compte = placerCorps(x, c.code);
+    }, `emp:${c.code}`);
+    if (compte) toast({ title: "Mise en forme mise à jour", description: compte });
+  };
+  const etat = e === "MASQUE" ? (ok ? "non imprimé" : "encore imprimé dans la mise en forme")
+    : ok ? usages.map((u) => `${u.element.id} · ${libelleBande(u.bande.type)}`).join(", ")
+    : usages.length ? `imprimé ailleurs : ${usages.map((u) => libelleBande(u.bande.type)).join(", ")}` : "pas encore dans la mise en forme";
+  if (compact) return (
+    <span className={`whitespace-nowrap text-xs ${ok ? "" : "font-medium text-amber-700"}`} title={etat}>
+      {EMPLACEMENTS.find((x) => x.v === e)?.l}{!ok && " ⚠"}
+    </span>
+  );
+  return (
+    <label className="text-xs">Emplacement à l'impression
+      <div className="mt-1 flex items-center gap-2">
+        <select className={`${classeChamp} w-44`} disabled={ro} value={e} onChange={(ev) => appliquer(ev.target.value as Emplacement)}>
+          {EMPLACEMENTS.map((x) => <option key={x.v} value={x.v} title={x.aide}>{x.l}</option>)}
+        </select>
+        <span className={`max-w-xs truncate ${ok ? "text-muted-foreground" : "font-medium text-amber-700"}`} title={etat}>
+          {ok ? "✓ " : "⚠ "}{etat}
+        </span>
+        {!ok && !ro && <Button size="sm" variant="outline" className="h-7" onClick={() => appliquer()}>Placer</Button>}
+      </div>
+    </label>
+  );
+}
 function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
   d: Definition; editeur: Editeur; ro: boolean; actif: string | null; setActif: (c: string) => void; sous: SousCorps; setSous: (s: SousCorps) => void;
 }) {
@@ -285,6 +324,7 @@ function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
               Imprimer le titre du corps
             </label>
           )}
+          <EmplacementCorps d={d} c={c} editeur={editeur} ro={ro} />
           {c.nature === "LIGNES" && (
             <label className="text-xs">Tri des lignes
               <select className={`${classeChamp} mt-1 w-56`} disabled={ro} value={c.tri ?? "AFFECTATION"}
