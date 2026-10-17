@@ -20,6 +20,7 @@ import {
 } from "@/pages/editions/types";
 import FormuleInput from "./FormuleInput";
 import { useReferentiels } from "./contexte";
+import { deplacer, useGlisser } from "./glisser";
 import { Case, Choix, JeuxEditeur, Ligne, Nombre, ParametresEditeur, Texte, classeChamp, poser } from "./Inspecteur";
 import type { Editeur } from "./useEditeur";
 
@@ -92,6 +93,7 @@ const td = "border-b px-1 py-0.5 align-middle";
 function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definition; editeur: Editeur; version: Version; ro: boolean; ouvrirCorps: (c: string) => void }) {
   const [nouveau, setNouveau] = useState<{ libelle: string; nature: Corps["nature"] }>({ libelle: "", nature: "LIGNES" });
   const corps = d.corps ?? [];
+  const dndCorps = useGlisser((de, vers) => editeur.modifier((x) => { deplacer(x.corps!, de, vers); }, "co-dnd"), !ro);
   const ajouter = () => {
     const code = CODE(nouveau.libelle) || `corps_${corps.length + 1}`;
     if (corps.some((c) => c.code === code)) { toast({ title: "Ce corps existe déjà", variant: "destructive" }); return; }
@@ -123,8 +125,8 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
           <thead><tr>{["#", "Code", "Libellé", "Nature", "Colonnes", "Lignes", "Rubriques", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
             {corps.map((c, i) => (
-              <tr key={c.code} className="hover:bg-muted/30">
-                <td className={`${td} w-8 text-center text-muted-foreground`}>{i + 1}</td>
+              <tr key={c.code} {...dndCorps.ligne(i)} className={`hover:bg-muted/30 ${dndCorps.ligne(i).className}`}>
+                <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dndCorps.poignee(i)} {i + 1}</td>
                 <td className={`${td} font-mono text-xs`}>{c.code}</td>
                 <td className={td}>{c.libelle}</td>
                 <td className={td}>{c.nature === "LIGNES" ? "Lignes de rubriques" : "Cases"}</td>
@@ -250,6 +252,7 @@ const TYPES_COLONNE: { v: TypeColonneCorps; l: string }[] = [
 ];
 
 function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
+  const dnd = useGlisser((de, vers) => majC((z) => { deplacer(z.colonnes, de, vers); }, "co-dnd"), !ro);
   const { masques } = useReferentiels();
   const [codes, setCodes] = useState<Record<number, string>>({});
   const renommer = (i: number) => {
@@ -267,8 +270,8 @@ function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC:
         <thead><tr>{["#", "Code", "Intitulé colonne", "Sigle", "Type", "Masque", "Total", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
           {c.colonnes.map((col, i) => (
-            <tr key={i}>
-              <td className={`${td} w-8 text-center text-muted-foreground`}>{i + 1}</td>
+            <tr key={i} {...dnd.ligne(i)}>
+              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {i + 1}</td>
               <td className={`${td} w-32`}><input className={`${classeChamp} font-mono`} disabled={ro} value={codes[i] ?? col.code}
                 onChange={(e) => setCodes({ ...codes, [i]: e.target.value })} onBlur={() => codes[i] !== undefined && renommer(i)}
                 onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") renommer(i); }} /></td>
@@ -309,6 +312,7 @@ function GrilleColonnes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC:
 
 function GrilleLignes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
   const lignes = c.lignes ?? [];
+  const dnd = useGlisser((de, vers) => majC((z) => { deplacer(z.lignes!, de, vers); }, "lo-dnd"), !ro);
   const [codes, setCodes] = useState<Record<number, string>>({});
   const renommer = (i: number) => {
     const nouveau = CODE(codes[i] ?? "");
@@ -325,8 +329,8 @@ function GrilleLignes({ c, ro, majC, editeur }: { c: Corps; ro: boolean; majC: (
         <thead><tr>{["#", "Code", "Intitulé ligne", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
           {lignes.map((l, i) => (
-            <tr key={i}>
-              <td className={`${td} w-8 text-center text-muted-foreground`}>{i + 1}</td>
+            <tr key={i} {...dnd.ligne(i)}>
+              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {i + 1}</td>
               <td className={`${td} w-40`}><input className={`${classeChamp} font-mono`} disabled={ro} value={codes[i] ?? l.code}
                 onChange={(e) => setCodes({ ...codes, [i]: e.target.value })} onBlur={() => codes[i] !== undefined && renommer(i)}
                 onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") renommer(i); }} /></td>
@@ -370,6 +374,16 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
     || nomRub(a.rubrique).toLowerCase().includes(bas) || (a.groupe ?? "").toLowerCase().includes(bas) || (a.formule ?? "").toLowerCase().includes(bas));
   const majA = (i: number, fn: (a: Affectation) => void, cle: string) => majC((z) => fn(z.affectations![i]), `${cle}${i}`);
   const autres = (d.corps ?? []).filter((z) => z.code !== c.code);
+  // RG-EDT-LIGNES-02 (Adil DAIA) : une ligne fusionnée voyage avec les rubriques qui lui sont jointes ;
+  // on ne dépose jamais entre une rubrique et ses fusions, et une fusion sans rubrique au-dessus est défaite.
+  const dnd = useGlisser((de, vers) => majC((z) => {
+    const y = z.affectations!;
+    let nb = 1;
+    if (!y[de].fusion) while (de + nb < y.length && y[de + nb].fusion) nb++;
+    while (vers < y.length && y[vers]?.fusion && !(vers > de && vers <= de + nb - 1)) vers++;
+    deplacer(y, de, vers, nb);
+    y.forEach((a, k) => { if (a.fusion && (k === 0 || !a.rubrique || !y[k - 1].rubrique)) delete a.fusion; });
+  }, "ao-dnd"), !ro);
 
   const selCible = (a: Affectation, i: number, attr: AttributAffecte) => {
     const interdit = a.periode === "CUMUL" && (attr === "TX" || attr === "PAT");
@@ -405,8 +419,8 @@ function GrilleAffectations({ c, d, ro, majC, editeur }: { c: Corps; d: Definiti
           </tr></thead>
           <tbody>
             {visibles.map(({ a, i }) => (
-              <tr key={i} className={`hover:bg-muted/30 ${a.fusion ? "bg-sky-50/60" : ""}`}>
-                <td className={`${td} w-8 text-center text-xs text-muted-foreground`}>{a.fusion ? "↳" : i + 1}</td>
+              <tr key={i} {...dnd.ligne(i)} className={`hover:bg-muted/30 ${a.fusion ? "bg-sky-50/60" : ""} ${dnd.ligne(i).className}`}>
+                <td className={`${td} w-12 whitespace-nowrap text-center text-xs text-muted-foreground`}>{dnd.poignee(i)} {a.fusion ? "↳" : i + 1}</td>
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
                     <td className={`${td} min-w-[240px]`} colSpan={2}>
@@ -570,6 +584,7 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
 function OngletVariables({ d, editeur, ro }: { d: Definition; editeur: Editeur; ro: boolean }) {
   const vars = d.variables ?? [];
   const majV = (i: number, fn: (v: Variable) => void, cle: string) => editeur.modifier((x) => fn(x.variables![i]), `v${i}:${cle}`);
+  const dnd = useGlisser((de, vers) => editeur.modifier((x) => { deplacer(x.variables!, de, vers); }, "vo-dnd"), !ro);
   const manquantes = VARIABLES_BULLETIN.filter((v) => !vars.some((x) => x.code === v.code));
   return (
     <Cadre titre="Variables" aide="Valeurs nommées que les mises en forme affichent (var.code), sans connaître leur origine : changer la source ne touche aucune mise en forme."
@@ -582,10 +597,11 @@ function OngletVariables({ d, editeur, ro }: { d: Definition; editeur: Editeur; 
         }, "vadd")}><Plus className="mr-1 h-4 w-4" />Variable</Button>
       </>}>
       <table className="w-full border text-sm">
-        <thead><tr>{["Code", "Libellé", "Type", "Valeur (formule)", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+        <thead><tr>{["#", "Code", "Libellé", "Type", "Valeur (formule)", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
           {vars.map((v, i) => (
-            <tr key={i} className="align-top">
+            <tr key={i} {...dnd.ligne(i)} className={`align-top ${dnd.ligne(i).className}`}>
+              <td className={`${td} w-8 pt-2 text-center`}>{dnd.poignee(i)}</td>
               <td className={`${td} w-44`}><input className={`${classeChamp} font-mono`} disabled={ro} value={v.code} onKeyDown={(e) => e.stopPropagation()}
                 onChange={(e) => majV(i, (z) => { z.code = CODE(e.target.value) || z.code; }, "c")} /><div className="mt-0.5 text-[10px] text-muted-foreground">var.{v.code}</div></td>
               <td className={`${td} w-52`}><input className={classeChamp} disabled={ro} value={v.libelle} onKeyDown={(e) => e.stopPropagation()}
@@ -599,7 +615,7 @@ function OngletVariables({ d, editeur, ro }: { d: Definition; editeur: Editeur; 
                 <button type="button" onClick={() => editeur.modifier((x) => { x.variables!.splice(i, 1); }, "vs")}><Trash2 className="inline h-3 w-3 text-destructive" /></button></>}</td>
             </tr>
           ))}
-          {!vars.length && <tr><td colSpan={5} className="p-4 text-center text-sm text-muted-foreground">Aucune variable.</td></tr>}
+          {!vars.length && <tr><td colSpan={6} className="p-4 text-center text-sm text-muted-foreground">Aucune variable.</td></tr>}
         </tbody>
       </table>
       <p className="mt-2 text-xs text-muted-foreground">Une variable peut lire les précédentes (var.x) et les cases des corps (corps.cumuls.mois.brut).</p>
@@ -736,6 +752,26 @@ function OngletApercu({ d, version, ro, enregistrer }: { d: Definition; version:
                     ))}</tbody>
                   </table>
                 </div>
+              )}
+              {(l.rubriques ?? []).length > 0 && (
+                <details className="rounded border bg-muted/20 p-2">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    Contrôle des rubriques <span className="font-normal text-muted-foreground">— valeurs brutes du bulletin, avant affectation (Mt = montant de la ligne, Patronal = montant patronal)</span>
+                  </summary>
+                  <table className="mt-2 border text-xs">
+                    <thead><tr>{["Rubrique", "Libellé", "Nb", "Base", "Taux", "Mt", "Patronal", "Cumul Nb", "Cumul Base", "Cumul Mt"].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+                    <tbody>{(l.rubriques ?? []).map((r) => (
+                      <tr key={r.code} className={r.absente ? "text-muted-foreground" : ""}>
+                        <td className={`${td} px-2 font-mono`}>{r.code}</td>
+                        <td className={`${td} px-2`}>{r.absente ? <i>absente du bulletin et des cumuls</i> : r.libelle}</td>
+                        {(["NB", "BASE", "TX", "MT", "PAT", "CNB", "CBASE", "CMT"] as const).map((k) => (
+                          <td key={k} className={`${td} px-2 text-right tabular-nums ${r[k] != null && Number(r[k]) !== 0 ? "font-medium" : "text-muted-foreground/60"}`}>
+                            {r[k] == null ? "" : affiche(Number(r[k]))}</td>
+                        ))}
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </details>
               )}
             </div>
           )}

@@ -278,8 +278,32 @@ def donnees_brutes(db: Session, d: Definition, parametres_bruts: dict, sec: Cont
             "corps": _json(donnees["corps"]),
             "variables": _json(donnees["var"]),
             "anomalies": [{"element": a.source_id, "message": a.message} for a in comp.anomalies],
+            "rubriques": _valeurs_rubriques(prep, d, l),
         })
     return {"nb_lignes": len(prep.lignes), "lignes": resultat}
+
+
+ATTRIBUTS_CONTROLE = ("NB", "BASE", "TX", "MT", "PAT", "CNB", "CBASE", "CMT")
+
+
+def _valeurs_rubriques(prep: "Preparation", d: Definition, ligne: dict) -> list[dict]:
+    """RG-EDT-DONNEES-06 (Adil DAIA) : contrôle des affectations — valeurs brutes, avant
+    affectation, de chaque rubrique citée par un corps. Absente = la rubrique n'existe
+    ni sur le bulletin ni dans ses cumuls."""
+    rub = (prep.contexte.get("rubriques") or {}).get(str(ligne.get("id")), {})
+    libelles = prep.contexte.get("libelles_rubriques") or {}
+    vus: list[str] = []
+    for c in prep.definition.corps:
+        for a in c.affectations:
+            code = (a.rubrique or "").strip().upper()
+            if code and code not in vus:
+                vus.append(code)
+    sortie = []
+    for code in vus:
+        v = rub.get(code)
+        sortie.append({"code": code, "libelle": libelles.get(code) or "", "absente": v is None,
+                       **{k: (str(v[k]) if v and v.get(k) is not None else None) for k in ATTRIBUTS_CONTROLE}})
+    return sortie
 
 
 def _chemin_relatif(p: str) -> str:

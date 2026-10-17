@@ -300,3 +300,18 @@ def test_nulls_titre_du_corps_et_entete(db):
     assert "Détail" not in t                      # pas de titre de corps
     assert "Désignation" not in t                 # pas de ligne d'en-tête de colonnes
     assert "Salaire de base" in t and "Avance à zéro" in t
+
+
+def test_controle_des_valeurs_brutes_des_rubriques(db):
+    """RG-EDT-DONNEES-06 : l'aperçu donne les valeurs brutes de chaque rubrique citée."""
+    from app.editions.moteur.executeur import donnees_brutes
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    rubs = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)["lignes"][0]["rubriques"]
+    codes = [r["code"] for r in rubs]
+    assert len(codes) == len(set(codes)) and codes
+    absentes = {r["code"] for r in rubs if r["absente"]}
+    presentes = [r for r in rubs if not r["absente"]]
+    assert presentes and all(r["MT"] is not None for r in presentes)
+    assert all(all(r[k] is None for k in ("NB", "MT", "PAT")) for r in rubs if r["code"] in absentes)
