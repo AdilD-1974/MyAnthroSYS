@@ -37,6 +37,20 @@ COULEURS_NOMMEES = {"noir": "#000000", "blanc": "#FFFFFF", "gris": "#808080", "g
                     "rouge": "#C00000", "bleu": "#1F4E79", "vert": "#2E7D32", "orange": "#E07000"}
 
 
+# RG-EDT-RENDU-03 (Adil DAIA) : style de trait des bordures, cadres et lignes (motif en points)
+_MOTIFS = {"TIRETS": [4, 2], "POINTILLES": [1, 1.6], "TIRET_POINT": [4, 1.6, 1, 1.6]}
+
+
+def _trait(c, s, epaisseur: float):
+    motif = _MOTIFS.get(getattr(s, "style_trait", None) or "") if s else None
+    if motif:
+        c.setDash([m * max(epaisseur, 0.5) for m in motif], 0)
+        c.setLineCap(1 if getattr(s, "style_trait", "") == "POINTILLES" else 0)
+    else:
+        c.setDash([], 0)
+        c.setLineCap(0)
+
+
 def _couleur(c: Optional[str], charte: dict):
     if not c:
         return None
@@ -91,20 +105,29 @@ class RenduPDF:
         fond = _couleur(getattr(s, "fond", None), self.charte) if s else None
         if fond is not None:
             c.setFillColor(fond)
-            c.rect(x, y, l, h, stroke=0, fill=1)
+            if b.arrondi:
+                c.roundRect(x, y, l, h, tx.mm(b.arrondi), stroke=0, fill=1)
+            else:
+                c.rect(x, y, l, h, stroke=0, fill=1)
         bordures = (getattr(s, "bordures", None) or "") if s else ""
         epaisseur = (getattr(s, "epaisseur_bordure", None) or 0.5) if s else 0.5
         couleur = _couleur(getattr(s, "couleur_bordure", None) or getattr(s, "couleur", None), self.charte) if s else None
         c.setStrokeColor(couleur or black)
         c.setLineWidth(epaisseur)
+        _trait(c, s, epaisseur)
         if force_bordure or bordures.upper() in ("TOUT", "H,B,G,D"):
-            c.rect(x, y, l, h, stroke=1, fill=0)
+            if b.arrondi:
+                c.roundRect(x, y, l, h, tx.mm(b.arrondi), stroke=1, fill=0)
+            else:
+                c.rect(x, y, l, h, stroke=1, fill=0)
+            c.setDash([], 0)
             return
         cotes = {p.strip().upper() for p in bordures.split(",") if p.strip()}
         if "H" in cotes: c.line(x, y + h, x + l, y + h)
         if "B" in cotes: c.line(x, y, x + l, y)
         if "G" in cotes: c.line(x, y, x, y + h)
         if "D" in cotes: c.line(x + l, y, x + l, y + h)
+        c.setDash([], 0)
 
     def _texte(self, c, b: Boite):
         s = b.style
@@ -127,28 +150,38 @@ class RenduPDF:
             y0 = haut - (h - bloc) / 2 - b.taille
         alignement = getattr(s, "alignement", None) or ("DROITE" if b.police == tx.POLICE_ARABE else "GAUCHE")
         marge = tx.mm(0.8)
+        souligne = bool(getattr(s, "souligne", False))
+        if souligne:
+            c.setStrokeColor(couleur or black)
+            c.setLineWidth(max(0.4, b.taille / 16))
+            c.setDash([], 0)
         for i, ligne in enumerate(b.lignes):
             y = y0 - i * pas
+            w = tx.largeur_pt(ligne, b.police, b.taille)
             if alignement == "DROITE":
-                c.drawRightString(x + l - marge, y, ligne)
+                x1 = x + l - marge - w
             elif alignement == "CENTRE":
-                c.drawCentredString(x + l / 2, y, ligne)
+                x1 = x + l / 2 - w / 2
             else:
-                c.drawString(x + marge, y, ligne)
-        if getattr(s, "souligne", False):
-            pass  # lot 2
+                x1 = x + marge
+            c.drawString(x1, y, ligne)
+            if souligne and ligne.strip():                   # RG-EDT-RENDU-04 : souligné imprimé
+                c.line(x1, y - b.taille * 0.12, x1 + w, y - b.taille * 0.12)
 
     def _ligne(self, c, b: Boite):
         s = b.style
         couleur = _couleur(getattr(s, "couleur", None), self.charte) if s else None
         c.setStrokeColor(couleur or black)
-        c.setLineWidth((getattr(s, "epaisseur_bordure", None) or 0.5) if s else 0.5)
+        epaisseur = (getattr(s, "epaisseur_bordure", None) or 0.5) if s else 0.5
+        c.setLineWidth(epaisseur)
+        _trait(c, s, epaisseur)
         if b.l >= b.h:
             y = self._y(b.y + b.h / 2)
             c.line(tx.mm(b.x), y, tx.mm(b.x + b.l), y)
         else:
             x = tx.mm(b.x + b.l / 2)
             c.line(x, self._y(b.y), x, self._y(b.y + b.h))
+        c.setDash([], 0)
 
     def _cadre(self, c, b: Boite):
         self._cadre_style(c, b, force_bordure=True)

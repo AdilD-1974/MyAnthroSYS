@@ -84,6 +84,7 @@ class Style(Strict):
     alignement_vertical: Optional[Literal["HAUT", "MILIEU", "BAS"]] = None
     bordures: Optional[str] = None
     couleur_bordure: Optional[str] = None     # défaut : la couleur du texte
+    style_trait: Optional[Literal["PLEIN", "TIRETS", "POINTILLES", "TIRET_POINT"]] = None   # bordures, cadres, lignes
     epaisseur_bordure: Optional[float] = Field(default=None, ge=0, le=5)
     rotation: Literal[0, 90, 180, 270] = 0
     langue: Literal["FR", "AR", "AUTO"] = "AUTO"

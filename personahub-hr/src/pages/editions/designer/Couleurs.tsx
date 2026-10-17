@@ -115,13 +115,97 @@ export function ChoixBordures({ value, onChange, disabled }: { value?: string | 
 }
 
 /** Bordures en CSS pour le canevas. */
-export function cssBordures(bordures?: string | null, couleur?: string | null, epaisseurPt?: number | null, mm = 3.78): React.CSSProperties {
+export function cssBordures(bordures?: string | null, couleur?: string | null, epaisseurPt?: number | null, mm = 3.78,
+  styleTrait?: string | null): React.CSSProperties {
   const v = normaliser(bordures);
   if (!v) return {};
-  const trait = `${Math.max(1, (epaisseurPt ?? 0.5) * 0.3528 * mm)}px solid ${hexDe(couleur) ?? "#111"}`;
+  const motif = { TIRETS: "dashed", POINTILLES: "dotted", TIRET_POINT: "dashed" }[styleTrait ?? ""] ?? "solid";
+  const trait = `${Math.max(1, (epaisseurPt ?? 0.5) * 0.3528 * mm)}px ${motif} ${hexDe(couleur) ?? "#111"}`;
   const cotes = v === "TOUT" ? ORDRE : v.split(",");
   return {
     ...(cotes.includes("H") ? { borderTop: trait } : {}), ...(cotes.includes("B") ? { borderBottom: trait } : {}),
     ...(cotes.includes("G") ? { borderLeft: trait } : {}), ...(cotes.includes("D") ? { borderRight: trait } : {}),
   };
 }
+
+// ── listes visuelles : épaisseur, style de trait, arrondi ────────────────────
+interface OptionVisuelle<T> { v: T; l: string; apercu: React.ReactNode }
+
+/** Liste déroulante dont chaque choix montre un aperçu (trait, arrondi…). */
+export function ListeVisuelle<T extends string | number>({ value, options, onChange, disabled, vide }: {
+  value: T | null | undefined; options: OptionVisuelle<T>[]; onChange: (v: T | null) => void; disabled?: boolean; vide?: string;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const zone = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ouvert) return;
+    const fermer = (e: MouseEvent) => { if (!zone.current?.contains(e.target as Node)) setOuvert(false); };
+    document.addEventListener("mousedown", fermer);
+    return () => document.removeEventListener("mousedown", fermer);
+  }, [ouvert]);
+  const courant = options.find((o) => o.v === value);
+  return (
+    <div ref={zone} className="relative">
+      <button type="button" disabled={disabled} onClick={() => setOuvert((o) => !o)}
+        className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-background px-2 text-left text-xs disabled:opacity-60">
+        <span className="flex w-10 shrink-0 items-center justify-center">{courant?.apercu}</span>
+        <span className={`truncate ${courant ? "" : "text-muted-foreground"}`}>{courant?.l ?? vide ?? "—"}</span>
+      </button>
+      {ouvert && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-auto rounded-md border bg-popover py-1 shadow-lg">
+          {options.map((o) => (
+            <button key={String(o.v)} type="button" onClick={() => { onChange(o.v); setOuvert(false); }}
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent ${o.v === value ? "bg-accent/60 font-medium" : ""}`}>
+              <span className="flex w-10 shrink-0 items-center justify-center">{o.apercu}</span>{o.l}
+              {o.v === value && <Check className="ml-auto h-3 w-3" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const trait = (pt: number, style: string = "solid") => (
+  <span className="block w-10" style={{ borderTop: `${Math.max(1, pt * 1.33)}px ${style} #111` }} />
+);
+
+/** Épaisseurs en points (1 pt = 0,35 mm), comme dans les traitements de texte. */
+export const EPAISSEURS = [0.25, 0.5, 0.75, 1, 1.5, 2.25, 3, 4.5, 6];
+export function ChoixEpaisseur({ value, onChange, disabled }: { value?: number | null; onChange: (v: number | null) => void; disabled?: boolean }) {
+  const noms: Record<number, string> = { 0.25: "Très fin", 0.5: "Fin (défaut)", 1: "Normal", 1.5: "Moyen", 2.25: "Épais", 3: "Très épais" };
+  const liste = EPAISSEURS.includes(value ?? 0.5) ? EPAISSEURS : [...EPAISSEURS, value!].sort((a, b) => a - b);
+  return (
+    <ListeVisuelle value={value ?? 0.5} disabled={disabled} onChange={(v) => onChange(v === 0.5 ? null : v)}
+      options={liste.map((e) => ({ v: e, l: `${String(e).replace(".", ",")} pt${noms[e] ? ` · ${noms[e]}` : ""}`, apercu: trait(e) }))} />
+  );
+}
+
+export type StyleTrait = "PLEIN" | "TIRETS" | "POINTILLES" | "TIRET_POINT";
+export const CSS_TRAIT: Record<StyleTrait, string> = { PLEIN: "solid", TIRETS: "dashed", POINTILLES: "dotted", TIRET_POINT: "dashed" };
+export function ChoixTrait({ value, onChange, disabled }: { value?: StyleTrait | null; onChange: (v: StyleTrait | null) => void; disabled?: boolean }) {
+  return (
+    <ListeVisuelle<StyleTrait> value={value ?? "PLEIN"} disabled={disabled} onChange={(v) => onChange(v === "PLEIN" ? null : v)}
+      options={[
+        { v: "PLEIN", l: "Continu", apercu: trait(1.5) },
+        { v: "TIRETS", l: "Tirets", apercu: trait(1.5, "dashed") },
+        { v: "POINTILLES", l: "Pointillés", apercu: trait(1.5, "dotted") },
+        { v: "TIRET_POINT", l: "Tiret-point", apercu: <svg width="40" height="4"><line x1="0" y1="2" x2="40" y2="2" stroke="#111" strokeWidth="2" strokeDasharray="7 3 2 3" /></svg> },
+      ]} />
+  );
+}
+
+export function ChoixArrondi({ value, onChange, disabled }: { value?: number | null; onChange: (v: number | null) => void; disabled?: boolean }) {
+  const liste = [0, 0.5, 1, 2, 3, 5, 8];
+  const noms: Record<number, string> = { 0: "Angles droits", 1: "Léger", 3: "Moyen", 8: "Prononcé" };
+  return (
+    <ListeVisuelle value={value ?? 0} disabled={disabled} onChange={(v) => onChange(v ? v : null)}
+      options={(liste.includes(value ?? 0) ? liste : [...liste, value!].sort((a, b) => a - b)).map((r) => ({
+        v: r, l: `${String(r).replace(".", ",")} mm${noms[r] ? ` · ${noms[r]}` : ""}`,
+        apercu: <span className="block h-4 w-7 border-2 border-foreground/80" style={{ borderRadius: r * 1.6 }} />,
+      }))} />
+  );
+}
+
+/** Tailles de police usuelles, proposées dans une liste (saisie libre possible). */
+export const TAILLES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];

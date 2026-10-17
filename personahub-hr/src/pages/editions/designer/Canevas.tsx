@@ -22,7 +22,7 @@ import { PLANS, changerPlan } from "./plans";
 import { aligner, dansLeLasso, idsSelection, memeBande, repartir, trouver, type Alignement } from "./selection";
 import { aimanter, poserGuides, useGuides } from "./guides";
 import { cssPolice } from "./Polices";
-import { cssBordures, hexDe } from "./Couleurs";
+import { CSS_TRAIT, cssBordures, hexDe } from "./Couleurs";
 
 export const PX_PAR_MM = 3.7795;
 const PAS_MM = 0.5;
@@ -456,7 +456,9 @@ function styleTexte(s: Style | undefined, mm: number): React.CSSProperties {
     textDecoration: s?.souligne ? "underline" : "none",
     color: hexDe(s?.couleur) ?? "#111",
     background: hexDe(s?.fond) ?? "transparent",
-    ...cssBordures(s?.bordures, s?.couleur_bordure ?? s?.couleur, s?.epaisseur_bordure, mm),
+    ...cssBordures(s?.bordures, s?.couleur_bordure ?? s?.couleur, s?.epaisseur_bordure, mm, s?.style_trait),
+    ...(s?.alignement_vertical ? { display: "flex", flexDirection: "column" as const,
+      justifyContent: s.alignement_vertical === "HAUT" ? "flex-start" : s.alignement_vertical === "BAS" ? "flex-end" : "center" } : {}),
     textAlign: s?.alignement === "DROITE" ? "right" : s?.alignement === "CENTRE" ? "center" : s?.alignement === "JUSTIFIE" ? "justify" : "left",
     fontFamily: cssPolice(s?.police),
     direction: s?.langue === "AR" ? "rtl" : undefined,
@@ -481,11 +483,13 @@ function Contenu({ el, mm, colonne }: { el: Element; mm: number; colonne: string
     case "IMAGE":
       return <ApercuImage el={el} l={el.l * mm} h={Math.max(el.h * mm, 2)} />;
     case "LIGNE":
-      return <div className="w-full" style={{ borderTop: `${Math.max(1, (el.h || 0.3) * mm)}px solid ${el.style?.couleur ?? "#111"}` }} />;
+      return el.l >= el.h
+        ? <div className="absolute inset-x-0 top-1/2 -translate-y-1/2" style={{ borderTop: `${Math.max(1, (el.style?.epaisseur_bordure ?? 0.5) * 0.3528 * mm)}px ${CSS_TRAIT[el.style?.style_trait ?? "PLEIN"]} ${hexDe(el.style?.couleur) ?? "#111"}` }} />
+        : <div className="absolute inset-y-0 left-1/2 -translate-x-1/2" style={{ borderLeft: `${Math.max(1, (el.style?.epaisseur_bordure ?? 0.5) * 0.3528 * mm)}px ${CSS_TRAIT[el.style?.style_trait ?? "PLEIN"]} ${hexDe(el.style?.couleur) ?? "#111"}` }} />;
     case "CADRE":
       return <div className="h-full w-full" style={{
-        border: `${Math.max(1, (el.style?.epaisseur_bordure ?? 0.3) * mm)}px solid ${el.style?.couleur ?? "#111"}`,
-        borderRadius: (el.arrondi ?? 0) * mm, background: el.style?.fond ?? "transparent" }} />;
+        border: `${Math.max(1, (el.style?.epaisseur_bordure ?? 0.5) * 0.3528 * mm)}px ${CSS_TRAIT[el.style?.style_trait ?? "PLEIN"]} ${hexDe(el.style?.couleur) ?? "#111"}`,
+        borderRadius: (el.arrondi ?? 0) * mm, background: hexDe(el.style?.fond) ?? "transparent" }} />;
     case "CODE_BARRE":
       return <div className="flex h-full w-full items-center justify-center border border-muted-foreground/40 bg-white">
         <QrCode className="h-3/4 w-3/4 text-muted-foreground" />

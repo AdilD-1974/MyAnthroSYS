@@ -76,6 +76,7 @@ class Boite:
     valeur: Any = None               # chemin d'image, contenu du QR
     ajustement: str = "CONTENIR"     # IMAGE
     rognage: Any = None              # IMAGE : definition.Rognage
+    arrondi: float = 0               # CADRE : rayon des coins (mm)
     source_id: str = ""
 
 
@@ -309,7 +310,8 @@ class Composeur:
                     t = ERREUR
                 boites.append(self._boite_texte(el, t, el.x, el.y))
             elif el.type in ("LIGNE", "CADRE"):
-                boites.append(Boite(el.x, el.y, el.l, el.h, el.type, style=el.style, source_id=el.id))
+                boites.append(Boite(el.x, el.y, el.l, el.h, el.type, style=el.style, source_id=el.id,
+                                    arrondi=getattr(el, "arrondi", 0) or 0))
             elif el.type == "IMAGE":
                 v = None if vide_force else self._evaluer(el.valeur, r, el.id)
                 if v not in (None, "", ERREUR):

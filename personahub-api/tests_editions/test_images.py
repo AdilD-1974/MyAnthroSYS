@@ -124,3 +124,34 @@ def test_rognage_borne():
     with pytest.raises(ValidationError):
         Rognage(gauche=60, droite=40)
     assert Rognage(haut=50, bas=45).bas == 45
+
+
+
+@base_requise
+def test_traits_arrondis_et_souligne(db):
+    """RG-EDT-RENDU-03/04 : tirets, pointillés, coins arrondis, souligné."""
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    d["bandes"][0]["elements"] += [
+        {"id": "c1", "type": "CADRE", "x": 0, "y": 100, "l": 40, "h": 10, "arrondi": 3,
+         "style": {"style_trait": "TIRETS", "epaisseur_bordure": 1.5, "fond": "#EEEEEE"}},
+        {"id": "l1", "type": "LIGNE", "x": 0, "y": 112, "l": 60, "h": 0.3, "style": {"style_trait": "POINTILLES"}},
+        {"id": "t1", "type": "TEXTE", "x": 50, "y": 100, "l": 40, "h": 6, "valeur": '"Souligné"', "style": {"souligne": True}},
+    ]
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    from pypdf import PdfReader
+    flux = b"".join(p.get_contents().get_data() for p in PdfReader(io.BytesIO(pdf)).pages)
+    assert b"] 0 d" in flux                                       # motif de tirets posé
+    assert b" c\n" in flux or b" c " in flux                      # courbes des coins arrondis
+    assert flux.count(b" l") >= 3                                 # traits, dont le soulignement
+
+
+def _safe(m):
+    import zlib
+    try:
+        zlib.decompress(m)
+        return True
+    except Exception:
+        return False

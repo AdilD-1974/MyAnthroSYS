@@ -28,7 +28,7 @@ import {
   type Alignement, type AlignementPage,
 } from "./selection";
 import { ChoixPolice } from "./Polices";
-import { ChoixBordures, ChoixCouleur } from "./Couleurs";
+import { ChoixArrondi, ChoixBordures, ChoixCouleur, ChoixEpaisseur, ChoixTrait, TAILLES } from "./Couleurs";
 import { useReferentiels } from "./contexte";
 import { ajusterColonnes } from "./Canevas";
 import type { Editeur } from "./useEditeur";
@@ -262,6 +262,18 @@ function InspecteurElement({ editeur, el, bande, ro }: { editeur: Editeur; el: E
           <Titre>Style</Titre>
           <Ligne libelle="Couleur"><ChoixCouleur value={el.style?.couleur} disabled={ro} vide="Noir (défaut)" defaut="#111111"
             onChange={(v) => maj((e) => poser(e, "style", nettoyer({ ...(e.style ?? {}), couleur: v || undefined })), "style")} /></Ligne>
+          <div className="grid grid-cols-2 gap-1">
+            <Ligne libelle="Épaisseur"><ChoixEpaisseur value={el.style?.epaisseur_bordure} disabled={ro}
+              onChange={(v) => maj((e) => poser(e, "style", nettoyer({ ...(e.style ?? {}), epaisseur_bordure: v ?? undefined })), "style")} /></Ligne>
+            <Ligne libelle="Trait"><ChoixTrait value={el.style?.style_trait} disabled={ro}
+              onChange={(v) => maj((e) => poser(e, "style", nettoyer({ ...(e.style ?? {}), style_trait: v ?? undefined })), "style")} /></Ligne>
+          </div>
+          <Ligne libelle="Orientation">
+            <Choix value={el.l >= el.h ? "H" : "V"} disabled={ro} onChange={(v) => maj((e, b) => {
+              if ((v === "V") === (e.l < e.h)) return;
+              const l = e.l; e.l = Math.max(0.3, e.h); e.h = l; b.hauteur = Math.max(b.hauteur, e.y + e.h);
+            }, "orient")} options={[{ v: "H", l: "Horizontale" }, { v: "V", l: "Verticale" }]} />
+          </Ligne>
         </>
       )}
     </div>
@@ -290,7 +302,7 @@ function ContenuElement({ el, ro, maj, colonne }: { el: Element; ro: boolean; ma
         <RognageImage el={el} ro={ro} maj={maj} />
       </>;
     case "CADRE":
-      return <Ligne libelle="Arrondi des coins (mm)"><Nombre value={el.arrondi ?? 0} disabled={ro} min={0} onChange={(v) => maj((e) => poser(e, "arrondi", v || null), "arrondi")} /></Ligne>;
+      return <Ligne libelle="Coins"><ChoixArrondi value={el.arrondi} disabled={ro} onChange={(v) => maj((e) => poser(e, "arrondi", v || null), "arrondi")} /></Ligne>;
     case "CODE_BARRE":
       return <>
         <Ligne libelle="Valeur encodée (formule)"><FormuleInput value={el.valeur} disabled={ro} onChange={(v) => maj((e) => { e.valeur = v; }, "valeur")} /></Ligne>
@@ -357,10 +369,25 @@ function StyleEditeur({ s, ro, cadre, onChange }: { s?: Style; ro: boolean; cadr
       {!cadre && <>
         <Ligne libelle="Police"><ChoixPolice value={v.police} disabled={ro} onChange={(x) => set("police", x)} /></Ligne>
         <div className="grid grid-cols-2 gap-1">
-          <Ligne libelle="Taille (pt)"><Nombre value={v.taille} pas={0.5} min={1} disabled={ro} onChange={(x) => set("taille", x)} /></Ligne>
+          <Ligne libelle="Taille (pt)">
+            <select className={classeChamp} disabled={ro} value={v.taille ?? ""} onChange={(e) => set("taille", e.target.value ? Number(e.target.value) : null)}>
+              <option value="">9 (défaut)</option>
+              {[...new Set([...TAILLES, ...(v.taille ? [v.taille] : [])])].sort((a, b) => a - b).map((t) => <option key={t} value={t}>{String(t).replace(".", ",")}</option>)}
+            </select>
+          </Ligne>
           <Ligne libelle="Alignement">
             <Choix value={v.alignement} disabled={ro} vide="Gauche" onChange={(x) => set("alignement", x === "GAUCHE" ? null : x)}
-              options={[{ v: "CENTRE", l: "Centré" }, { v: "DROITE", l: "Droite" }, { v: "JUSTIFIE", l: "Justifié" }]} />
+              options={[{ v: "CENTRE", l: "Centré" }, { v: "DROITE", l: "Droite" }]} />
+          </Ligne>
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <Ligne libelle="Position verticale">
+            <Choix value={v.alignement_vertical} disabled={ro} vide="Au milieu" onChange={(x) => set("alignement_vertical", x === "MILIEU" ? null : x)}
+              options={[{ v: "HAUT", l: "En haut" }, { v: "BAS", l: "En bas" }]} />
+          </Ligne>
+          <Ligne libelle="Langue">
+            <Choix value={v.langue ?? "AUTO"} disabled={ro} onChange={(x) => set("langue", x === "AUTO" ? null : x)}
+              options={[{ v: "AUTO", l: "Automatique" }, { v: "FR", l: "Français" }, { v: "AR", l: "Arabe" }]} />
           </Ligne>
         </div>
         <div className="mb-2">
@@ -375,18 +402,20 @@ function StyleEditeur({ s, ro, cadre, onChange }: { s?: Style; ro: boolean; cadr
         <Ligne libelle="Couleur du fond"><ChoixCouleur value={v.fond} disabled={ro} vide="Sans fond" onChange={(x) => set("fond", x)} /></Ligne>
       </div>
       {cadre
-        ? <Ligne libelle="Épaisseur du trait (pt)"><Nombre value={v.epaisseur_bordure} pas={0.25} min={0} disabled={ro} onChange={(x) => set("epaisseur_bordure", x)} /></Ligne>
+        ? <div className="grid grid-cols-2 gap-1">
+            <Ligne libelle="Épaisseur du trait"><ChoixEpaisseur value={v.epaisseur_bordure} disabled={ro} onChange={(x) => set("epaisseur_bordure", x)} /></Ligne>
+            <Ligne libelle="Trait"><ChoixTrait value={v.style_trait} disabled={ro} onChange={(x) => set("style_trait", x)} /></Ligne>
+          </div>
         : <>
           <Ligne libelle="Bordures"><ChoixBordures value={v.bordures} disabled={ro} onChange={(x) => set("bordures", x)} /></Ligne>
-          {v.bordures && <div className="grid grid-cols-2 gap-1">
+          {v.bordures && <>
+            <div className="grid grid-cols-2 gap-1">
+              <Ligne libelle="Épaisseur"><ChoixEpaisseur value={v.epaisseur_bordure} disabled={ro} onChange={(x) => set("epaisseur_bordure", x)} /></Ligne>
+              <Ligne libelle="Trait"><ChoixTrait value={v.style_trait} disabled={ro} onChange={(x) => set("style_trait", x)} /></Ligne>
+            </div>
             <Ligne libelle="Couleur des bordures">
               <ChoixCouleur value={v.couleur_bordure} disabled={ro} vide="Celle de la police" onChange={(x) => set("couleur_bordure", x)} /></Ligne>
-            <Ligne libelle="Épaisseur (pt)"><Nombre value={v.epaisseur_bordure} pas={0.25} min={0} disabled={ro} onChange={(x) => set("epaisseur_bordure", x)} /></Ligne>
-          </div>}
-          <Ligne libelle="Langue">
-            <Choix value={v.langue ?? "AUTO"} disabled={ro} onChange={(x) => set("langue", x === "AUTO" ? null : x)}
-              options={[{ v: "AUTO", l: "Automatique" }, { v: "FR", l: "Français" }, { v: "AR", l: "Arabe" }]} />
-          </Ligne>
+          </>}
         </>}
     </>
   );

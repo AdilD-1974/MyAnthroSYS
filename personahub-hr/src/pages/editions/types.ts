@@ -53,6 +53,7 @@ export interface Style {
   alignement_vertical?: "HAUT" | "MILIEU" | "BAS" | null;
   bordures?: string | null;
   couleur_bordure?: string | null;
+  style_trait?: "PLEIN" | "TIRETS" | "POINTILLES" | "TIRET_POINT" | null;
   epaisseur_bordure?: number | null;
   rotation?: 0 | 90 | 180 | 270;
   langue?: "FR" | "AR" | "AUTO";
