@@ -262,6 +262,8 @@ function renommerDansCorps(x: Definition, corps: string, genre: "colonne" | "lig
 }
 
 type SousCorps = "rubriques" | "colonnes" | "lignes";
+/** Une affectation « formule » (même encore vide) ou « rubrique ». */
+const estFormule = (a?: Affectation) => !!a && !a.rubrique && a.formule !== undefined && a.formule !== null;
 
 /** Emplacement à l'impression d'un corps et son état dans la mise en forme courante (RG-EDT-DONNEES-07). */
 function EmplacementCorps({ d, c, editeur, ro, compact }: { d: Definition; c: Corps; editeur: Editeur; ro: boolean; compact?: boolean }) {
@@ -502,7 +504,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
     if (!y[de].fusion) while (de + nb < y.length && y[de + nb].fusion) nb++;
     while (vers < y.length && y[vers]?.fusion && !(vers > de && vers <= de + nb - 1)) vers++;
     deplacer(y, de, vers, nb);
-    y.forEach((a, k) => { if (a.fusion && (k === 0 || !a.rubrique || !y[k - 1].rubrique)) delete a.fusion; });
+    y.forEach((a, k) => { if (a.fusion && (k === 0 || estFormule(a) !== estFormule(y[k - 1]))) delete a.fusion; });
   }, "ao-dnd"), !ro);
 
   const selCible = (a: Affectation, i: number, attr: AttributAffecte) => {
@@ -535,7 +537,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
           <thead className="sticky top-0 z-10"><tr>
             {["#", "Rubrique", "Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`), ...(c.nature === "LIGNES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls",
               ...(c.nature === "LIGNES" ? ["Fusion ↑", "Gras"] : []), ""].map((h) => <th key={h} className={th}
-                title={h === "Nulls" ? "Imprimée même quand ses valeurs sont à zéro. Une rubrique sans aucune valeur n'est jamais imprimée." : h === "Fusion ↑" ? "S'ajoute à la ligne au-dessus : une seule ligne imprimée (somme ; « en – » soustrait)" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
+                title={h === "Nulls" ? "Imprimée même quand ses valeurs sont à zéro. Une rubrique sans aucune valeur n'est jamais imprimée." : h === "Fusion ↑" ? "Même ligne que celle du dessus. Rubriques : valeurs additionnées (« en – » soustrait). Formules : plusieurs formules sur une ligne, chacune dans sa colonne" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
           </tr></thead>
           <tbody>
             {visibles.map(({ a, i }) => { const er = ligneErreur(erreurs, `corps[${ci}].affectations[${i}]`); return (
@@ -581,8 +583,8 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                 <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.negatif} onChange={(e) => majA(i, (z) => poser(z, "negatif", e.target.checked || null), "n")} /></td>
                 <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.nulle} onChange={(e) => majA(i, (z) => poser(z, "nulle", e.target.checked || null), "z")} /></td>
                 {c.nature === "LIGNES" && <>
-                  <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro || i === 0 || !!a.formule || !!affs[i - 1]?.formule}
-                    title="S'ajoute à la ligne au-dessus" checked={!!a.fusion} onChange={(e) => majA(i, (z) => poser(z, "fusion", e.target.checked || null), "fu")} /></td>
+                  <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro || i === 0 || estFormule(a) !== estFormule(affs[i - 1])}
+                    title={estFormule(a) ? "Même ligne que la formule au-dessus (chaque formule dans sa colonne)" : "S'ajoute à la ligne au-dessus"} checked={!!a.fusion} onChange={(e) => majA(i, (z) => poser(z, "fusion", e.target.checked || null), "fu")} /></td>
                   <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro || !!a.fusion}
                     checked={a.gras ?? !!a.formule} onChange={(e) => majA(i, (z) => poser(z, "gras", e.target.checked === !!z.formule ? null : e.target.checked), "gr")} /></td>
                 </>}

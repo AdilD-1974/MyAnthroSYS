@@ -14,6 +14,7 @@ edt_source_relation, rubrique_paie, edt_masque et edt_asset.
 from __future__ import annotations
 
 import fnmatch
+import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, Optional
 
@@ -265,8 +266,10 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
         cases = {f"{l.code}.{col}" for l in c.lignes for col in cols}
         for k, a in enumerate(c.affectations):
             ch = f"{base}.affectations[{k}]"
-            if a.fusion and (k == 0 or a.formule or c.affectations[k - 1].formule):
-                rapport.ajouter(f"{ch}.fusion", "Seule une rubrique se fusionne, avec la rubrique qui la précède")
+            # RG-EDT-DONNEES-06 : rubrique avec rubrique (somme), formule avec formule (colonnes de la même ligne)
+            if a.fusion and (k == 0 or bool(a.formule) != bool(c.affectations[k - 1].formule)):
+                rapport.ajouter(f"{ch}.fusion", "Une ligne fusionnée rejoint la ligne au-dessus de même nature "
+                                                "(rubrique avec rubrique, formule avec formule)")
             if bool(a.rubrique) == bool(a.formule):
                 rapport.ajouter(ch, "Une affectation porte une rubrique OU une formule")
                 continue
@@ -286,6 +289,17 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
                 if cat.rubriques is not None and code not in cat.rubriques and code not in RUBRIQUES_EN_TETE:
                     rapport.ajouter(f"{ch}.rubrique", f"Rubrique inconnue ou archivée : {code}")
                 rapport.dependances.add(("RUBRIQUE", code))
+
+    # 3 ter) TOTAL_CORPS("corps", "colonne") : le corps et la colonne doivent exister (RG-EDT-DONNEES-08)
+    par_code = {c.code.lower(): c for c in d.corps}
+    for chemin, f, _, _ in formules(d):
+        for m in re.finditer(r'TOTAL_CORPS\(\s*"([^"]*)"\s*,\s*"([^"]*)"', f or "", flags=re.IGNORECASE):
+            cp = par_code.get(m.group(1).lower())
+            if cp is None:
+                rapport.ajouter(chemin, f"TOTAL_CORPS : corps inconnu « {m.group(1)} » ({', '.join(c.code for c in d.corps) or 'aucun corps'})")
+            elif m.group(2).lower() not in {col.code.lower() for col in cp.colonnes}:
+                rapport.ajouter(chemin, f"TOTAL_CORPS : colonne inconnue « {m.group(2)} » dans « {cp.code} » "
+                                        f"(colonnes : {', '.join(col.code for col in cp.colonnes)})")
 
     # 4) Tableaux : jeu SECONDAIRE ou corps « lignes » ; plan des lignes et grilles cohérents
     for b, bande in enumerate(d.bandes):

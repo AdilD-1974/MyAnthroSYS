@@ -431,10 +431,11 @@ class Composeur:
                     if v is not None:
                         cases[ligne_code][col_code] = self._ajouter(cases[ligne_code][col_code], v)
             return cases
-        # RG-EDT-DONNEES-06 : une affectation « fusion » s'ajoute à la ligne précédente (une ligne imprimée)
+        # RG-EDT-DONNEES-06 : une affectation « fusion » s'ajoute à la ligne précédente (une ligne imprimée) :
+        # rubrique avec rubrique (valeurs additionnées), formule avec formule (une colonne chacune)
         blocs: list[list[tuple[int, Any]]] = []
         for i, a in enumerate(c.affectations):
-            if a.fusion and blocs and not a.formule and not blocs[-1][0][1].formule:
+            if a.fusion and blocs and bool(a.formule) == bool(blocs[-1][0][1].formule):
                 blocs[-1].append((i, a))
             else:
                 blocs.append([(i, a)])

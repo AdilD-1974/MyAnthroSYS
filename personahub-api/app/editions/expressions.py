@@ -401,7 +401,11 @@ def _total_corps(a: list, r: "ResolverEdition") -> Any:
     d'un corps — lignes du groupe (corps LIGNES) ou de la ligne (corps CASES)."""
     code, col = _txt(a[0]), _txt(a[1])
     filtre = _txt(a[2]) if len(a) > 2 and not _est_vide(a[2]) else None
-    corps = (r.ligne.get("corps") or {}).get(code)
+    tous = r.ligne.get("corps") or {}
+    corps = tous.get(code)
+    if corps is None:                                     # codes insensibles à la casse
+        corps = next((v for k, v in tous.items() if str(k).lower() == code.lower()), None)
+    col = {str(k).lower(): k for k in _cles(corps)}.get(col.lower(), col)
     if isinstance(corps, dict):
         lignes = [corps.get(filtre) or {}] if filtre else list(corps.values())
     elif isinstance(corps, list):
@@ -418,6 +422,11 @@ def _total_corps(a: list, r: "ResolverEdition") -> Any:
             except Exception:
                 pass
     return total
+
+
+def _cles(corps) -> set:
+    lignes = corps.values() if isinstance(corps, dict) else corps if isinstance(corps, list) else []
+    return {k for l in lignes for k in l}
 
 
 _f("TOTAL_CORPS")(_total_corps)

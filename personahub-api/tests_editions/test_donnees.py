@@ -243,7 +243,7 @@ def test_fusion_invalide():
     d["corps"][0]["affectations"][0]["fusion"] = True                  # première affectation : rien à quoi s'ajouter
     d["corps"][0]["affectations"].append({"formule": "1", "fusion": True, "cibles": {"VAL": "gains"}})
     messages = [e.message for e in valider(d, CAT).erreurs]
-    assert sum("se fusionne" in m for m in messages) == 2
+    assert sum("fusionnée" in m for m in messages) == 2                # formule sous une rubrique : refusée aussi
 
 
 @base_requise
@@ -328,3 +328,30 @@ def test_tableau_sans_ligne_des_totaux(db):
     tab["ligne_total"] = False
     sans = textes(executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)
     assert "Total" in avec and "Total" not in sans
+
+
+@base_requise
+def test_plusieurs_formules_sur_une_ligne(db):
+    """RG-EDT-DONNEES-06 : formule fusionnée avec la formule du dessus = une seule ligne, une colonne chacune."""
+    from app.editions.moteur.executeur import donnees_brutes
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    affs = d["corps"][0]["affectations"]
+    affs.append({"formule": 'TOTAL_CORPS("detail", "retenues")', "libelle": "Total cotisations", "cibles": {"VAL": "retenues"}})
+    affs.append({"formule": 'TOTAL_CORPS("Detail", "Patronal")', "fusion": True, "cibles": {"VAL": "patronal"}})  # casse libre
+    assert not [e for e in valider(d, CAT).erreurs if "fusion" in e.chemin]
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    lignes = donnees_brutes(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)["lignes"][0]["corps"]["detail"]
+    totaux = [l for l in lignes if l["libelle"] == "Total cotisations"]
+    assert len(totaux) == 1 and totaux[0]["retenues"] and totaux[0]["patronal"]
+    attendu = sum(float(l.get("patronal") or 0) for l in lignes if l is not totaux[0])
+    assert abs(float(totaux[0]["patronal"]) - attendu) < 0.01
+
+
+def test_total_corps_colonne_inconnue():
+    d = definition()
+    d["corps"][0]["affectations"].append({"formule": 'TOTAL_CORPS("detail", "patronales")', "cibles": {"VAL": "patronal"}})
+    d["corps"][0]["affectations"].append({"formule": 'TOTAL_CORPS("absent", "gains")', "cibles": {"VAL": "gains"}})
+    messages = [e.message for e in valider(d, CAT).erreurs]
+    assert any("colonne inconnue « patronales »" in m and "patronal" in m for m in messages)
+    assert any("corps inconnu « absent »" in m for m in messages)
