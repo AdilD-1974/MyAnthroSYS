@@ -132,6 +132,7 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
       <div className="relative">
         <div
           ref={corps}
+          data-bande={bande.id}
           onDragOver={(e) => { if (!lectureSeule) e.preventDefault(); }}
           onDrop={deposer}
           onPointerDown={(e) => { if (e.target === corps.current) editeur.setSelection({ bande: bande.id, element: null }); }}
@@ -172,6 +173,8 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
     const x0 = e.clientX, y0 = e.clientY;
     const { x, y, l, h } = el;
     const cible = e.currentTarget as HTMLElement;
+    const hauteurBande0 = bande.hauteur;
+    const prise = (y0 - cible.getBoundingClientRect().top) / mm;      // point saisi, depuis le haut de l'élément
     cible.setPointerCapture(e.pointerId);
     const bouger = (ev: PointerEvent) => {
       const dx = (ev.clientX - x0) / mm, dy = (ev.clientY - y0) / mm;
@@ -187,7 +190,32 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
         b.hauteur = Math.max(b.hauteur, z.y + z.h);
       }, `${mode}:${el.id}`);
     };
-    const finir = () => { cible.removeEventListener("pointermove", bouger); cible.removeEventListener("pointerup", finir); };
+    const finir = (ev: PointerEvent) => {
+      cible.removeEventListener("pointermove", bouger);
+      cible.removeEventListener("pointerup", finir);
+      if (mode !== "deplacer") return;
+      // RG-EDT-FORME (Adil DAIA) : lâché au-dessus d'une autre bande (en-tête, détail, pied…), l'élément y passe
+      const sous = document.elementsFromPoint(ev.clientX, ev.clientY)
+        .filter((n) => !cible.contains(n))
+        .map((n) => (n as HTMLElement).closest?.("[data-bande]") as HTMLElement | null)
+        .find((n) => !!n);
+      const idCible = sous?.getAttribute("data-bande");
+      if (!sous || !idCible || idCible === bande.id) return;
+      const haut = sous.getBoundingClientRect().top;
+      const ny = Math.max(0, arrondir((ev.clientY - haut) / mm - prise, ev.altKey));
+      editeur.modifier((d) => {
+        const src = d.bandes.find((b) => b.id === bande.id);
+        const dst = d.bandes.find((b) => b.id === idCible);
+        const i = src?.elements.findIndex((z) => z.id === el.id) ?? -1;
+        if (!src || !dst || i < 0) return;
+        const [z] = src.elements.splice(i, 1);
+        src.hauteur = hauteurBande0;                                    // la bande quittée retrouve sa hauteur
+        z.y = ny;
+        dst.elements.push(z);
+        dst.hauteur = Math.max(dst.hauteur, z.y + z.h);
+      }, `bande:${el.id}`);
+      editeur.setSelection({ bande: idCible, element: el.id });
+    };
     cible.addEventListener("pointermove", bouger);
     cible.addEventListener("pointerup", finir);
   };
@@ -317,7 +345,7 @@ function ApercuTableau({ t, mm, colonne }: { t: ElTableau; mm: number; colonne: 
       ))}
       {t.section_autres != null && t.sections?.length ? <>{t.section_autres && titre(t.section_autres, "autres")}{ligne((c) => valeur(c), "opacity-50")}</> : null}
       {Array.from({ length: Math.max(0, Math.min((t.lignes_min ?? 0) - lignes, 30)) }).map((_, i) => <div key={`v${i}`}>{ligne(() => "")}</div>)}
-      {cols.some((c) => c.total && c.total !== "AUCUN") &&
+      {(t.ligne_total ?? true) && cols.some((c) => c.total && c.total !== "AUCUN") &&
         ligne((c) => (c.total && c.total !== "AUCUN" ? <b>Σ</b> : ""), "border-t bg-muted/60")}
     </div>
   );

@@ -194,6 +194,7 @@ class Tableau(ElementBase):
     section_autres: Optional[str] = None      # avec des sections : titre des lignes restées hors section (None : masquées)
     quadrillage: Literal["AUCUN", "COLONNES", "COMPLET"] = "AUCUN"
     lignes_min: int = Field(default=0, ge=0, le=200)   # complète par des lignes vides (bulletin « formulaire »)
+    ligne_total: bool = True                  # ligne des totaux en bas du tableau (colonnes avec un total)
 
 
 class ColonneGrille(Strict):

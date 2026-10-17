@@ -130,6 +130,7 @@ export interface ElTableau extends ElementBase {
   section_autres?: string | null;   // titre des lignes hors sections (absent : masquées)
   quadrillage?: "AUCUN" | "COLONNES" | "COMPLET";
   lignes_min?: number;
+  ligne_total?: boolean;            // ligne des totaux (défaut : oui)
 }
 
 export interface ColonneGrille { id: string; titre?: string; largeur: number; affichage?: Affichage; style?: Style }

@@ -315,3 +315,16 @@ def test_controle_des_valeurs_brutes_des_rubriques(db):
     presentes = [r for r in rubs if not r["absente"]]
     assert presentes and all(r["MT"] is not None for r in presentes)
     assert all(all(r[k] is None for k in ("NB", "MT", "PAT")) for r in rubs if r["code"] in absentes)
+
+
+def test_tableau_sans_ligne_des_totaux(db):
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    tab = d["bandes"][0]["elements"][1]
+    tab["colonnes"][-1]["total"] = "SOMME"
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    avec = textes(executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)
+    tab["ligne_total"] = False
+    sans = textes(executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)
+    assert "Total" in avec and "Total" not in sans

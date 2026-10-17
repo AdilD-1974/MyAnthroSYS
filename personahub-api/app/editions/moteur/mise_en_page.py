@@ -660,7 +660,7 @@ class Composeur:
             dernier.boites = [copy.copy(b) for b in dernier.boites]
             for b in dernier.boites:
                 b.style = b.style.model_copy(update={"bordures": "G,D,B"})
-        if any(c.total != "AUCUN" for c in colonnes):
+        if tab.ligne_total and any(c.total != "AUCUN" for c in colonnes):
             tranches.append(rangee(self._ligne_totaux(colonnes, totaux, "Total"), gras=True, fond="#E8E8E8",
                                    bordures="TOUT" if bord else None))
         return tranches
