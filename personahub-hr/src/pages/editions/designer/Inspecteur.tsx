@@ -11,11 +11,13 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import {
   LIBELLES_BANDE, LIBELLES_ELEMENT, LIBELLES_PARAMETRE, RUBRIQUES_EN_TETE, copie, enLitteral, generateurIds, grilleDepuisCorps, identifiants, largeurUtile, nouvelId, tableauDepuisCorps,
-  texteLitteral, type Affichage, type Bande, type Colonne, type Definition, type Element, type ElGrille, type ElTableau,
+  texteLitteral, type Affichage, type Bande, type Colonne, type Definition, type Element, type ElGrille, type ElImage, type ElTableau,
   type Jeu, type LigneRubrique, type Parametre, type Section, type Style, type TypeParametre,
 } from "@/pages/editions/types";
+import { Button } from "@/components/ui/button";
 import FormuleInput from "./FormuleInput";
-import { ChoixImage } from "./BibliothequeImages";
+import { ChoixImage, DialogueRognage } from "./BibliothequeImages";
+import { PLANS, changerPlan, rangPlan } from "./plans";
 import { ChoixPolice } from "./Polices";
 import { ChoixBordures, ChoixCouleur } from "./Couleurs";
 import { useReferentiels } from "./contexte";
@@ -195,7 +197,17 @@ function InspecteurElement({ editeur, el, bande, ro }: { editeur: Editeur; el: E
         ))}
       </div>
       <div className="mb-2 grid grid-cols-2 gap-1">
-        <Ligne libelle="Calque" aide="Ordre de superposition"><Nombre value={el.calque ?? 0} pas={1} disabled={ro} onChange={(v) => maj((e) => poser(e, "calque", v || null), "calque")} /></Ligne>
+        <Ligne libelle={`Superposition · plan ${rangPlan(d, bande.id, el.id).join(" / ")}`} aide="Ordre d'impression dans la bande (clic droit sur l'objet : mêmes commandes)">
+          <div className="flex gap-0.5">
+            {PLANS.map((p) => (
+              <button key={p.v} type="button" disabled={ro} title={`${p.l} (${p.raccourci})`}
+                onClick={() => editeur.modifier((def) => changerPlan(def, bande.id, el.id, p.v), `plan:${el.id}`)}
+                className="flex h-8 flex-1 items-center justify-center rounded border border-input text-xs hover:bg-muted disabled:opacity-50">
+                {{ PREMIER: "⤒", AVANCER: "↑", RECULER: "↓", ARRIERE: "⤓" }[p.v]}
+              </button>
+            ))}
+          </div>
+        </Ligne>
         <Ligne libelle="Verrou (variantes)" aide="FORME : les variantes ne peuvent pas modifier ; TOTAL : ni déplacer ni masquer">
           <Choix value={el.verrou ?? "AUCUN"} disabled={ro} onChange={(v) => maj((e) => poser(e, "verrou", v === "AUCUN" ? null : v), "verrou")}
             options={[{ v: "AUCUN", l: "Aucun" }, { v: "FORME", l: "Forme" }, { v: "TOTAL", l: "Total" }]} />
@@ -262,8 +274,9 @@ function ContenuElement({ el, ro, maj, colonne }: { el: Element; ro: boolean; ma
       return <>
         <div className="mb-3"><ChoixImage valeur={el.valeur} ro={ro} onChoisir={(f) => maj((e) => { e.valeur = f; }, "valeur")} /></div>
         <Ligne libelle="Image (formule)" aide='CHARTE("logo"), ASSET("CODE"), ou une formule qui choisit selon le document'><FormuleInput value={el.valeur} disabled={ro} onChange={(v) => maj((e) => { e.valeur = v; }, "valeur")} /></Ligne>
-        <Ligne libelle="Ajustement"><Choix value={el.ajustement ?? "CONTENIR"} disabled={ro} onChange={(v) => maj((e) => { e.ajustement = v; }, "ajustement")}
-          options={[{ v: "CONTENIR", l: "Contenir" }, { v: "REMPLIR", l: "Remplir" }, { v: "ETIRER", l: "Étirer" }]} /></Ligne>
+        <Ligne libelle="Ajustement dans le cadre"><Choix value={el.ajustement ?? "CONTENIR"} disabled={ro} onChange={(v) => maj((e) => { e.ajustement = v; }, "ajustement")}
+          options={[{ v: "CONTENIR", l: "Contenir (entière, centrée)" }, { v: "REMPLIR", l: "Remplir (bords coupés)" }, { v: "ETIRER", l: "Étirer (déformée)" }]} /></Ligne>
+        <RognageImage el={el} ro={ro} maj={maj} />
       </>;
     case "CADRE":
       return <Ligne libelle="Arrondi des coins (mm)"><Nombre value={el.arrondi ?? 0} disabled={ro} min={0} onChange={(v) => maj((e) => poser(e, "arrondi", v || null), "arrondi")} /></Ligne>;
@@ -948,5 +961,23 @@ export function JeuxEditeur({ d, ro, m, sources }: { d: Definition; ro: boolean;
         </button>
       )}
     </>
+  );
+}
+
+
+function RognageImage({ el, ro, maj }: { el: ElImage; ro: boolean; maj: (fn: (e: any, b: Bande) => void, cle: string) => void }) {
+  const [ouvert, setOuvert] = useState(false);
+  const r = el.rognage;
+  const resume = r ? (["haut", "bas", "gauche", "droite"] as const).filter((k) => r[k]).map((k) => `${k} ${r[k]} %`).join(", ") : "aucun";
+  return (
+    <Ligne libelle="Rognage" aide="Aussi : double-clic sur l'image dans la page">
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" className="h-8" disabled={ro} onClick={() => setOuvert(true)}>Rogner…</Button>
+        <span className="truncate text-xs text-muted-foreground">{resume}</span>
+        {r && !ro && <button type="button" className="ml-auto text-xs text-muted-foreground hover:underline" onClick={() => maj((e) => { delete e.rognage; }, "rogn")}>Retirer</button>}
+      </div>
+      <DialogueRognage el={el} ouvert={ouvert} onFermer={() => setOuvert(false)}
+        onValider={(x) => maj((e) => { if (x) e.rognage = x; else delete e.rognage; }, "rogn")} />
+    </Ligne>
   );
 }

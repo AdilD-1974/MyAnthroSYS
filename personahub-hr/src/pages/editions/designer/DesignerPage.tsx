@@ -26,6 +26,7 @@ import Canevas from "./Canevas";
 import Inspecteur, { renommerSousParties } from "./Inspecteur";
 import Structure from "./Structure";
 import Donnees, { type CibleErreur } from "./Donnees";
+import { changerPlan } from "./plans";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
 
@@ -231,6 +232,13 @@ export default function DesignerPage() {
           b.hauteur = Math.max(b.hauteur, n.y + n.h);
         });
         editeur.setSelection({ bande: sel.bande, element: id });
+        return;
+      }
+      // RG-EDT-FORME-04 : Ctrl+↑/↓ avancer/reculer, Ctrl+Maj+↑/↓ premier plan/arrière-plan
+      if (ctrl && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const plan = e.key === "ArrowUp" ? (e.shiftKey ? "PREMIER" : "AVANCER") : (e.shiftKey ? "ARRIERE" : "RECULER");
+        editeur.modifier((d) => changerPlan(d, sel.bande!, sel.element!, plan), `plan:${sel.element}`);
         return;
       }
       const fleches: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };

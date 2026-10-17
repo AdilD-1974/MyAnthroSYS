@@ -18,7 +18,7 @@ import hashlib
 import json
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Expr = str
 Verrou = Literal["AUCUN", "FORME", "TOTAL"]
@@ -131,10 +131,27 @@ class TexteRiche(ElementBase):
     contenu: str          # texte à variables {expression} ; mise en forme riche au lot 2
 
 
+class Rognage(Strict):
+    """RG-EDT-IMAGE-04 (Adil DAIA) : part de l'image retirée de chaque côté, en % de sa taille."""
+    haut: float = Field(default=0, ge=0, le=95)
+    droite: float = Field(default=0, ge=0, le=95)
+    bas: float = Field(default=0, ge=0, le=95)
+    gauche: float = Field(default=0, ge=0, le=95)
+
+    @model_validator(mode="after")
+    def _reste(self):
+        if self.haut + self.bas > 95 or self.gauche + self.droite > 95:
+            raise ValueError("Le rognage doit laisser au moins 5 % de l'image dans chaque sens")
+        return self
+
+
 class Image(ElementBase):
     type: Literal["IMAGE"]
     valeur: Expr
+    # CONTENIR : entière, proportions gardées, centrée · REMPLIR : remplit le cadre, l'excédent
+    # est coupé (centré) · ETIRER : déformée à la taille du cadre
     ajustement: Literal["CONTENIR", "REMPLIR", "ETIRER"] = "CONTENIR"
+    rognage: Optional[Rognage] = None
 
 
 class Ligne(ElementBase):

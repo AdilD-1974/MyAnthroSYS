@@ -163,12 +163,39 @@ class RenduPDF:
         if not autorise(chemin, self.racine):               # RG-EDT-SECU-06
             log.warning("Image hors des dossiers autorisés, ignorée : %s", chemin)
             return
-        img = ImageReader(str(chemin))
-        iw, ih = img.getSize()
+        # RG-EDT-IMAGE-04/05 (Adil DAIA) : rognage, puis ajustement dans le cadre
+        from PIL import Image as ImagePIL
+        try:
+            img = ImagePIL.open(chemin)
+            img.load()
+        except Exception as e:
+            log.info("Image illisible %s : %s", chemin, e)
+            return
+        iw, ih = img.size
+        r = b.rognage
+        if r is not None and (r.haut or r.droite or r.bas or r.gauche):
+            img = img.crop((round(iw * r.gauche / 100), round(ih * r.haut / 100),
+                            round(iw * (1 - r.droite / 100)), round(ih * (1 - r.bas / 100))))
+            iw, ih = img.size
         l, h = tx.mm(b.l), tx.mm(b.h)
-        echelle = min(l / iw, h / ih)
-        w, hh = iw * echelle, ih * echelle
-        c.drawImage(img, tx.mm(b.x), self._y(b.y) - hh, w, hh, mask="auto")
+        x, haut = tx.mm(b.x), self._y(b.y)                    # haut du cadre, en points depuis le bas
+        if b.ajustement == "ETIRER":
+            w, hh, x0, y0 = l, h, x, haut - h
+        elif b.ajustement == "REMPLIR":
+            # on coupe l'excédent, centré, pour que l'image remplisse exactement le cadre
+            rapport = l / h
+            if iw / ih > rapport:
+                nw = round(ih * rapport)
+                img = img.crop(((iw - nw) // 2, 0, (iw - nw) // 2 + nw, ih))
+            else:
+                nh = round(iw / rapport)
+                img = img.crop((0, (ih - nh) // 2, iw, (ih - nh) // 2 + nh))
+            w, hh, x0, y0 = l, h, x, haut - h
+        else:
+            echelle = min(l / iw, h / ih)
+            w, hh = iw * echelle, ih * echelle
+            x0, y0 = x + (l - w) / 2, haut - h + (h - hh) / 2      # centrée dans le cadre
+        c.drawImage(ImageReader(img), x0, y0, w, hh, mask="auto")
 
     def _code_barre(self, c, b: Boite):
         l, h = tx.mm(b.l), tx.mm(b.h)

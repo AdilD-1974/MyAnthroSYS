@@ -13,6 +13,7 @@ import {
 } from "@/pages/editions/types";
 import { sourceDuJeu, useReferentiels } from "./contexte";
 import { TYPE_DND_CHAMP, TYPE_DND_CORPS, TYPE_DND_ELEMENT } from "./Canevas";
+import { PaletteImages } from "./BibliothequeImages";
 import type { Editeur } from "./useEditeur";
 
 const ICONES: Record<TypeElement, React.ComponentType<{ className?: string }>> = {
@@ -56,6 +57,7 @@ export default function Structure({ editeur, lectureSeule }: { editeur: Editeur;
         {onglet === "structure"
           ? <>
               {!lectureSeule && <Palette onAjouter={ajouterElement} />}
+              {!lectureSeule && <PaletteImages ro={lectureSeule} />}
               <ListeBandes editeur={editeur} lectureSeule={lectureSeule} />
             </>
           : <>

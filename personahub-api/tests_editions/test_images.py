@@ -101,3 +101,26 @@ def test_police_incorporee_au_pdf(db):
     sec = ContexteSecurite(None, S1, donnees_sensibles=True)
     pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
     assert b"DejaVuSans-Bold" in pdf
+
+
+@base_requise
+@pytest.mark.parametrize("ajustement", ["CONTENIR", "REMPLIR", "ETIRER"])
+def test_ajustement_et_rognage(db, biblio, ajustement):
+    """RG-EDT-IMAGE-04/05 : l'image est rognée puis ajustée au cadre."""
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    im.enregistrer(S1, "BANDEAU", _png())
+    d = definition()
+    d["bandes"][0]["elements"].append({"id": "img", "type": "IMAGE", "x": 0, "y": 100, "l": 30, "h": 30, "valeur": 'ASSET("BANDEAU")',
+                                       "ajustement": ajustement, "rognage": {"gauche": 10, "droite": 20, "haut": 5}})
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    assert b"/Subtype /Image" in pdf
+
+
+def test_rognage_borne():
+    from pydantic import ValidationError
+    from app.editions.definition import Rognage
+    with pytest.raises(ValidationError):
+        Rognage(gauche=60, droite=40)
+    assert Rognage(haut=50, bas=45).bas == 45

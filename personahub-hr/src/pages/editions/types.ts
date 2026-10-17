@@ -83,7 +83,8 @@ interface ElementBase {
 export interface ElTexte extends ElementBase { type: "TEXTE"; valeur: Expr; affichage?: Affichage }
 export interface ElChamp extends ElementBase { type: "CHAMP"; valeur: Expr; affichage?: Affichage }
 export interface ElTexteRiche extends ElementBase { type: "TEXTE_RICHE"; contenu: string }
-export interface ElImage extends ElementBase { type: "IMAGE"; valeur: Expr; ajustement?: "CONTENIR" | "REMPLIR" | "ETIRER" }
+export interface Rognage { haut?: number; droite?: number; bas?: number; gauche?: number }   // % retiré de chaque côté
+export interface ElImage extends ElementBase { type: "IMAGE"; valeur: Expr; ajustement?: "CONTENIR" | "REMPLIR" | "ETIRER"; rognage?: Rognage | null }
 export interface ElLigne extends ElementBase { type: "LIGNE" }
 export interface ElCadre extends ElementBase { type: "CADRE"; arrondi?: number }
 export interface ElCodeBarre extends ElementBase { type: "CODE_BARRE"; valeur: Expr; symbologie?: "QR" | "CODE128" }

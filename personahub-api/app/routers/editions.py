@@ -282,3 +282,11 @@ def fichier_image(code: str, u: sv.Utilisateur = Depends(utilisateur), db: Sessi
     p = _lecture(db, sv.fichier_image, u, code)
     return FileResponse(p, media_type="image/png" if p.suffix == ".png" else "image/jpeg",
                         headers={"Cache-Control": "private, no-store"})
+
+
+@router.get("/logo")
+def logo(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """Logo de la société active (canevas du designer)."""
+    p = _lecture(db, sv.fichier_logo, u)
+    types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".svg": "image/svg+xml", ".gif": "image/gif", ".webp": "image/webp"}
+    return FileResponse(p, media_type=types.get(p.suffix.lower(), "application/octet-stream"), headers={"Cache-Control": "private, no-store"})

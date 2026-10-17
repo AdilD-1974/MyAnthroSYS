@@ -877,3 +877,20 @@ def fichier_image(db: Session, u: Utilisateur, code: str):
     if not p:
         raise Introuvable(f"Image « {code} » introuvable")
     return p
+
+
+def fichier_logo(db: Session, u: Utilisateur):
+    """Logo de la société active (fiche société), pour le canevas du designer."""
+    from pathlib import Path as _P
+    from app.editions.images import autorise
+    from app.editions.sources import REGISTRE
+    exiger(db, u, "VOIR")
+    soc = (REGISTRE["SOCIETE"].lire(db, None, contexte_securite(db, u)) or [{}])[0]
+    chemin = (soc.get("logo_path") or "").replace("\\", "/")
+    if not chemin:
+        raise Introuvable("Aucun logo dans la fiche société")
+    chemin = chemin[len("storage/"):] if chemin.startswith("storage/") else chemin.lstrip("/")
+    p = _P("storage") / chemin
+    if not p.is_file() or not autorise(p, _P("storage")):
+        raise Introuvable("Logo introuvable")
+    return p

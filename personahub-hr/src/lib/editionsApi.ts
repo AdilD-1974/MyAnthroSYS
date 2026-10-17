@@ -248,6 +248,12 @@ export const editionsApi = {
     }
     return r.json();
   },
+  /** Logo de la société active en URL locale (canevas). */
+  async urlLogo(): Promise<string | null> {
+    const token = tokenStore.get();
+    const r = await fetch(`${API_BASE}/editions/logo`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    return r.ok ? URL.createObjectURL(await r.blob()) : null;
+  },
   /** Image de la bibliothèque en URL locale (blob) : le fichier exige le jeton. */
   async urlImage(code: string): Promise<string | null> {
     const token = tokenStore.get();

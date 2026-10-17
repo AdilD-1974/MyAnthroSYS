@@ -74,6 +74,8 @@ class Boite:
     taille: float = tx.TAILLE_DEFAUT
     style: Any = None                # definition.Style
     valeur: Any = None               # chemin d'image, contenu du QR
+    ajustement: str = "CONTENIR"     # IMAGE
+    rognage: Any = None              # IMAGE : definition.Rognage
     source_id: str = ""
 
 
@@ -298,7 +300,7 @@ class Composeur:
                 v = None if vide_force else self._evaluer(el.valeur, r, el.id)
                 if v not in (None, "", ERREUR):
                     boites.append(Boite(el.x, el.y, el.l, el.h, "IMAGE", style=el.style, valeur=str(v),
-                                        source_id=el.id))
+                                        source_id=el.id, ajustement=el.ajustement, rognage=el.rognage))
             elif el.type == "GRILLE":
                 boites += self._grille(el, r, vide_force)
             elif el.type == "CODE_BARRE":

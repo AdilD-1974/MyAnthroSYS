@@ -5,16 +5,20 @@
  * Coordonnées en millimètres (comme la définition) ; 1 mm = 3,78 px × zoom.
  * Glisser un élément le déplace, la poignée en bas à droite le redimensionne,
  * le bord bas d'une bande change sa hauteur. Pas de 0,5 mm (Alt : libre).
- * On dépose dans une bande un champ du catalogue ou un type d'élément de la palette.
+ * On dépose dans une bande un champ du catalogue ou un type d'élément de la palette, une image
+ * de la bibliothèque, ou un fichier image glissé depuis l'ordinateur (importé dans la bibliothèque).
+ * Clic droit sur un objet : premier plan / arrière-plan, rogner une image.
  */
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Lock, QrCode, Filter } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 import {
   LIBELLES_BANDE, elementParDefaut, grilleDepuisCorps, largeurUtile, tableauDepuisCorps, texteLitteral,
-  type Bande, type Element, type ElGrille, type ElTableau, type Style, type TypeElement,
+  type Bande, type Element, type ElGrille, type ElImage, type ElTableau, type Style, type TypeElement,
 } from "@/pages/editions/types";
 import type { Editeur } from "./useEditeur";
-import { ApercuImage } from "./BibliothequeImages";
+import { ApercuImage, DialogueRognage, TYPE_DND_IMAGE, deposerFichier, tailleNaturelle, urlDe } from "./BibliothequeImages";
+import { PLANS, changerPlan } from "./plans";
 import { cssPolice } from "./Polices";
 import { cssBordures, hexDe } from "./Couleurs";
 
@@ -74,8 +78,57 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
   const corps = useRef<HTMLDivElement>(null);
   const selectionnee = editeur.selection.bande === bande.id && !editeur.selection.element;
 
+  /** Pose une image (code de la bibliothèque) en gardant ses proportions, largeur 40 mm par défaut. */
+  const poserImage = async (code: string, x: number, y: number) => {
+    const u = await urlDe(code);
+    const n = u ? await tailleNaturelle(u) : { w: 4, h: 3 };
+    let id = "";
+    editeur.modifier((def) => {
+      const el = elementParDefaut(def, "IMAGE", x, y) as ElImage;
+      el.valeur = `ASSET("${code}")`;
+      el.l = Math.min(40, largeur);
+      el.h = Math.max(2, Math.round((el.l * n.h / n.w) * 2) / 2);
+      el.x = Math.min(x, Math.max(0, largeur - el.l));
+      id = el.id;
+      const b = def.bandes.find((z) => z.id === bande.id)!;
+      b.elements.push(el);
+      b.hauteur = Math.max(b.hauteur, el.y + el.h);
+    }, `image:${code}`);
+    editeur.setSelection({ bande: bande.id, element: id });
+  };
+
   const deposer = (e: React.DragEvent) => {
     if (lectureSeule) return;
+    const r0 = corps.current!.getBoundingClientRect();
+    const px = Math.max(0, arrondir((e.clientX - r0.left) / mm, false));
+    const py = Math.max(0, arrondir((e.clientY - r0.top) / mm, false));
+    // une image de la bibliothèque
+    const codeImage = e.dataTransfer.getData(TYPE_DND_IMAGE);
+    if (codeImage) { e.preventDefault(); void poserImage(codeImage, px, py); return; }
+    // un fichier image venu de l'ordinateur : importé dans la bibliothèque, puis posé
+    const fichiers = Array.from(e.dataTransfer.files ?? []).filter((f) => /^image\/(png|jpe?g)$/.test(f.type));
+    if (fichiers.length) {
+      e.preventDefault();
+      void (async () => {
+        let dy = 0;
+        for (const f of fichiers) {
+          try {
+            const img = await deposerFichier(f);
+            await poserImage(img.code, px, py + dy);
+            dy += 5;
+            toast({ title: "Image importée", description: `${f.name} → ${img.formule}` });
+          } catch (err) {
+            toast({ title: `Image refusée : ${f.name}`, description: (err as Error).message, variant: "destructive" });
+          }
+        }
+      })();
+      return;
+    }
+    if (e.dataTransfer.files?.length) {
+      e.preventDefault();
+      toast({ title: "Format non accepté", description: "Images PNG ou JPEG uniquement.", variant: "destructive" });
+      return;
+    }
     const champ = e.dataTransfer.getData(TYPE_DND_CHAMP);
     const type = e.dataTransfer.getData(TYPE_DND_ELEMENT) as TypeElement;
     const corpsCode = e.dataTransfer.getData(TYPE_DND_CORPS);
@@ -223,10 +276,27 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
     cible.addEventListener("pointerup", finir);
   };
 
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [rogner, setRogner] = useState(false);
+  useEffect(() => {
+    if (!menu) return;
+    const fermer = () => setMenu(null);
+    window.addEventListener("pointerdown", fermer);
+    window.addEventListener("scroll", fermer, true);
+    return () => { window.removeEventListener("pointerdown", fermer); window.removeEventListener("scroll", fermer, true); };
+  }, [menu]);
+
   return (
     <div
       onPointerDown={(e) => tirer(e, "deplacer")}
-      title={`${el.id}${erreur ? ` — ${erreur}` : ""}`}
+      onContextMenu={(e) => {
+        if (lectureSeule) return;
+        e.preventDefault();
+        editeur.setSelection({ bande: bande.id, element: el.id });
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+      onDoubleClick={() => { if (!lectureSeule && el.type === "IMAGE") setRogner(true); }}
+      title={`${el.id}${erreur ? ` — ${erreur}` : ""}${el.type === "IMAGE" ? " — double-clic : rogner" : ""}`}
       className={`absolute select-none ${lectureSeule ? "cursor-default" : "cursor-move"} ${
         selectionne ? "z-10 outline outline-2 outline-primary" : erreur ? "outline outline-1 outline-destructive" : "hover:outline hover:outline-1 hover:outline-primary/50"}`}
       style={{ left: el.x * mm, top: el.y * mm, width: el.l * mm, height: Math.max(el.h * mm, 2) }}
@@ -237,6 +307,32 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
       {selectionne && !lectureSeule && (
         <div onPointerDown={(e) => tirer(e, "taille")}
           className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize border border-primary bg-white" />
+      )}
+      {menu && (
+        <div className="fixed z-[100] w-60 rounded-md border bg-popover py-1 text-xs shadow-lg" style={{ left: menu.x, top: menu.y }}
+          onPointerDown={(e) => e.stopPropagation()}>
+          {PLANS.map((p) => (
+            <button key={p.v} type="button" className="flex w-full items-center px-3 py-1.5 text-left hover:bg-accent"
+              onClick={() => { editeur.modifier((d) => changerPlan(d, bande.id, el.id, p.v), `plan:${el.id}`); setMenu(null); }}>
+              {p.l}<span className="ml-auto text-muted-foreground">{p.raccourci}</span>
+            </button>
+          ))}
+          {el.type === "IMAGE" && <>
+            <div className="my-1 border-t" />
+            <button type="button" className="w-full px-3 py-1.5 text-left hover:bg-accent" onClick={() => { setMenu(null); setRogner(true); }}>Rogner l'image…</button>
+            {el.rognage && (
+              <button type="button" className="w-full px-3 py-1.5 text-left hover:bg-accent"
+                onClick={() => { editeur.modifierElement(el.id, (z) => { delete (z as ElImage).rognage; }, `rogn:${el.id}`); setMenu(null); }}>Annuler le rognage</button>
+            )}
+          </>}
+        </div>
+      )}
+      {el.type === "IMAGE" && (
+        // le dialogue est rendu ailleurs (portail) mais ses événements remontent l'arbre React : on les arrête ici
+        <div className="contents" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          <DialogueRognage el={el} ouvert={rogner} onFermer={() => setRogner(false)}
+            onValider={(r) => editeur.modifierElement(el.id, (z) => { const i = z as ElImage; if (r) i.rognage = r; else delete i.rognage; }, `rogn:${el.id}`)} />
+        </div>
       )}
     </div>
   );
@@ -288,7 +384,7 @@ function Contenu({ el, mm, colonne }: { el: Element; mm: number; colonne: string
     case "TEXTE_RICHE":
       return <div className="h-full w-full overflow-hidden whitespace-pre-wrap bg-violet-50/50" style={st}>{el.contenu}</div>;
     case "IMAGE":
-      return <ApercuImage valeur={el.valeur} />;
+      return <ApercuImage el={el} l={el.l * mm} h={Math.max(el.h * mm, 2)} />;
     case "LIGNE":
       return <div className="w-full" style={{ borderTop: `${Math.max(1, (el.h || 0.3) * mm)}px solid ${el.style?.couleur ?? "#111"}` }} />;
     case "CADRE":
