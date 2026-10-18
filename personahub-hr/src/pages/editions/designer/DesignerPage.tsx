@@ -27,6 +27,7 @@ import Inspecteur, { renommerSousParties } from "./Inspecteur";
 import Structure from "./Structure";
 import Donnees, { type CibleErreur } from "./Donnees";
 import { changerPlan } from "./plans";
+import { BoutonMiseEnPage } from "./MiseEnPage";
 import { coller, copier as copierObjets, deplacer as deplacerObjets, dupliquer, idsSelection, supprimer as supprimerObjets, trouver } from "./selection";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
@@ -383,6 +384,7 @@ export default function DesignerPage() {
               <b>{l}</b> <span className={`text-xs ${etape === k ? "opacity-80" : "text-muted-foreground"}`}>— {aide}</span>
             </button>
           ))}
+          {etape === "forme" && <span className="ml-3"><BoutonMiseEnPage editeur={editeur} ro={lectureSeule} /></span>}
           {etape === "forme" && <SelecteurForme editeur={editeur} lectureSeule={lectureSeule} />}
         </div>
 

@@ -276,9 +276,10 @@ class Composeur:
 
     # ---------------------------------------------------------------- éléments → boîtes
     def _style_police(self, style, texte: str) -> tuple[str, float]:
-        taille = style.taille or tx.TAILLE_DEFAUT
+        # RG-EDT-PAGE-01 : à défaut de réglage sur l'objet, police et taille de l'état
+        taille = style.taille or self.d.page.taille or tx.TAILLE_DEFAUT
         arabe = style.langue == "AR" or (style.langue == "AUTO" and tx.contient_arabe(texte))
-        return tx.nom_police(style.police, bool(style.gras), bool(style.italique), arabe), taille
+        return tx.nom_police(style.police or self.d.page.police, bool(style.gras), bool(style.italique), arabe), taille
 
     def _boite_texte(self, el, texte: str, x: float, y: float) -> Boite:
         police, taille = self._style_police(el.style, texte)

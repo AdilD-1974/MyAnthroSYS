@@ -45,6 +45,7 @@ export default function Canevas({ editeur, zoom, lectureSeule, erreursParElement
   const largeur = largeurUtile(d.page);
   const racine = useRef<HTMLDivElement>(null);
   const guides = useGuides();
+  PAGE_DEFAUT.police = d.page?.police; PAGE_DEFAUT.taille = d.page?.taille;
   const [lasso, setLasso] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
   /** Lasso : tirer sur le fond d'une bande sélectionne tous les objets touchés (Maj : ajoute). */
@@ -239,6 +240,7 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
           style={{
             width: largeur * mm,
             height: Math.max(bande.hauteur * mm, 6),
+            backgroundColor: hexDe(editeur.definition?.page?.couleur_fond) ?? "white",
             backgroundImage: "linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px)",
             backgroundSize: `${5 * mm}px ${5 * mm}px`,
           }}
@@ -446,8 +448,11 @@ export function ajusterColonnes(t: ElTableau) {
   });
 }
 
+/** Police et taille de l'état (Mise en page), reprises par les objets sans réglage propre. */
+const PAGE_DEFAUT: { police?: string | null; taille?: number | null } = {};
+
 function styleTexte(s: Style | undefined, mm: number): React.CSSProperties {
-  const taillePt = s?.taille ?? 9;
+  const taillePt = s?.taille ?? PAGE_DEFAUT.taille ?? 9;
   return {
     fontSize: taillePt * 0.3528 * mm,
     lineHeight: 1.15,
@@ -460,7 +465,7 @@ function styleTexte(s: Style | undefined, mm: number): React.CSSProperties {
     ...(s?.alignement_vertical ? { display: "flex", flexDirection: "column" as const,
       justifyContent: s.alignement_vertical === "HAUT" ? "flex-start" : s.alignement_vertical === "BAS" ? "flex-end" : "center" } : {}),
     textAlign: s?.alignement === "DROITE" ? "right" : s?.alignement === "CENTRE" ? "center" : s?.alignement === "JUSTIFIE" ? "justify" : "left",
-    fontFamily: cssPolice(s?.police),
+    fontFamily: cssPolice(s?.police ?? PAGE_DEFAUT.police),
     direction: s?.langue === "AR" ? "rtl" : undefined,
   };
 }

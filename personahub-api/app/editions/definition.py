@@ -23,7 +23,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Expr = str
 Verrou = Literal["AUCUN", "FORME", "TOTAL"]
 
-FORMATS_PAGE_MM = {"A4": (210.0, 297.0), "A3": (297.0, 420.0), "A5": (148.0, 210.0), "LETTRE": (215.9, 279.4)}
+FORMATS_PAGE_MM = {"A4": (210.0, 297.0), "A3": (297.0, 420.0), "A5": (148.0, 210.0), "A6": (105.0, 148.0),
+                   "B5": (176.0, 250.0), "LETTRE": (215.9, 279.4), "LEGAL": (215.9, 355.6)}
 SCHEMA_VERSION = 1
 
 
@@ -268,14 +269,27 @@ class Bande(Strict):
 
 
 class Page(Strict):
-    format: Literal["A4", "A3", "A5", "LETTRE"] = "A4"
+    format: Literal["A4", "A3", "A5", "A6", "B5", "LETTRE", "LEGAL", "PERSONNALISE"] = "A4"
     orientation: Literal["PORTRAIT", "PAYSAGE"] = "PORTRAIT"
     marges: tuple[float, float, float, float] = (15, 15, 15, 15)   # haut, droite, bas, gauche
     charte: str = "SOCIETE"
     filigrane: Optional[Expr] = None
+    # RG-EDT-PAGE-01 (Adil DAIA) : format personnalisé (mm, en portrait), police et taille par
+    # défaut de tout l'état (un objet sans police ni taille propres les reprend), fond de page
+    largeur: Optional[float] = Field(default=None, ge=30, le=1200)
+    hauteur: Optional[float] = Field(default=None, ge=30, le=1200)
+    police: Optional[str] = None
+    taille: Optional[float] = Field(default=None, gt=0, le=72)
+    couleur_fond: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _personnalise(self):
+        if self.format == "PERSONNALISE" and (not self.largeur or not self.hauteur):
+            raise ValueError("Format personnalisé : largeur et hauteur de page obligatoires")
+        return self
 
     def dimensions(self) -> tuple[float, float]:
-        l, h = FORMATS_PAGE_MM[self.format]
+        l, h = (self.largeur, self.hauteur) if self.format == "PERSONNALISE" else FORMATS_PAGE_MM[self.format]
         return (h, l) if self.orientation == "PAYSAGE" else (l, h)
 
     def largeur_utile(self) -> float:

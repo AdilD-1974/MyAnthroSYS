@@ -155,3 +155,30 @@ def _safe(m):
         return True
     except Exception:
         return False
+
+
+
+@base_requise
+def test_page_paysage_personnalisee_police_par_defaut(db):
+    """RG-EDT-PAGE-01 : orientation, format personnalisé, police/taille de l'état, fond de page."""
+    from pypdf import PdfReader
+    from pydantic import ValidationError
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    d = definition()
+    d["page"] = {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10], "police": "Times", "taille": 11,
+                 "couleur_fond": "#FFF2CC"}
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    p0 = PdfReader(io.BytesIO(pdf)).pages[0]
+    assert round(float(p0.mediabox.width)) == 842 and round(float(p0.mediabox.height)) == 595
+    assert b"Times-Roman" in pdf or b"Times-Bold" in pdf
+    d["page"] = {"format": "PERSONNALISE", "largeur": 100, "hauteur": 150, "marges": [5, 5, 5, 5]}
+    d["bandes"][0]["hauteur"] = 50
+    for e in d["bandes"][0]["elements"]:
+        e["x"], e["l"] = 0, min(e.get("l", 10), 90)
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    p0 = PdfReader(io.BytesIO(pdf)).pages[0]
+    assert round(float(p0.mediabox.width)) == round(100 * 72 / 25.4)
+    with pytest.raises(ValidationError):
+        Definition.model_validate({**d, "page": {"format": "PERSONNALISE"}})

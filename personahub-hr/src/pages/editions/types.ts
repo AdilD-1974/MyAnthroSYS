@@ -175,11 +175,16 @@ export interface Bande {
 }
 
 export interface Page {
-  format?: "A4" | "A3" | "A5" | "LETTRE";
+  format?: "A4" | "A3" | "A5" | "A6" | "B5" | "LETTRE" | "LEGAL" | "PERSONNALISE";
   orientation?: "PORTRAIT" | "PAYSAGE";
   marges?: [number, number, number, number]; // haut, droite, bas, gauche
   charte?: string;
   filigrane?: Expr | null;
+  largeur?: number | null;          // format personnalisé (mm, en portrait)
+  hauteur?: number | null;
+  police?: string | null;           // police par défaut de l'état
+  taille?: number | null;           // taille par défaut (pt)
+  couleur_fond?: string | null;     // fond des pages
 }
 
 export interface Sortie {
@@ -339,7 +344,7 @@ export const VARIABLES_BULLETIN: Variable[] = [
 
 // ── Constantes d'affichage ──────────────────────────────────────────────────
 export const FORMATS_PAGE_MM: Record<string, [number, number]> = {
-  A4: [210, 297], A3: [297, 420], A5: [148, 210], LETTRE: [215.9, 279.4],
+  A4: [210, 297], A3: [297, 420], A5: [148, 210], A6: [105, 148], B5: [176, 250], LETTRE: [215.9, 279.4], LEGAL: [215.9, 355.6],
 };
 export const MARGES_DEFAUT: [number, number, number, number] = [15, 15, 15, 15];
 
@@ -388,7 +393,7 @@ export const LIBELLES_PARAMETRE: Record<TypeParametre, string> = {
 
 // ── Outils ──────────────────────────────────────────────────────────────────
 export function dimensionsPage(p?: Page): { l: number; h: number } {
-  const [l, h] = FORMATS_PAGE_MM[p?.format ?? "A4"];
+  const [l, h] = p?.format === "PERSONNALISE" ? [p.largeur ?? 210, p.hauteur ?? 297] : FORMATS_PAGE_MM[p?.format ?? "A4"] ?? FORMATS_PAGE_MM.A4;
   return p?.orientation === "PAYSAGE" ? { l: h, h: l } : { l, h };
 }
 

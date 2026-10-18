@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import FormuleInput from "./FormuleInput";
 import { ChoixImage, DialogueRognage } from "./BibliothequeImages";
+import { ReglagesPage } from "./MiseEnPage";
 import { PLANS, changerPlan, rangPlan } from "./plans";
 import {
   aligner, alignerPage, copier, dupliquer, memeBande, memeTaille, pleineLargeur, repartir, supprimer as supprimerObjets, trouver,
@@ -876,23 +877,7 @@ function InspecteurModele({ editeur, ro }: { editeur: Editeur; ro: boolean }) {
         ))}
       </div>
 
-      {onglet === "page" && <>
-        <div className="grid grid-cols-2 gap-1">
-          <Ligne libelle="Format"><Choix value={page.format ?? "A4"} disabled={ro} onChange={(v) => m((x) => { x.page = { ...(x.page ?? {}), format: v ?? "A4" }; }, "pf")}
-            options={["A4", "A3", "A5", "LETTRE"].map((f) => ({ v: f as any, l: f }))} /></Ligne>
-          <Ligne libelle="Orientation"><Choix value={page.orientation ?? "PORTRAIT"} disabled={ro} onChange={(v) => m((x) => { x.page = { ...(x.page ?? {}), orientation: v ?? "PORTRAIT" }; }, "po")}
-            options={[{ v: "PORTRAIT", l: "Portrait" }, { v: "PAYSAGE", l: "Paysage" }]} /></Ligne>
-        </div>
-        <div className="grid grid-cols-4 gap-1">
-          {["Haut", "Droite", "Bas", "Gauche"].map((l, i) => (
-            <Ligne key={l} libelle={l}><Nombre value={marges[i]} min={0} disabled={ro}
-              onChange={(v) => m((x) => { const mg = [...marges] as [number, number, number, number]; mg[i] = Math.max(0, v ?? 0); x.page = { ...(x.page ?? {}), marges: mg }; }, `marge${i}`)} /></Ligne>
-          ))}
-        </div>
-        <p className="mb-2 text-[11px] text-muted-foreground">Largeur utile : {largeurUtile(d.page).toFixed(1)} mm</p>
-        <Ligne libelle="Filigrane (formule)"><FormuleInput value={page.filigrane ?? ""} disabled={ro} placeholder='ex. "DUPLICATA"'
-          onChange={(v) => m((x) => { const p = { ...(x.page ?? {}) }; poser(p, "filigrane", v); x.page = p; }, "fil")} /></Ligne>
-      </>}
+      {onglet === "page" && <ReglagesPage editeur={editeur} ro={ro} />}
 
       {onglet === "parametres" && <ParametresEditeur d={d} ro={ro} m={m} />}
       {onglet === "donnees" && <JeuxEditeur d={d} ro={ro} m={m} sources={sources} />}

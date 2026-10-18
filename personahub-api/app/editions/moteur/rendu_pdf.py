@@ -26,7 +26,7 @@ from reportlab.lib.colors import HexColor, black
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-from app.editions.definition import FORMATS_PAGE_MM, Page as PageDef
+from app.editions.definition import Page as PageDef
 from app.editions.images import autorise
 from app.editions.moteur import texte as tx
 from app.editions.moteur.mise_en_page import Boite, Page
@@ -66,10 +66,9 @@ class RenduPDF:
     def __init__(self, page_def: PageDef, metadonnees: Optional[dict] = None,
                  racine_fichiers: str = "storage", charte_couleurs: Optional[dict] = None,
                  filigrane: Optional[str] = None):
-        l, h = FORMATS_PAGE_MM[page_def.format]
-        if page_def.orientation == "PAYSAGE":
-            l, h = h, l
+        l, h = page_def.dimensions()                     # orientation et format personnalisé compris
         self.l_pt, self.h_pt = tx.mm(l), tx.mm(h)
+        self.fond_page = page_def.couleur_fond
         self.meta = metadonnees or {}
         self.racine = Path(racine_fichiers)
         self.charte = charte_couleurs or {}
@@ -86,7 +85,11 @@ class RenduPDF:
         c.setSubject(self.meta.get("sujet", ""))
         c.setCreator("PersonaHub HR — plateforme d'éditions")
         c.setKeywords(" ".join(f"{k}={v}" for k, v in self.meta.items() if k not in ("titre", "auteur", "sujet")))
+        fond = _couleur(self.fond_page, self.charte) if self.fond_page else None
         for page in pages:
+            if fond is not None:                              # RG-EDT-PAGE-01 : couleur de fond de page
+                c.setFillColor(fond)
+                c.rect(0, 0, self.l_pt, self.h_pt, stroke=0, fill=1)
             if self.filigrane:
                 self._filigrane(c)
             for b in page.boites:
