@@ -200,3 +200,26 @@ def test_taux_patronal_et_cumul_patronal(db):
     assert cnss["TXP"] == "17.95" and float(cnss["CPAT"]) == 1077.12
     d["corps"][0]["affectations"].append({"rubrique": "CNSS_SAL", "periode": "CUMUL", "cibles": {"TXP": "taux"}})
     assert any("Pas de cumul pour un taux" in e.message for e in valider(d, CAT).erreurs)
+
+
+
+@base_requise
+def test_grille_retour_a_la_ligne_et_style_entete(db):
+    """RG-EDT-GRILLE-02 : intitulé long sur plusieurs lignes, rangée agrandie ; style d'en-tête appliqué."""
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    from tests_editions.test_donnees import definition
+    d = definition()
+    long = "Cotisations déductibles du revenu imposable"
+    d["bandes"][0]["elements"].append({"id": "g1", "type": "GRILLE", "x": 0, "y": 100, "l": 60, "h": 10, "largeur_titres": 20,
+        "style_entete": {"police": "Times", "taille": 7, "fond": "#DEEAF6"}, "style_titres": {"italique": True},
+        "colonnes": [{"id": "c1", "titre": long, "largeur": 20}, {"id": "c2", "titre": "IGR", "largeur": 20}],
+        "lignes": [{"id": "l1", "titre": "Mois", "valeurs": {"c1": "1"}}]})
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    t = textes(pdf)[0]
+    assert "Cotisations" in t and "imposable" in t and long not in t.replace("\n", " ").replace("  ", " ") or "\n" in t
+    assert b"Times-Bold" in pdf                                  # police de l'en-tête (gras par défaut)
+    d["bandes"][0]["elements"][-1]["retour_ligne"] = False
+    t2 = textes(executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)[0]
+    assert "imposable" not in t2                                 # sans retour : coupé (…)

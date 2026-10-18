@@ -134,6 +134,7 @@ export interface ElTableau extends ElementBase {
   quadrillage?: "AUCUN" | "COLONNES" | "COMPLET";
   lignes_min?: number;
   ligne_total?: boolean;            // ligne des totaux (défaut : oui)
+  style_entete?: Style;             // ligne des titres de colonnes
 }
 
 export interface ColonneGrille { id: string; titre?: string; largeur: number; affichage?: Affichage; style?: Style }
@@ -148,6 +149,9 @@ export interface ElGrille extends ElementBase {
   entete?: boolean;
   hauteur_ligne?: number;
   quadrillage?: "AUCUN" | "COLONNES" | "COMPLET";
+  retour_ligne?: boolean;           // intitulés longs sur plusieurs lignes (défaut : oui)
+  style_entete?: Style;             // titres des colonnes
+  style_titres?: Style;             // titres des lignes
 }
 
 export type Element = ElTexte | ElChamp | ElTexteRiche | ElImage | ElLigne | ElCadre | ElCodeBarre | ElTableau | ElGrille;

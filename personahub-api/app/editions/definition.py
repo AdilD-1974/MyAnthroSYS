@@ -214,6 +214,7 @@ class Tableau(ElementBase):
     quadrillage: Literal["AUCUN", "COLONNES", "COMPLET"] = "AUCUN"
     lignes_min: int = Field(default=0, ge=0, le=200)   # complète par des lignes vides (bulletin « formulaire »)
     ligne_total: bool = True                  # ligne des totaux en bas du tableau (colonnes avec un total)
+    style_entete: Style = Style()             # ligne des titres de colonnes (police, taille, couleurs…)
 
 
 class ColonneGrille(Strict):
@@ -241,6 +242,10 @@ class Grille(ElementBase):
     entete: bool = True
     hauteur_ligne: float = Field(default=5.0, gt=0)
     quadrillage: Literal["AUCUN", "COLONNES", "COMPLET"] = "COMPLET"
+    # RG-EDT-GRILLE-02 (Adil DAIA) : un intitulé trop long revient à la ligne, la rangée s'agrandit
+    retour_ligne: bool = True
+    style_entete: Style = Style()             # titres des colonnes
+    style_titres: Style = Style()             # titres des lignes
 
 
 Element = Annotated[Union[Texte, Champ, TexteRiche, Image, Ligne, Cadre, CodeBarre, Tableau, Grille],

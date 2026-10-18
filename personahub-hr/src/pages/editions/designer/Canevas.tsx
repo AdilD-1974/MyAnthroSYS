@@ -552,24 +552,32 @@ function ApercuTableau({ t, mm, colonne }: { t: ElTableau; mm: number; colonne: 
 function ApercuGrille({ g, mm, colonne }: { g: ElGrille; mm: number; colonne: string | null }) {
   const hl = (g.hauteur_ligne ?? 5) * mm;
   const fs = 8 * 0.3528 * mm;
+  const retour = g.retour_ligne ?? true;
   const trait = g.quadrillage === "AUCUN" ? "" : "border border-muted-foreground/40";
-  const cellule = (cle: string, l: number, contenu: React.ReactNode, cls = "", col?: string) => (
-    <div key={cle} data-colonne={col} className={`overflow-hidden whitespace-nowrap px-0.5 ${trait} ${cls} ${col && col === colonne ? "bg-primary/15" : ""}`}
-      style={{ width: l * mm, height: hl, fontSize: fs, lineHeight: `${hl}px` }}>{contenu}</div>
+  const base = g.style ?? {};
+  const fusion = (...ss: (Style | undefined)[]) => Object.assign({}, base, ...ss.map((x) => x ?? {})) as Style;
+  const cellule = (cle: string, l: number, contenu: React.ReactNode, st: React.CSSProperties, cls = "", col?: string, entete = false) => (
+    <div key={cle} data-colonne={col}
+      className={`overflow-hidden px-0.5 ${retour && entete ? "whitespace-normal break-words" : "whitespace-nowrap"} ${trait} ${cls} ${col && col === colonne ? "ring-1 ring-inset ring-primary" : ""}`}
+      style={{ width: l * mm, minHeight: hl, fontSize: fs, lineHeight: retour && entete ? 1.15 : `${hl}px`, display: "flex", alignItems: "center", ...st }}>
+      <div className="w-full">{contenu}</div>
+    </div>
   );
+  const stEntete = styleTexte(fusion({ gras: true, fond: "#E8E8E8", alignement: "CENTRE" }, g.style_entete), mm);
+  const stTitres = styleTexte(fusion({ gras: true, fond: "#F4F4F4" }, g.style_titres), mm);
   return (
     <div className="h-full w-full overflow-hidden bg-white">
       {(g.entete ?? true) && (
-        <div className="flex">
-          {!!g.largeur_titres && cellule("vide", g.largeur_titres, "", "border-transparent")}
-          {g.colonnes.map((c) => cellule(c.id, c.largeur, <b>{c.titre}</b>, "bg-muted text-center", c.id))}
+        <div className="flex items-stretch">
+          {!!g.largeur_titres && cellule("vide", g.largeur_titres, "", {}, "border-transparent")}
+          {g.colonnes.map((c) => cellule(c.id, c.largeur, c.titre, { ...stEntete, ...(c.style?.taille ? { fontSize: c.style.taille * 0.3528 * mm } : {}) }, "", c.id, true))}
         </div>
       )}
       {g.lignes.map((l) => (
-        <div key={l.id} className="flex">
-          {!!g.largeur_titres && cellule(`t${l.id}`, g.largeur_titres, <b>{l.titre}</b>, "bg-muted/50")}
+        <div key={l.id} className="flex items-stretch">
+          {!!g.largeur_titres && cellule(`t${l.id}`, g.largeur_titres, l.titre, stTitres, "", undefined, true)}
           {g.colonnes.map((c) => cellule(`${l.id}${c.id}`, c.largeur,
-            l.valeurs?.[c.id] ? <span className="text-sky-800">{`{${l.valeurs[c.id]}}`}</span> : "", "", c.id))}
+            l.valeurs?.[c.id] ? <span className="text-sky-800">{`{${l.valeurs[c.id]}}`}</span> : "", { fontFamily: cssPolice(base.police) }, "", c.id))}
         </div>
       ))}
     </div>

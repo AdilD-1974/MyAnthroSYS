@@ -492,6 +492,8 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
       <div className="mb-2">
         <Case libelle="Ligne d'en-tête des colonnes" value={t.entete ?? true} disabled={ro} onChange={(v) => maj((e) => poser(e, "entete", v ? null : false), "ent")} />
         <Case libelle="Ligne des totaux" value={t.ligne_total ?? true} disabled={ro} onChange={(v) => maj((e) => poser(e, "ligne_total", v ? null : false), "ltot")} />
+        {(t.entete ?? true) && <BlocStyle titre="Style de la ligne d'en-tête" s={t.style_entete} ro={ro}
+          onChange={(s) => maj((e) => poser(e, "style_entete", nettoyer(s)), "se")} />}
         <Case libelle="Zébré" value={t.zebre} disabled={ro} onChange={(v) => maj((e) => poser(e, "zebre", v || null), "zebre")} />
         <Case libelle="En-tête répété" value={t.repeter_entete ?? true} disabled={ro} onChange={(v) => maj((e) => poser(e, "repeter_entete", v ? null : false), "rep")} />
       </div>
@@ -743,6 +745,12 @@ function GrilleEditeur({ g, d, ro, maj, colonne }: { g: ElGrille; d: Definition;
         </Ligne>
       </div>
       <Case libelle="Ligne d'en-tête (titres des colonnes)" value={g.entete ?? true} disabled={ro} onChange={(v) => maj((e) => poser(e, "entete", v ? null : false), "ent")} />
+      <Case libelle="Retour à la ligne des intitulés trop longs" value={g.retour_ligne ?? true} disabled={ro}
+        onChange={(v) => maj((e) => poser(e, "retour_ligne", v ? null : false), "rl")} />
+      <BlocStyle titre="Style des titres de colonnes" s={g.style_entete} ro={ro}
+        onChange={(s) => maj((e) => poser(e, "style_entete", nettoyer(s)), "se")} />
+      {!!g.largeur_titres && <BlocStyle titre="Style des titres de lignes" s={g.style_titres} ro={ro}
+        onChange={(s) => maj((e) => poser(e, "style_titres", nettoyer(s)), "st")} />}
 
       <div className="mb-1 mt-3 flex items-center text-[11px] font-semibold uppercase text-muted-foreground">
         Colonnes <span className={`ml-2 font-normal normal-case ${somme > g.l + 0.05 ? "text-destructive" : ""}`}>{somme.toFixed(1)} / {g.l} mm</span>
@@ -1160,5 +1168,22 @@ function InspecteurMulti({ editeur, ro }: { editeur: Editeur; ro: boolean }) {
         }}>Copier (Ctrl+C)</Button>
       )}
     </div>
+  );
+}
+
+
+/** Réglages de style repliables (en-tête, titres de lignes…). */
+function BlocStyle({ titre, s, ro, onChange }: { titre: string; s?: Style; ro: boolean; onChange: (s: Style) => void }) {
+  const regle = !!s && Object.keys(s).length > 0;
+  return (
+    <details className="my-1 rounded border px-2 py-1" open={false}>
+      <summary className="cursor-pointer select-none text-xs font-medium">
+        {titre} {regle ? <span className="text-primary">· personnalisé</span> : <span className="text-muted-foreground">· par défaut</span>}
+      </summary>
+      <div className="pt-2">
+        <StyleEditeur s={s} ro={ro} onChange={onChange} />
+        {regle && !ro && <button type="button" className="mb-1 text-[11px] text-muted-foreground underline" onClick={() => onChange({})}>Revenir au style par défaut</button>}
+      </div>
+    </details>
   );
 }

@@ -327,40 +327,53 @@ class Composeur:
         return boites
 
     def _grille(self, g: Grille, r: ex.ResolverEdition, vide: bool) -> list[Boite]:
-        """RG-EDT-GRILLE-01 : en-tête de colonnes, titres de lignes, une formule par case."""
+        """RG-EDT-GRILLE-01 : en-tête de colonnes, titres de lignes, une formule par case.
+        RG-EDT-GRILLE-02 : avec « retour à la ligne », un texte trop long passe sur plusieurs
+        lignes et toute la rangée prend la hauteur de sa case la plus haute."""
         boites: list[Boite] = []
         hl = g.hauteur_ligne
         bord_tete = "TOUT" if g.quadrillage != "AUCUN" else None
         bord = {"COMPLET": "TOUT", "COLONNES": "G,D", "AUCUN": None}[g.quadrillage]
 
-        def case(x, y, l, txt, style, gras=False, fond=None, alignement=None, bordures=None):
+        def preparer(x, l, txt, style, *, gras=False, fond=None, alignement=None, bordures=None, sur=None):
+            """Une case : style final (case > style de rangée > défauts > style de la grille) et lignes."""
             maj = {k: v for k, v in (("gras", gras or style.gras), ("fond", fond or style.fond),
                                      ("alignement", style.alignement or alignement), ("bordures", style.bordures or bordures))
                    if v is not None}
-            for k in ("police", "taille", "couleur"):          # RG-EDT-RENDU-02 : héritées de la grille
-                if getattr(style, k) is None and getattr(g.style, k) is not None:
+            if sur is not None:                                  # style d'en-tête / de titres choisi
+                maj.update({k: v for k, v in sur.model_dump(exclude_defaults=True).items() if getattr(style, k) is None})
+            for k in ("police", "taille", "couleur"):            # RG-EDT-RENDU-02 : héritées de la grille
+                if maj.get(k) is None and getattr(style, k) is None and getattr(g.style, k) is not None:
                     maj[k] = getattr(g.style, k)
             st = style.model_copy(update=maj)
             police, taille = self._style_police(st, txt)
-            lignes = tx.decouper(txt, police, taille, max(l - 1.6, 1), multiligne=False)
-            boites.append(Boite(x, y, l, hl, "TEXTE", lignes, police, taille, st, source_id=g.id))
+            lignes = tx.decouper(txt, police, taille, max(l - 1.6, 1), multiligne=g.retour_ligne)
+            return (x, l, lignes, police, taille, st)
+
+        def poser(rangee, y) -> float:
+            h = max([hl] + [tx.hauteur_lignes_mm(len(c[2]), c[4]) + 1.2 for c in rangee if g.retour_ligne])
+            for x, l, lignes, police, taille, st in rangee:
+                boites.append(Boite(x, y, l, h, "TEXTE", lignes, police, taille, st, source_id=g.id))
+            return h
 
         y = g.y
         if g.entete:
-            x = g.x
+            x, rangee = g.x, []
             if g.largeur_titres:
-                case(x, y, g.largeur_titres, "", g.style, bordures=None)
+                rangee.append(preparer(x, g.largeur_titres, "", g.style))
                 x += g.largeur_titres
             for c in g.colonnes:
-                case(x, y, c.largeur, c.titre, c.style, gras=True, fond="#E8E8E8", alignement="CENTRE", bordures=bord_tete)
+                rangee.append(preparer(x, c.largeur, c.titre, c.style, gras=True, fond="#E8E8E8", alignement="CENTRE",
+                                       bordures=bord_tete, sur=g.style_entete))
                 x += c.largeur
-            y += hl
+            y += poser(rangee, y)
         for i, lg in enumerate(g.lignes):
-            x = g.x
+            x, rangee = g.x, []
             dernier = i == len(g.lignes) - 1
             bord_l = "G,D,B" if (bord == "G,D" and dernier) else bord
             if g.largeur_titres:
-                case(x, y, g.largeur_titres, lg.titre, lg.style, gras=True, fond="#F4F4F4", bordures=bord_tete or bord_l)
+                rangee.append(preparer(x, g.largeur_titres, lg.titre, lg.style, gras=True, fond="#F4F4F4",
+                                       bordures=bord_tete or bord_l, sur=g.style_titres))
                 x += g.largeur_titres
             for c in g.colonnes:
                 expr = lg.valeurs.get(c.id)
@@ -374,9 +387,9 @@ class Composeur:
                         self.ctx.registre_masques)
                 numerique = isinstance(v, (Decimal, int, float)) and not isinstance(v, bool)
                 st = c.style.model_copy(update={k: val for k, val in lg.style.model_dump(exclude_defaults=True).items()})
-                case(x, y, c.largeur, txt, st, alignement="DROITE" if numerique else "CENTRE", bordures=bord_l)
+                rangee.append(preparer(x, c.largeur, txt, st, alignement="DROITE" if numerique else "CENTRE", bordures=bord_l))
                 x += c.largeur
-            y += hl
+            y += poser(rangee, y)
         return boites
 
     # ---------------------------------------------------------------- données : corps et variables
@@ -608,7 +621,7 @@ class Composeur:
             return rangee([(t, titre)], gras=True, fond="#F4F4F4", bordures="TOUT" if bord else None)
 
         tranches = [rangee([(c, c.titre) for c in colonnes], gras=True, fond="#E8E8E8", genre="ENTETE_TABLEAU",
-                           bordures="TOUT" if bord else None)] if tab.entete else []
+                           bordures="TOUT" if bord else None, style_ligne=tab.style_entete)] if tab.entete else []
         totaux = Accumulateur()
         nb_lignes = 0
         imprimees: set[int] = set()
