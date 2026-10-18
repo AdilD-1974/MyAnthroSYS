@@ -187,6 +187,32 @@ def nom_police(police: Optional[str], gras: bool, italique: bool, arabe: bool = 
     return famille[i]
 
 
+_SEPARATEURS_MOTS = re.compile(r"([\s\-'’/(]+)")
+
+
+def appliquer_casse(texte: str, casse: Optional[str]) -> str:
+    """RG-EDT-RENDU-05 : MAJUSCULES, MINUSCULES, INITIALES (« Jean-Pierre De La Fontaine »).
+    PETITES_MAJUSCULES : le texte est gardé tel quel, le rendu PDF dessine les minuscules en
+    capitales réduites. Un texte arabe n'a pas de casse : il est rendu sans changement."""
+    if not casse or not texte or contient_arabe(texte):
+        return texte
+    if casse == "MAJUSCULES":
+        return texte.upper()
+    if casse == "MINUSCULES":
+        return texte.lower()
+    if casse == "INITIALES":
+        return "".join(m[:1].upper() + m[1:].lower() if not _SEPARATEURS_MOTS.fullmatch(m) else m
+                       for m in _SEPARATEURS_MOTS.split(texte))
+    return texte
+
+
+PETITES_CAPITALES = 0.78     # taille relative d'une minuscule dessinée en capitale
+
+
+def largeur_petites_capitales(texte: str, police: str, taille: float) -> float:
+    return sum(largeur_pt(ch.upper(), police, taille * (PETITES_CAPITALES if ch.islower() else 1)) for ch in texte)
+
+
 def largeur_pt(texte: str, police: str, taille: float) -> float:
     return pdfmetrics.stringWidth(texte, police, taille)
 

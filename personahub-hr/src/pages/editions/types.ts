@@ -47,6 +47,7 @@ export interface Style {
   gras?: boolean | null;
   italique?: boolean | null;
   souligne?: boolean | null;
+  casse?: "MAJUSCULES" | "MINUSCULES" | "INITIALES" | "PETITES_MAJUSCULES" | null;
   couleur?: string | null;
   fond?: string | null;
   alignement?: "GAUCHE" | "CENTRE" | "DROITE" | "JUSTIFIE" | null;

@@ -396,6 +396,15 @@ function StyleEditeur({ s, ro, cadre, onChange }: { s?: Style; ro: boolean; cadr
           <Case libelle="Italique" value={v.italique} disabled={ro} onChange={(x) => set("italique", x)} />
           <Case libelle="Souligné" value={v.souligne} disabled={ro} onChange={(x) => set("souligne", x)} />
         </div>
+        <Ligne libelle="Casse" aide="Le texte d'origine n'est pas modifié : seul l'affichage change">
+          <select className={classeChamp} disabled={ro} value={v.casse ?? ""} onChange={(e) => set("casse", e.target.value || null)}>
+            <option value="">Telle quelle</option>
+            <option value="MAJUSCULES">MAJUSCULES</option>
+            <option value="MINUSCULES">minuscules</option>
+            <option value="INITIALES">Initiales En Majuscule</option>
+            <option value="PETITES_MAJUSCULES">Petites majuscules</option>
+          </select>
+        </Ligne>
       </>}
       <div className="grid grid-cols-2 gap-1">
         <Ligne libelle={cadre ? "Couleur du trait" : "Couleur de la police"}>

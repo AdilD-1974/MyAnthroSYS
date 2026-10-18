@@ -158,16 +158,26 @@ class RenduPDF:
             c.setStrokeColor(couleur or black)
             c.setLineWidth(max(0.4, b.taille / 16))
             c.setDash([], 0)
+        petites = getattr(s, "casse", None) == "PETITES_MAJUSCULES" and b.police != tx.POLICE_ARABE
         for i, ligne in enumerate(b.lignes):
             y = y0 - i * pas
-            w = tx.largeur_pt(ligne, b.police, b.taille)
+            w = tx.largeur_petites_capitales(ligne, b.police, b.taille) if petites else tx.largeur_pt(ligne, b.police, b.taille)
             if alignement == "DROITE":
                 x1 = x + l - marge - w
             elif alignement == "CENTRE":
                 x1 = x + l / 2 - w / 2
             else:
                 x1 = x + marge
-            c.drawString(x1, y, ligne)
+            if petites:                                       # RG-EDT-RENDU-05 : petites capitales
+                xc = x1
+                for ch in ligne:
+                    t = b.taille * (tx.PETITES_CAPITALES if ch.islower() else 1)
+                    c.setFont(b.police, t)
+                    c.drawString(xc, y, ch.upper())
+                    xc += tx.largeur_pt(ch.upper(), b.police, t)
+                c.setFont(b.police, b.taille)
+            else:
+                c.drawString(x1, y, ligne)
             if souligne and ligne.strip():                   # RG-EDT-RENDU-04 : souligné imprimé
                 c.line(x1, y - b.taille * 0.12, x1 + w, y - b.taille * 0.12)
 

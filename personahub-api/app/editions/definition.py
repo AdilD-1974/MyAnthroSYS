@@ -79,6 +79,8 @@ class Style(Strict):
     gras: Optional[bool] = None
     italique: Optional[bool] = None
     souligne: Optional[bool] = None
+    # RG-EDT-RENDU-05 (Adil DAIA) : casse d'affichage (le texte d'origine n'est pas modifié)
+    casse: Optional[Literal["MAJUSCULES", "MINUSCULES", "INITIALES", "PETITES_MAJUSCULES"]] = None
     couleur: Optional[str] = None
     fond: Optional[str] = None
     alignement: Optional[Literal["GAUCHE", "CENTRE", "DROITE", "JUSTIFIE"]] = None

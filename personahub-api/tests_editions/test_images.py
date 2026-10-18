@@ -182,3 +182,31 @@ def test_page_paysage_personnalisee_police_par_defaut(db):
     assert round(float(p0.mediabox.width)) == round(100 * 72 / 25.4)
     with pytest.raises(ValidationError):
         Definition.model_validate({**d, "page": {"format": "PERSONNALISE"}})
+
+
+
+def test_casse_d_affichage():
+    """RG-EDT-RENDU-05 : majuscules, minuscules, initiales ; arabe inchangé."""
+    from app.editions.moteur import texte as tx
+    assert tx.appliquer_casse("bulletin de paie", "MAJUSCULES") == "BULLETIN DE PAIE"
+    assert tx.appliquer_casse("NET À PAYER", "MINUSCULES") == "net à payer"
+    assert tx.appliquer_casse("jEAN-pierre d'alami ben (said)", "INITIALES") == "Jean-Pierre D'Alami Ben (Said)"
+    assert tx.appliquer_casse("Net", "PETITES_MAJUSCULES") == "Net"
+    assert tx.appliquer_casse("صافي الأجر", "MAJUSCULES") == "صافي الأجر"
+    assert tx.largeur_petites_capitales("Net", "Helvetica", 10) > tx.largeur_pt("Net", "Helvetica", 10)
+
+
+@base_requise
+def test_casse_au_pdf(db):
+    from app.editions.moteur.executeur import executer
+    from app.editions.sources import ContexteSecurite
+    d = definition()
+    d["bandes"][0]["elements"] += [
+        {"id": "t1", "type": "TEXTE", "x": 0, "y": 100, "l": 80, "h": 6, "valeur": '"bulletin de paie"', "style": {"casse": "MAJUSCULES"}},
+        {"id": "t2", "type": "TEXTE", "x": 0, "y": 108, "l": 80, "h": 6, "valeur": '"net à payer"', "style": {"casse": "PETITES_MAJUSCULES"}},
+    ]
+    sec = ContexteSecurite(None, S1, donnees_sensibles=True)
+    pdf = executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu
+    from pypdf import PdfReader
+    t = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+    assert "BULLETIN DE PAIE" in t and "bulletin de paie" not in t

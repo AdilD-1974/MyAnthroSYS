@@ -459,6 +459,8 @@ function styleTexte(s: Style | undefined, mm: number): React.CSSProperties {
     fontWeight: s?.gras ? 700 : 400,
     fontStyle: s?.italique ? "italic" : "normal",
     textDecoration: s?.souligne ? "underline" : "none",
+    textTransform: s?.casse === "MAJUSCULES" ? "uppercase" : s?.casse === "MINUSCULES" ? "lowercase" : s?.casse === "INITIALES" ? "capitalize" : undefined,
+    fontVariant: s?.casse === "PETITES_MAJUSCULES" ? "small-caps" : undefined,
     color: hexDe(s?.couleur) ?? "#111",
     background: hexDe(s?.fond) ?? "transparent",
     ...cssBordures(s?.bordures, s?.couleur_bordure ?? s?.couleur, s?.epaisseur_bordure, mm, s?.style_trait),

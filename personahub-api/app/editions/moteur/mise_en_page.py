@@ -283,6 +283,7 @@ class Composeur:
 
     def _boite_texte(self, el, texte: str, x: float, y: float) -> Boite:
         police, taille = self._style_police(el.style, texte)
+        texte = tx.appliquer_casse(texte, el.style.casse)
         lignes = tx.decouper(texte, police, taille, el.l, multiligne=el.extensible or el.type == "TEXTE_RICHE")
         h = max(el.h, tx.hauteur_lignes_mm(len(lignes), taille)) if (el.extensible or el.type == "TEXTE_RICHE") else el.h
         return Boite(x, y, el.l, h, "TEXTE", lignes, police, taille, el.style, source_id=el.id)
@@ -348,7 +349,7 @@ class Composeur:
                     maj[k] = getattr(g.style, k)
             st = style.model_copy(update=maj)
             police, taille = self._style_police(st, txt)
-            lignes = tx.decouper(txt, police, taille, max(l - 1.6, 1), multiligne=g.retour_ligne)
+            lignes = tx.decouper(tx.appliquer_casse(txt, st.casse), police, taille, max(l - 1.6, 1), multiligne=g.retour_ligne)
             return (x, l, lignes, police, taille, st)
 
         def poser(rangee, y) -> float:
@@ -608,7 +609,7 @@ class Composeur:
                                 if k not in ("alignement",) or v})
                 style = col.style.model_copy(update=maj)
                 police, taille = self._style_police(style, txt)
-                lignes_txt = tx.decouper(txt, police, taille, max(col.largeur - 1.6, 1), multiligne=True)
+                lignes_txt = tx.decouper(tx.appliquer_casse(txt, style.casse), police, taille, max(col.largeur - 1.6, 1), multiligne=True)
                 hauteur = max(hauteur, tx.hauteur_lignes_mm(len(lignes_txt), taille) + 1.2)
                 prepares.append((col, lignes_txt, police, taille, style))
             for col, lignes_txt, police, taille, style in prepares:
