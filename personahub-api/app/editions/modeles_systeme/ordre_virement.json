@@ -1,0 +1,752 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "periode_id = @periode.id",
+    "net_a_payer > 0"
+   ],
+   "tri": [
+    {
+     "champ": "paiement.banque_libelle"
+    },
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ],
+   "groupes": [
+    "paiement.banque_libelle"
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 4
+ },
+ "page": {
+  "marges": [
+   15.0,
+   15.0,
+   12.0,
+   15.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "lettre",
+   "type": "EN_TETE_ETAT",
+   "hauteur": 72.0,
+   "extensible": true,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 70.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Ordre de virement\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 70.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Salaires de \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "dest_a",
+     "x": 100.0,
+     "y": 24.0,
+     "l": 80.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.0
+     },
+     "type": "TEXTE",
+     "valeur": "\"À l'attention de Monsieur le Directeur\""
+    },
+    {
+     "id": "dest_b",
+     "x": 100.0,
+     "y": 29.0,
+     "l": 80.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.0
+     },
+     "type": "TEXTE",
+     "valeur": "\"de l'agence bancaire teneur de notre compte\""
+    },
+    {
+     "id": "lieu_date",
+     "x": 100.0,
+     "y": 37.0,
+     "l": 80.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.0
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(societe.ville, \"\") + \", le \" + FORMAT(DATEJOUR(), \"DATE_LONGUE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "objet",
+     "x": 0.0,
+     "y": 46.0,
+     "l": 180.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "\"Objet : ordre de virement des salaires — \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "corps_lettre",
+     "x": 0.0,
+     "y": 54.0,
+     "l": 180.0,
+     "h": 16.0,
+     "style": {
+      "taille": 9.0
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Madame, Monsieur,\n\nNous vous prions de bien vouloir débiter notre compte et créditer les comptes des bénéficiaires désignés ci-dessous des montants indiqués, au titre des salaires de {FORMAT(@periode.date_fin, \"MOIS_ANNEE\")}. Le montant total de l'ordre figure en fin de liste."
+    }
+   ]
+  },
+  {
+   "id": "colonnes",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 10.0,
+   "elements": [
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 180.0,
+     "h": 7.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_rang",
+     "x": 0.8,
+     "y": 2.0,
+     "l": 7.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"N°\""
+    },
+    {
+     "id": "c_mat",
+     "x": 9.8,
+     "y": 2.0,
+     "l": 16.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Matricule\""
+    },
+    {
+     "id": "c_nom",
+     "x": 27.8,
+     "y": 2.0,
+     "l": 50.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Bénéficiaire\""
+    },
+    {
+     "id": "c_agence",
+     "x": 79.8,
+     "y": 2.0,
+     "l": 28.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Agence\""
+    },
+    {
+     "id": "c_rib",
+     "x": 109.8,
+     "y": 2.0,
+     "l": 44.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"N° de compte (RIB)\""
+    },
+    {
+     "id": "c_net",
+     "x": 155.8,
+     "y": 2.0,
+     "l": 23.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Montant (DH)\""
+    }
+   ]
+  },
+  {
+   "id": "groupe_tete",
+   "type": "EN_TETE_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "g_fond",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 180.0,
+     "h": 6.0,
+     "style": {
+      "fond": "#E8F1F5"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "g_titre",
+     "x": 2.0,
+     "y": 1.0,
+     "l": 150.0,
+     "h": 6.0,
+     "style": {
+      "taille": 8.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Banque : \" + SIVIDE(paiement.banque_libelle, \"non renseignée\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.5,
+   "elements": [
+    {
+     "id": "v_rang",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 7.4,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(matricule, REPORT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "v_mat",
+     "x": 9.8,
+     "y": 0.0,
+     "l": 16.4,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_nom",
+     "x": 27.8,
+     "y": 0.0,
+     "l": 50.4,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_agence",
+     "x": 79.8,
+     "y": 0.0,
+     "l": 28.4,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(paiement.nom_agence, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_rib",
+     "x": 109.8,
+     "y": 0.0,
+     "l": 44.4,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(paiement.numero_compte, \"— à compléter —\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_net",
+     "x": 155.8,
+     "y": 0.0,
+     "l": 23.4,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_a_payer",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 5.3,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "groupe_pied",
+   "type": "PIED_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 9.0,
+   "elements": [
+    {
+     "id": "sg_lib",
+     "x": 60.0,
+     "y": 0.5,
+     "l": 90.0,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Total \" + SIVIDE(paiement.banque_libelle, \"banque non renseignée\") + \" (\" + NB(matricule, GROUPE) + \")\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "sg_net",
+     "x": 155.8,
+     "y": 0.5,
+     "l": 23.4,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_filet",
+     "x": 120.0,
+     "y": 6.6,
+     "l": 60.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "total",
+   "type": "PIED_ETAT",
+   "hauteur": 72.0,
+   "extensible": true,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "tg_fond",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 180.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "tg_lib",
+     "x": 2.0,
+     "y": 2.0,
+     "l": 140.0,
+     "h": 8.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#FFFFFF"
+     },
+     "type": "CHAMP",
+     "valeur": "\"TOTAL DE L'ORDRE — \" + NB(matricule, ETAT) + \" virements\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "tg_net",
+     "x": 140.0,
+     "y": 2.0,
+     "l": 39.0,
+     "h": 8.0,
+     "style": {
+      "taille": 10.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "arrete",
+     "x": 0.0,
+     "y": 14.0,
+     "l": 180.0,
+     "h": 10.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Arrêté le présent ordre de virement à la somme de : {MAJUSCULE(MONTANT_EN_LETTRES(TOTAL(net_a_payer, ETAT)))}."
+    },
+    {
+     "id": "politesse",
+     "x": 0.0,
+     "y": 26.0,
+     "l": 180.0,
+     "h": 8.0,
+     "style": {
+      "taille": 9.0
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées."
+    },
+    {
+     "id": "sig_cadre",
+     "x": 110.0,
+     "y": 38.0,
+     "l": 70.0,
+     "h": 32.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "sig_titre",
+     "x": 112.0,
+     "y": 39.0,
+     "l": 66.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Signature(s) et cachet autorisés\""
+    },
+    {
+     "id": "sig_nom",
+     "x": 112.0,
+     "y": 64.0,
+     "l": 66.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(societe.nom_gerant, \"\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 72.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 72.0,
+     "y": 2.0,
+     "l": 72.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Ordre de virement — document bancaire\""
+    },
+    {
+     "id": "p_page",
+     "x": 144.0,
+     "y": 2.0,
+     "l": 36.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Ordre_virement_\" + @periode.code"
+ }
+}

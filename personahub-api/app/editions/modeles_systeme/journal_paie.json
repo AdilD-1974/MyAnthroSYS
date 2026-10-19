@@ -1,0 +1,1388 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "periode_id = @periode.id"
+   ],
+   "tri": [
+    {
+     "champ": "plan.code"
+    },
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ],
+   "groupes": [
+    "plan.code"
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 3
+ },
+ "page": {
+  "orientation": "PAYSAGE",
+  "marges": [
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 31.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 167.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Journal de paie\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 167.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Période : \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\") + SI(ESTVIDE(@plan_paie), \"\", \"   ·   plan filtré\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "col_fond",
+     "x": 0.0,
+     "y": 21.0,
+     "l": 277.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "col_mat",
+     "x": 0.8,
+     "y": 21.0,
+     "l": 16.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Matricule\""
+    },
+    {
+     "id": "col_nom",
+     "x": 18.8,
+     "y": 21.0,
+     "l": 48.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Nom et prénom\""
+    },
+    {
+     "id": "col_emploi",
+     "x": 68.8,
+     "y": 21.0,
+     "l": 36.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Emploi\""
+    },
+    {
+     "id": "col_brut",
+     "x": 106.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salaire brut\""
+    },
+    {
+     "id": "col_brut_imp",
+     "x": 128.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Brut imposable\""
+    },
+    {
+     "id": "col_cot_sal",
+     "x": 150.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Cot. salariales\""
+    },
+    {
+     "id": "col_net_imp",
+     "x": 171.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net imposable\""
+    },
+    {
+     "id": "col_ret",
+     "x": 193.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Retenues\""
+    },
+    {
+     "id": "col_net",
+     "x": 214.8,
+     "y": 21.0,
+     "l": 21.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net à payer\""
+    },
+    {
+     "id": "col_cot_pat",
+     "x": 237.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Cot. patronales\""
+    },
+    {
+     "id": "col_cout",
+     "x": 257.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Coût empl.\""
+    }
+   ]
+  },
+  {
+   "id": "groupe_tete",
+   "type": "EN_TETE_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "g_fond",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 277.0,
+     "h": 6.0,
+     "style": {
+      "fond": "#E8F1F5"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "g_titre",
+     "x": 2.0,
+     "y": 1.0,
+     "l": 200.0,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Plan de paie : \" + SIVIDE(plan.code, \"—\") + SI(ESTVIDE(plan.libelle), \"\", \" — \" + plan.libelle)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.0,
+   "elements": [
+    {
+     "id": "v_mat",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 16.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_nom",
+     "x": 18.8,
+     "y": 0.0,
+     "l": 48.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "identite.nom + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_emploi",
+     "x": 68.8,
+     "y": 0.0,
+     "l": 36.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(affectation.emploi_libelle, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_brut",
+     "x": 106.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_brut_imp",
+     "x": 128.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_cot_sal",
+     "x": 150.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_cot_salariale",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_net_imp",
+     "x": 171.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_ret",
+     "x": 193.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_retenues",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_net",
+     "x": 214.8,
+     "y": 0.0,
+     "l": 21.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_a_payer",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_cot_pat",
+     "x": 237.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_cot_patronale",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_cout",
+     "x": 257.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "cout_employeur",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 4.8,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "style_trait": "POINTILLES",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "groupe_pied",
+   "type": "PIED_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 9.0,
+   "elements": [
+    {
+     "id": "sg_fond",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 277.0,
+     "h": 6.0,
+     "style": {
+      "fond": "#E8F1F5"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "sg_lib",
+     "x": 1.0,
+     "y": 0.5,
+     "l": 105.0,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Sous-total \" + SIVIDE(plan.libelle, plan.code) + \" (\" + NB(matricule, GROUPE) + \" salariés)\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "sg_brut",
+     "x": 106.8,
+     "y": 0.5,
+     "l": 20.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_brut_imp",
+     "x": 128.8,
+     "y": 0.5,
+     "l": 20.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut_imposable, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_cot_sal",
+     "x": 150.8,
+     "y": 0.5,
+     "l": 19.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_cot_salariale, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_net_imp",
+     "x": 171.8,
+     "y": 0.5,
+     "l": 20.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_imposable, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_ret",
+     "x": 193.8,
+     "y": 0.5,
+     "l": 19.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_retenues, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_net",
+     "x": 214.8,
+     "y": 0.5,
+     "l": 21.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_cot_pat",
+     "x": 237.8,
+     "y": 0.5,
+     "l": 18.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_cot_patronale, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "sg_cout",
+     "x": 257.8,
+     "y": 0.5,
+     "l": 18.4,
+     "h": 6.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(cout_employeur, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    }
+   ]
+  },
+  {
+   "id": "total",
+   "type": "PIED_ETAT",
+   "hauteur": 52.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "tg_fond",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 277.0,
+     "h": 7.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "tg_lib",
+     "x": 1.0,
+     "y": 1.0,
+     "l": 105.0,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF"
+     },
+     "type": "CHAMP",
+     "valeur": "\"TOTAL GÉNÉRAL — \" + NB(matricule, ETAT) + \" salariés\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "tg_brut",
+     "x": 106.8,
+     "y": 1.0,
+     "l": 20.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_brut_imp",
+     "x": 128.8,
+     "y": 1.0,
+     "l": 20.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_cot_sal",
+     "x": 150.8,
+     "y": 1.0,
+     "l": 19.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_cot_salariale, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_net_imp",
+     "x": 171.8,
+     "y": 1.0,
+     "l": 20.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_ret",
+     "x": 193.8,
+     "y": 1.0,
+     "l": 19.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_retenues, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_net",
+     "x": 214.8,
+     "y": 1.0,
+     "l": 21.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_cot_pat",
+     "x": 237.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_cot_patronale, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "tg_cout",
+     "x": 257.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(cout_employeur, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "syn_titre",
+     "x": 0.0,
+     "y": 8.0,
+     "l": 115.0,
+     "h": 4.0,
+     "style": {
+      "taille": 8.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Synthèse de la période\""
+    },
+    {
+     "id": "syn_cadre",
+     "x": 0.0,
+     "y": 12.0,
+     "l": 115.0,
+     "h": 37.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "syn_l1",
+     "x": 2.0,
+     "y": 13.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Effectif payé\""
+    },
+    {
+     "id": "syn_v1",
+     "x": 72.0,
+     "y": 13.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(matricule, ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "syn_l2",
+     "x": 2.0,
+     "y": 18.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Masse salariale brute\""
+    },
+    {
+     "id": "syn_v2",
+     "x": 72.0,
+     "y": 18.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "syn_l3",
+     "x": 2.0,
+     "y": 23.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salaire brut moyen\""
+    },
+    {
+     "id": "syn_v3",
+     "x": 72.0,
+     "y": 23.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "MOYENNE_SUR(total_brut, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "syn_l4",
+     "x": 2.0,
+     "y": 28.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net à payer le plus élevé\""
+    },
+    {
+     "id": "syn_v4",
+     "x": 72.0,
+     "y": 28.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "MAX_SUR(net_a_payer, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "syn_l5",
+     "x": 2.0,
+     "y": 33.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net à payer le plus bas\""
+    },
+    {
+     "id": "syn_v5",
+     "x": 72.0,
+     "y": 33.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "MIN_SUR(net_a_payer, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "syn_l6",
+     "x": 2.0,
+     "y": 38.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Charges patronales / masse brute\""
+    },
+    {
+     "id": "syn_v6",
+     "x": 72.0,
+     "y": 38.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "SI(TOTAL(total_brut, ETAT) = 0, 0, TOTAL(total_cot_patronale, ETAT) / TOTAL(total_brut, ETAT) * 100)",
+     "affichage": {
+      "masque": "POURCENTAGE"
+     }
+    },
+    {
+     "id": "syn_l7",
+     "x": 2.0,
+     "y": 43.0,
+     "l": 70.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Coût employeur total\""
+    },
+    {
+     "id": "syn_v7",
+     "x": 72.0,
+     "y": 43.0,
+     "l": 40.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(cout_employeur, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "visa_etabli",
+     "x": 125.0,
+     "y": 12.0,
+     "l": 48.0,
+     "h": 37.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "visa_etabli_t",
+     "x": 127.0,
+     "y": 13.0,
+     "l": 44.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Établi par\""
+    },
+    {
+     "id": "visa_etabli_d",
+     "x": 127.0,
+     "y": 42.0,
+     "l": 44.0,
+     "h": 5.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Date et signature\""
+    },
+    {
+     "id": "visa_verifie",
+     "x": 176.0,
+     "y": 12.0,
+     "l": 48.0,
+     "h": 37.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "visa_verifie_t",
+     "x": 178.0,
+     "y": 13.0,
+     "l": 44.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Vérifié par\""
+    },
+    {
+     "id": "visa_verifie_d",
+     "x": 178.0,
+     "y": 42.0,
+     "l": 44.0,
+     "h": 5.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Date et signature\""
+    },
+    {
+     "id": "visa_approuve",
+     "x": 227.0,
+     "y": 12.0,
+     "l": 48.0,
+     "h": 37.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "visa_approuve_t",
+     "x": 229.0,
+     "y": 13.0,
+     "l": 44.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Approuvé par\""
+    },
+    {
+     "id": "visa_approuve_d",
+     "x": 229.0,
+     "y": 42.0,
+     "l": 44.0,
+     "h": 5.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Date et signature\""
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 11.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 110.80000000000001,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Document confidentiel — usage interne\""
+    },
+    {
+     "id": "p_page",
+     "x": 221.60000000000002,
+     "y": 2.0,
+     "l": 55.400000000000006,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_report",
+     "x": 0.0,
+     "y": 6.0,
+     "l": 120.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Net à payer cumulé à ce stade : \" + FORMAT(TOTAL(net_a_payer, REPORT), \"MONTANT\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Journal_paie_\" + @periode.code"
+ }
+}

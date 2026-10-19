@@ -198,15 +198,15 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
 }
 
 /** Bouton « Menus » (bibliothèque, designer). */
-export function BoutonMenus({ modele, taille = "sm", variante = "ghost", onChange }: {
+export function BoutonMenus({ modele, taille = "sm", variante = "ghost", onChange, compact }: {
   modele: ModeleRegle;
-  taille?: "sm" | "default"; variante?: "ghost" | "outline"; onChange?: () => void;
+  taille?: "sm" | "default"; variante?: "ghost" | "outline"; onChange?: () => void; compact?: boolean;
 }) {
   const [ouvert, setOuvert] = useState(false);
   return (
     <>
       <Button size={taille} variant={variante} onClick={() => setOuvert(true)} title="Dossier du menu d'éditions, actif, écrans où le modèle est proposé">
-        <MonitorCheck className="mr-1 h-3.5 w-3.5" />Classement
+        <MonitorCheck className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} />{!compact && "Classement"}
       </Button>
       <DialogueMenus modele={modele} ouvert={ouvert} onFermer={() => setOuvert(false)} onChange={onChange} />
     </>

@@ -67,6 +67,13 @@ DOSSIER_SYSTEME = Path(__file__).resolve().parent / "modeles_systeme"
 # fichier → (code, libellé, catégorie) des modèles livrés avec l'application
 MODELES_SYSTEME = {
     "bulletin_classique.json": ("BULLETIN_CLASSIQUE", "Bulletin de paie classique", "BULLETIN"),
+    # exemples complets, un par type d'état (scripts/editions/generer_modeles_exemples.py)
+    "journal_paie.json": ("JOURNAL_PAIE", "Journal de paie", "JOURNAL"),
+    "ordre_virement.json": ("ORDRE_VIREMENT", "Ordre de virement des salaires", "LISTE"),
+    "attestation_travail_salaire.json": ("ATTESTATION_TRAVAIL_SALAIRE", "Attestation de travail et de salaire", "ATTESTATION"),
+    "notification_remuneration.json": ("NOTIFICATION_REMUNERATION", "Notification de rémunération", "COURRIER"),
+    "etat_cotisations.json": ("ETAT_COTISATIONS_SOCIALES", "État des cotisations CNSS · AMO · TFP", "DECLARATION"),
+    "fiche_synthese_annuelle.json": ("FICHE_SYNTHESE_ANNUELLE", "Fiche de synthèse annuelle du salarié", "AUTRE"),
 }
 CATEGORIES = ("BULLETIN", "JOURNAL", "ATTESTATION", "COURRIER", "LISTE", "DECLARATION", "AUTRE")
 TYPES_DEPENDANCE = {"SOURCE", "CHAMP", "RUBRIQUE", "CONSTANTE", "MASQUE", "ASSET", "SOUS_MODELE", "TABLE"}
@@ -406,6 +413,41 @@ def modifier_modele(db: Session, u: Utilisateur, modele_id: str, *, libelle: Opt
     return lire_modele(db, u, m["id"])
 
 
+def archiver_modele(db: Session, u: Utilisateur, modele_id: str, archive: bool = True) -> dict:
+    """RG-EDT-MODELE-04 (Adil DAIA) : un modèle archivé disparaît des listes, des menus et des
+    lancements, mais reste en base avec ses versions et ses éditions produites (traçabilité).
+    Réversible. Un modèle système ne s'archive pas (on le désactive pour la société)."""
+    m = lire_modele(db, u, modele_id)
+    if m["est_systeme"]:
+        raise Interdit("Modèle système : désactivez-le pour la société (indicateur Actif) au lieu de l'archiver")
+    if m["visibilite"] == "PRIVE" and m["proprietaire_id"] != _uuid(u.id) and not u.admin:
+        raise Interdit("Modèle privé d'un autre utilisateur")
+    exiger(db, u, "PUBLIER", m)
+    db.execute(text("UPDATE edt_modele SET archive = :a, modifie_le = CURRENT_TIMESTAMP WHERE id = :id"),
+               {"a": bool(archive), "id": m["id"]})
+    auditer(db, u, "ARCHIVAGE" if archive else "DESARCHIVAGE", "MODELE", m["id"], {"code": m["code"]})
+    return lire_modele(db, u, m["id"])
+
+
+def supprimer_modele(db: Session, u: Utilisateur, modele_id: str) -> None:
+    """RG-EDT-MODELE-05 (Adil DAIA) : suppression DÉFINITIVE réservée à un modèle jamais publié
+    (aucune édition n'a pu en sortir) ; sinon on l'archive. Les copies qui en dérivent sont
+    détachées (modele_origine_id), pas supprimées."""
+    m = lire_modele(db, u, modele_id)
+    _modifiable(db, u, m)
+    publiees = db.execute(text("""SELECT count(*) FROM edt_modele_version WHERE modele_id = :m
+                                  AND statut IN ('PUBLIEE','RETIREE')"""), {"m": m["id"]}).scalar()
+    if publiees or m["version_publiee_id"]:
+        raise Conflit("Ce modèle a été publié : des éditions ont pu en sortir. Archivez-le au lieu de le supprimer")
+    for table in ("edt_variante", "edt_planification"):
+        if db.execute(text(f"SELECT 1 FROM {table} WHERE modele_id = :m"), {"m": m["id"]}).first():
+            raise Conflit("Ce modèle a des variantes ou des planifications : archivez-le")
+    db.execute(text("UPDATE edt_modele SET modele_origine_id = NULL WHERE modele_origine_id = :m"), {"m": m["id"]})
+    db.execute(text("DELETE FROM edt_modele_version WHERE modele_id = :m"), {"m": m["id"]})
+    db.execute(text("DELETE FROM edt_modele WHERE id = :m"), {"m": m["id"]})
+    auditer(db, u, "SUPPRESSION", "MODELE", None, {"modele_id": m["id"], "code": m["code"], "libelle": m["libelle"]})
+
+
 def ouvrir_brouillon(db: Session, u: Utilisateur, modele_id: str) -> dict:
     """Brouillon existant, ou nouveau brouillon copié de la version publiée."""
     m = lire_modele(db, u, modele_id)
@@ -685,6 +727,8 @@ def lancer(db: Session, u: Utilisateur, modele_id: str, parametres: dict, forme:
     conservés sous <racine_documents>/<société>/<AAAA>/<MM>/<demande>/."""
     m = lire_modele(db, u, modele_id)
     exiger(db, u, "LANCER", m)
+    if m["archive"]:                                                          # RG-EDT-MODELE-04
+        raise Conflit("Ce modèle est archivé : désarchivez-le pour le lancer")
     if not m.get("actif", True):                                              # RG-EDT-ACTIF-01
         raise Conflit("Cet état est désactivé : réactivez-le (indicateur Actif) pour le lancer")
     if not m["version_publiee_id"]:

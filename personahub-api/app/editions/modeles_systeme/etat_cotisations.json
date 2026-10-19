@@ -1,0 +1,1182 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "periode_id = @periode.id"
+   ],
+   "tri": [
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ]
+  }
+ ],
+ "variables": [
+  {
+   "code": "plafond",
+   "libelle": "Plafond CNSS (prestations sociales)",
+   "type": "MONTANT",
+   "valeur": "SIVIDE(#CNSS_PLAFOND, 6000)"
+  },
+  {
+   "code": "tx_ps_sal",
+   "libelle": "Taux CNSS salarial (%)",
+   "type": "NOMBRE",
+   "valeur": "4.48"
+  },
+  {
+   "code": "tx_ps_pat",
+   "libelle": "Taux CNSS patronal (%)",
+   "type": "NOMBRE",
+   "valeur": "8.98"
+  },
+  {
+   "code": "tx_af",
+   "libelle": "Allocations familiales, patronal (%)",
+   "type": "NOMBRE",
+   "valeur": "6.40"
+  },
+  {
+   "code": "tx_amo_sal",
+   "libelle": "AMO salariale (%)",
+   "type": "NOMBRE",
+   "valeur": "2.26"
+  },
+  {
+   "code": "tx_amo_pat",
+   "libelle": "AMO patronale, participation comprise (%)",
+   "type": "NOMBRE",
+   "valeur": "4.11"
+  },
+  {
+   "code": "tx_tfp",
+   "libelle": "Taxe de formation professionnelle (%)",
+   "type": "NOMBRE",
+   "valeur": "1.60"
+  },
+  {
+   "code": "base_ps",
+   "libelle": "Base plafonnée",
+   "type": "MONTANT",
+   "valeur": "MIN(total_brut, var.plafond)"
+  },
+  {
+   "code": "ps_sal",
+   "libelle": "CNSS salariale",
+   "type": "MONTANT",
+   "valeur": "ARRONDI(var.base_ps * var.tx_ps_sal / 100, 2)"
+  },
+  {
+   "code": "ps_pat",
+   "libelle": "CNSS patronale",
+   "type": "MONTANT",
+   "valeur": "ARRONDI(var.base_ps * var.tx_ps_pat / 100, 2)"
+  },
+  {
+   "code": "af",
+   "libelle": "Allocations familiales",
+   "type": "MONTANT",
+   "valeur": "ARRONDI(total_brut * var.tx_af / 100, 2)"
+  },
+  {
+   "code": "amo_sal",
+   "libelle": "AMO salariale",
+   "type": "MONTANT",
+   "valeur": "ARRONDI(total_brut * var.tx_amo_sal / 100, 2)"
+  },
+  {
+   "code": "amo_pat",
+   "libelle": "AMO patronale",
+   "type": "MONTANT",
+   "valeur": "ARRONDI(total_brut * var.tx_amo_pat / 100, 2)"
+  },
+  {
+   "code": "tfp",
+   "libelle": "TFP",
+   "type": "MONTANT",
+   "valeur": "ARRONDI(total_brut * var.tx_tfp / 100, 2)"
+  },
+  {
+   "code": "total",
+   "libelle": "Total des cotisations",
+   "type": "MONTANT",
+   "valeur": "var.ps_sal + var.ps_pat + var.af + var.amo_sal + var.amo_pat + var.tfp"
+  }
+ ],
+ "usages": {
+  "confidentialite": 3
+ },
+ "page": {
+  "orientation": "PAYSAGE",
+  "marges": [
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 31.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 167.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"État des cotisations sociales\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 167.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"CNSS · AMO · TFP — \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\") + \"   ·   affiliation \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 21.0,
+     "l": 277.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_cnss",
+     "x": 0.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"N° CNSS\""
+    },
+    {
+     "id": "c_nom",
+     "x": 22.8,
+     "y": 21.0,
+     "l": 43.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Nom et prénom\""
+    },
+    {
+     "id": "c_brut",
+     "x": 67.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salaire brut\""
+    },
+    {
+     "id": "c_base",
+     "x": 89.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Base plafonnée\""
+    },
+    {
+     "id": "c_ps_sal",
+     "x": 111.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"CNSS sal.\""
+    },
+    {
+     "id": "c_ps_pat",
+     "x": 131.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"CNSS pat.\""
+    },
+    {
+     "id": "c_af",
+     "x": 151.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Alloc. fam.\""
+    },
+    {
+     "id": "c_amo_sal",
+     "x": 171.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"AMO sal.\""
+    },
+    {
+     "id": "c_amo_pat",
+     "x": 191.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"AMO pat.\""
+    },
+    {
+     "id": "c_tfp",
+     "x": 211.8,
+     "y": 21.0,
+     "l": 17.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"TFP\""
+    },
+    {
+     "id": "c_total",
+     "x": 230.8,
+     "y": 21.0,
+     "l": 25.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Total\""
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.0,
+   "elements": [
+    {
+     "id": "v_cnss",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(identite.num_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_nom",
+     "x": 22.8,
+     "y": 0.0,
+     "l": 43.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_brut",
+     "x": 67.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_base",
+     "x": 89.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.base_ps",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_ps_sal",
+     "x": 111.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.ps_sal",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_ps_pat",
+     "x": 131.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.ps_pat",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_af",
+     "x": 151.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.af",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_amo_sal",
+     "x": 171.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.amo_sal",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_amo_pat",
+     "x": 191.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.amo_pat",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_tfp",
+     "x": 211.8,
+     "y": 0.0,
+     "l": 17.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.tfp",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_total",
+     "x": 230.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "var.total",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 4.8,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "style_trait": "POINTILLES",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "total",
+   "type": "PIED_ETAT",
+   "hauteur": 54.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "t_fond",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 277.0,
+     "h": 7.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "t_lib",
+     "x": 1.0,
+     "y": 1.0,
+     "l": 66.0,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF"
+     },
+     "type": "CHAMP",
+     "valeur": "\"TOTAL — \" + NB(matricule, ETAT) + \" salariés déclarés\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "t_brut",
+     "x": 67.8,
+     "y": 1.0,
+     "l": 20.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_base",
+     "x": 89.8,
+     "y": 1.0,
+     "l": 20.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.base_ps, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_ps_sal",
+     "x": 111.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.ps_sal, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_ps_pat",
+     "x": 131.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.ps_pat, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_af",
+     "x": 151.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.af, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_amo_sal",
+     "x": 171.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.amo_sal, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_amo_pat",
+     "x": 191.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.amo_pat, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_tfp",
+     "x": 211.8,
+     "y": 1.0,
+     "l": 17.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.tfp, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_total",
+     "x": 230.8,
+     "y": 1.0,
+     "l": 25.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.total, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "r_titre",
+     "x": 0.0,
+     "y": 11.0,
+     "l": 150.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Récapitulatif à verser\""
+    },
+    {
+     "id": "r_cadre",
+     "x": 0.0,
+     "y": 16.0,
+     "l": 150.0,
+     "h": 34.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "r_l0",
+     "x": 2.0,
+     "y": 17.0,
+     "l": 105.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0
+     },
+     "type": "TEXTE",
+     "valeur": "\"CNSS — prestations sociales (part salariale + patronale)\""
+    },
+    {
+     "id": "r_v0",
+     "x": 105.0,
+     "y": 17.0,
+     "l": 43.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.ps_sal, ETAT) + TOTAL(var.ps_pat, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "r_l1",
+     "x": 2.0,
+     "y": 23.0,
+     "l": 105.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0
+     },
+     "type": "TEXTE",
+     "valeur": "\"CNSS — allocations familiales\""
+    },
+    {
+     "id": "r_v1",
+     "x": 105.0,
+     "y": 23.0,
+     "l": 43.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.af, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "r_l2",
+     "x": 2.0,
+     "y": 29.0,
+     "l": 105.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0
+     },
+     "type": "TEXTE",
+     "valeur": "\"AMO (part salariale + patronale)\""
+    },
+    {
+     "id": "r_v2",
+     "x": 105.0,
+     "y": 29.0,
+     "l": 43.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.amo_sal, ETAT) + TOTAL(var.amo_pat, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "r_l3",
+     "x": 2.0,
+     "y": 35.0,
+     "l": 105.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0
+     },
+     "type": "TEXTE",
+     "valeur": "\"Taxe de formation professionnelle\""
+    },
+    {
+     "id": "r_v3",
+     "x": 105.0,
+     "y": 35.0,
+     "l": 43.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.tfp, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "r_filet",
+     "x": 2.0,
+     "y": 42.0,
+     "l": 146.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 0.6
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "r_tl",
+     "x": 2.0,
+     "y": 43.5,
+     "l": 100.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Total à verser\""
+    },
+    {
+     "id": "r_tv",
+     "x": 105.0,
+     "y": 43.5,
+     "l": 43.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(var.total, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "n_cadre",
+     "x": 160.0,
+     "y": 16.0,
+     "l": 117.0,
+     "h": 34.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "n_titre",
+     "x": 162.0,
+     "y": 17.0,
+     "l": 113.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Taux appliqués\""
+    },
+    {
+     "id": "n_t1",
+     "x": 162.0,
+     "y": 23.0,
+     "l": 113.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "CHAMP",
+     "valeur": "\"CNSS : \" + FORMAT(var.tx_ps_sal, \"MONTANT\") + \" % sal. · \" + FORMAT(var.tx_ps_pat, \"MONTANT\") + \" % pat. sur \" + FORMAT(var.plafond, \"MONTANT\") + \" DH max.\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "n_t2",
+     "x": 162.0,
+     "y": 28.0,
+     "l": 113.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "CHAMP",
+     "valeur": "\"Allocations familiales : \" + FORMAT(var.tx_af, \"MONTANT\") + \" % pat. (non plafonné)\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "n_t3",
+     "x": 162.0,
+     "y": 33.0,
+     "l": 113.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "CHAMP",
+     "valeur": "\"AMO : \" + FORMAT(var.tx_amo_sal, \"MONTANT\") + \" % sal. · \" + FORMAT(var.tx_amo_pat, \"MONTANT\") + \" % pat.\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "n_t4",
+     "x": 162.0,
+     "y": 38.0,
+     "l": 113.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "CHAMP",
+     "valeur": "\"TFP : \" + FORMAT(var.tx_tfp, \"MONTANT\") + \" % pat.\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "n_t5",
+     "x": 162.0,
+     "y": 43.5,
+     "l": 113.0,
+     "h": 5.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Taux modifiables dans le designer : Données › Variables.\""
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 110.80000000000001,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"État de contrôle — à rapprocher des bordereaux officiels\""
+    },
+    {
+     "id": "p_page",
+     "x": 221.60000000000002,
+     "y": 2.0,
+     "l": 55.400000000000006,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Cotisations_CNSS_AMO_\" + @periode.code"
+ }
+}

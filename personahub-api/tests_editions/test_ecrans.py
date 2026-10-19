@@ -15,6 +15,8 @@ pytestmark = base_requise
 @pytest.fixture
 def s(db, tmp_path, monkeypatch):
     monkeypatch.setattr(sv, "racine_documents", lambda: tmp_path)
+    # ces tests portent sur le bulletin système seul (les exemples ont leurs propres tests)
+    monkeypatch.setattr(sv, "MODELES_SYSTEME", {"bulletin_classique.json": sv.MODELES_SYSTEME["bulletin_classique.json"]})
     for uid in (ADMIN_ID, PAIE_ID, COLLAB_ID):
         db.execute(text("INSERT INTO users (id, email) VALUES (:id, :e)"), {"id": uid, "e": f"{uid}@x.ma"})
     sv.initialiser(db)

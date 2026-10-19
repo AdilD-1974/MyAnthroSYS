@@ -241,6 +241,23 @@ def modifier_modele(modele_id: str, corps: ModeleModification, u: sv.Utilisateur
     return _ecriture(db, ec.modifier_modele, u, modele_id, **corps.model_dump(exclude_none=True))
 
 
+class Archivage(BaseModel):
+    archive: bool = True
+
+
+@router.post("/modeles/{modele_id}/archivage")
+def archiver(modele_id: str, corps: Archivage, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """Archiver / désarchiver (réversible)."""
+    return _ecriture(db, sv.archiver_modele, u, modele_id, corps.archive)
+
+
+@router.delete("/modeles/{modele_id}", status_code=204)
+def supprimer(modele_id: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """Suppression définitive d'un modèle jamais publié."""
+    _ecriture(db, sv.supprimer_modele, u, modele_id)
+    return Response(status_code=204)
+
+
 @router.get("/modeles/{modele_id}/versions")
 def versions(modele_id: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
     return _lecture(db, sv.lister_versions, u, modele_id)

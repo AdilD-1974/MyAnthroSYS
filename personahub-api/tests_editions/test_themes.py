@@ -15,6 +15,8 @@ pytestmark = base_requise
 @pytest.fixture
 def s(db, tmp_path, monkeypatch):
     monkeypatch.setattr(sv, "racine_documents", lambda: tmp_path)
+    # ces tests portent sur le bulletin système seul (les exemples ont leurs propres tests)
+    monkeypatch.setattr(sv, "MODELES_SYSTEME", {"bulletin_classique.json": sv.MODELES_SYSTEME["bulletin_classique.json"]})
     for uid in (ADMIN_ID, PAIE_ID, COLLAB_ID):
         db.execute(text("INSERT INTO users (id, email) VALUES (:id, :e)"), {"id": uid, "e": f"{uid}@x.ma"})
     sv.initialiser(db)
@@ -108,3 +110,35 @@ def test_changer_la_categorie_d_un_modele(s):                              # RG-
         ec.modifier_modele(s, PAIE, j["modele_id"], categorie="INCONNUE")
     with pytest.raises(sv.Interdit):                                        # modèle système
         ec.modifier_modele(s, PAIE, str(_systeme(s)), categorie="JOURNAL")
+
+
+def test_archivage_et_suppression(s):                                      # RG-EDT-MODELE-04/05
+    brouillon = sv.creer_modele(s, PAIE, code="ESSAI", libelle="Essai", visibilite="SOCIETE")
+    copie = sv.creer_modele(s, PAIE, code="ESSAI_COPIE", libelle="Copie", visibilite="SOCIETE",
+                            origine_id=brouillon["modele_id"])
+    publie = sv.creer_modele(s, PAIE, code="PUBLIE", libelle="Publié", visibilite="SOCIETE", categorie="BULLETIN",
+                             origine_id=str(_systeme(s)))
+    sv.publier(s, PAIE, publie["version_id"])
+    # publié : suppression refusée, archivage accepté puis réversible
+    with pytest.raises(sv.Conflit):
+        sv.supprimer_modele(s, PAIE, publie["modele_id"])
+    sv.archiver_modele(s, PAIE, publie["modele_id"])
+    assert "PUBLIE" not in {m["code"] for m in sv.lister_modeles(s, PAIE)}
+    assert "PUBLIE" in {m["code"] for m in sv.lister_modeles(s, PAIE, archives=True)}
+    assert "PUBLIE" not in _libelles(th.arbre(s, PAIE, "PAIE")).get("Bulletins de paie", [])
+    with pytest.raises(sv.Conflit):
+        sv.lancer(s, PAIE, publie["modele_id"], {"periode": P_SEP})
+    sv.archiver_modele(s, PAIE, publie["modele_id"], False)
+    assert "PUBLIE" in _libelles(th.arbre(s, PAIE, "PAIE"))["Bulletins de paie"]
+    # jamais publié : suppression définitive, la copie est détachée
+    sv.supprimer_modele(s, PAIE, brouillon["modele_id"])
+    with pytest.raises(sv.Introuvable):
+        sv.lire_modele(s, PAIE, brouillon["modele_id"])
+    assert sv.lire_modele(s, PAIE, copie["modele_id"])["modele_origine_id"] is None
+    # système : ni archivage ni suppression ; droits
+    with pytest.raises(sv.Interdit):
+        sv.archiver_modele(s, PAIE, str(_systeme(s)))
+    with pytest.raises(sv.Interdit):
+        sv.supprimer_modele(s, PAIE, str(_systeme(s)))
+    with pytest.raises(sv.Interdit):
+        sv.supprimer_modele(s, COLLAB, copie["modele_id"])

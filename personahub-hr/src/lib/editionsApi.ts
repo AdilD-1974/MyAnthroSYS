@@ -278,7 +278,15 @@ export const editionsApi = {
   periodes: () => appel<Periode[]>("GET", "/parametres/periodes"),
   plansPaie: () => appel<{ id: string; code: string; libelle: string }[]>("GET", "/parametres/plans-paie"),
 
-  modeles: (categorie?: string) => appel<Modele[]>("GET", `/modeles${categorie ? `?categorie=${categorie}` : ""}`),
+  modeles: (categorie?: string, archives = false) => {
+    const q = new URLSearchParams();
+    if (categorie) q.set("categorie", categorie);
+    if (archives) q.set("archives", "true");
+    return appel<Modele[]>("GET", `/modeles${q.toString() ? `?${q}` : ""}`);
+  },
+  /** RG-EDT-MODELE-04 : archiver (réversible) — RG-EDT-MODELE-05 : supprimer (jamais publié). */
+  archiver: (id: string, archive = true) => appel<Modele>("POST", `/modeles/${id}/archivage`, { archive }),
+  supprimerModele: (id: string) => appel<void>("DELETE", `/modeles/${id}`),
   modele: (id: string) => appel<Modele>("GET", `/modeles/${id}`),
   /** Libellé, description, catégorie (type), visibilité — sans nouvelle version (RG-EDT-MODELE-03). */
   modifierModele: (id: string, corps: { libelle?: string; description?: string; categorie?: Categorie; visibilite?: Visibilite }) =>
