@@ -164,6 +164,27 @@ def _modeles_categorie(db: Session, u: sv.Utilisateur, categorie: str) -> list[d
 # ---------------------------------------------------------------------------
 # Modèles proposés sur un écran
 # ---------------------------------------------------------------------------
+def fiche_lancement(db: Session, m: dict) -> Optional[dict]:
+    """Ce qu'il faut à un écran pour lancer le modèle : paramètres et mises en forme de la version publiée."""
+    v = db.execute(text("SELECT numero, definition FROM edt_modele_version WHERE id = :v"),
+                   {"v": m["version_publiee_id"]}).mappings().first()
+    if v is None:
+        return None
+    d = v["definition"] if isinstance(v["definition"], dict) else json.loads(v["definition"])
+    usages = d.get("usages") or {}
+    formes = []
+    if usages.get("formes_au_choix"):
+        formes = [{"code": d.get("forme_code") or "standard", "libelle": d.get("forme_libelle") or "Mise en forme standard"}] \
+            + [{"code": f.get("code"), "libelle": f.get("libelle")} for f in d.get("formes") or []]
+    return {
+        "id": m["id"], "code": m["code"], "libelle": m["libelle"], "description": m.get("description"),
+        "categorie": m["categorie"], "est_systeme": m["est_systeme"], "numero_publie": v["numero"],
+        "par_defaut": False, "ordre": 0,
+        "parametres": d.get("parametres") or [], "formes": formes,
+        "forme_par_defaut": usages.get("forme_par_defaut") or d.get("forme_code"),
+    }
+
+
 def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
     """Modèles lançables sur l'écran (publiés, visibles, droit LANCER), le défaut en tête,
     avec leurs paramètres et leurs mises en forme au choix."""
@@ -180,26 +201,13 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
         candidats = []
     sortie = []
     for m in candidats:
-        if not sv.peut(db, u, "LANCER", m):
+        if not m.get("actif", True) or not sv.peut(db, u, "LANCER", m):     # RG-EDT-ACTIF-01
             continue
-        v = db.execute(text("SELECT numero, definition FROM edt_modele_version WHERE id = :v"),
-                       {"v": m["version_publiee_id"]}).mappings().first()
-        if v is None:
+        f = fiche_lancement(db, m)
+        if f is None:
             continue
-        d = v["definition"] if isinstance(v["definition"], dict) else json.loads(v["definition"])
-        usages = d.get("usages") or {}
-        formes = []
-        if usages.get("formes_au_choix"):
-            formes = [{"code": d.get("forme_code") or "standard", "libelle": d.get("forme_libelle") or "Mise en forme standard"}] \
-                + [{"code": f.get("code"), "libelle": f.get("libelle")} for f in d.get("formes") or []]
         r = infos.get(m["id"])
-        sortie.append({
-            "id": m["id"], "code": m["code"], "libelle": m["libelle"], "categorie": m["categorie"],
-            "est_systeme": m["est_systeme"], "numero_publie": v["numero"],
-            "par_defaut": bool(r and r["par_defaut"]), "ordre": int(r["ordre"]) if r else 0,
-            "parametres": d.get("parametres") or [], "formes": formes,
-            "forme_par_defaut": usages.get("forme_par_defaut") or d.get("forme_code"),
-        })
+        sortie.append({**f, "par_defaut": bool(r and r["par_defaut"]), "ordre": int(r["ordre"]) if r else 0})
     # RG-EDT-ECRAN-04 : défaut, puis modèles de la société avant les modèles système
     sortie.sort(key=lambda x: (not x["par_defaut"], x["est_systeme"], x["ordre"], x["libelle"].lower()))
     return {"ecran": e, "modeles": sortie, "defaut": sortie[0]["id"] if sortie else None}

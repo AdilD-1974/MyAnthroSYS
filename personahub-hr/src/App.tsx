@@ -93,7 +93,7 @@ const EtatsPage               = lazy(() => import("@/pages/configuration/Edition
 const EtatNouveauPage         = lazy(() => import("@/pages/configuration/Editions/EtatNouveauPage"));  // ✅ Assistant de création (4 étapes, §15.5)
 const EditionsPage            = lazy(() => import("@/pages/editions/EditionsPage"));             // ✅ ÉDITIONS UNIFIÉES — bibliothèque et lancement
 const EditionsDesignerPage    = lazy(() => import("@/pages/editions/designer/DesignerPage"));    // ✅ ÉDITIONS UNIFIÉES — designer (lot 2)
-const EditionBulletinsPage    = lazy(() => import("@/pages/editions/LanceurEcran").then(m => ({ default: m.EditionBulletinsPage })));  // ✅ Paie › Édition des bulletins (RG-EDT-ECRAN, Adil DAIA)
+const EditionsPaiePage        = lazy(() => import("@/pages/editions/MenuEditions").then(m => ({ default: m.EditionsPaiePage })));  // ✅ Paie › Éditions de la paie, arborescence (RG-EDT-MENU-01, Adil DAIA)
 const ClotureAnnuellePage     = lazy(() => import("@/pages/paie/ClotureAnnuellePage"));  // clôture annuelle (Adil DAIA)
 const LancementPaiePage       = lazy(() => import("@/pages/paie/LancementPaiePage"));    // lancement en masse (Adil DAIA)
 const VueTraitementPage       = lazy(() => import("@/pages/paie/VueTraitementPage"));     // vue d'ensemble traitement (Adil DAIA)
@@ -579,11 +579,12 @@ const App = () => (
                       <RapportTemplatesPage />
                     </ProtectedRoute>
                   } />
-                  <Route path="/paie/edition-bulletins" element={
+                  <Route path="/paie/editions-paie" element={
                     <ProtectedRoute roles={["administrateur", "gestionnaire_rh", "gestionnaire_paie"]}>
-                      <EditionBulletinsPage />
+                      <EditionsPaiePage />
                     </ProtectedRoute>
                   } />
+                  <Route path="/paie/edition-bulletins" element={<Navigate to="/paie/editions-paie" replace />} />
                   <Route path="/paie/editions/bulletins" element={
                     <ProtectedRoute roles={["administrateur", "gestionnaire_paie"]}>
                       <BulletinConfigPage />

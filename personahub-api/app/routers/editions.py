@@ -31,6 +31,7 @@ from app.core.security import (get_current_user_payload, get_societe_active_id, 
 from app.editions import expressions as ex
 from app.editions import ecrans as ec
 from app.editions import service as sv
+from app.editions import themes as th
 
 router = APIRouter(prefix="/editions", tags=["Éditions"])
 
@@ -117,6 +118,26 @@ class LancementEcran(BaseModel):
     forme: Optional[str] = None
 
 
+class ThemeEcriture(BaseModel):
+    libelle: Optional[str] = None
+    module: str = "PAIE"
+    parent_id: Optional[str] = ""             # "" : inchangé (modification) ; None : racine
+    ordre: Optional[int] = None
+    actif: Optional[bool] = None
+
+
+class Reglage(BaseModel):
+    actif: Optional[bool] = None
+    theme_id: Optional[str] = ""              # "" : inchangé ; None : thème de la catégorie
+    ordre: Optional[int] = None
+
+
+class LancementMenu(BaseModel):
+    modele_id: str
+    parametres: dict = {}
+    forme: Optional[str] = None
+
+
 class Rattachements(BaseModel):
     ecrans: list[dict] = []                   # [{code_ecran, par_defaut}]
 
@@ -193,7 +214,7 @@ def tester_formule(corps: TestFormule, u: sv.Utilisateur = Depends(utilisateur),
 @router.get("/modeles")
 def lister_modeles(categorie: Optional[str] = None, archives: bool = False,
                    u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
-    return sv.lister_modeles(db, u, categorie, archives)
+    return th.avec_theme(db, u, sv.lister_modeles(db, u, categorie, archives))
 
 
 @router.post("/modeles", status_code=201)
@@ -375,3 +396,47 @@ def fichier_ecran(document_id: str, telecharger: bool = Query(False), u: sv.Util
     mode = "attachment" if telecharger else "inline"
     return FileResponse(chemin, media_type="application/pdf", headers={
         "Content-Disposition": f"{mode}; filename*=UTF-8''{quote(nom)}", "Cache-Control": "private, no-store"})
+
+
+# ---------------------------------------------------------------- thèmes, actif, menus en arbre (RG-EDT-THEME/ACTIF/MENU)
+@router.get("/themes")
+def themes(module: Optional[str] = None, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, th.lister_themes, u, module)
+
+
+@router.post("/themes", status_code=201)
+def creer_theme(corps: ThemeEcriture, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _ecriture(db, th.creer_theme, u, libelle=corps.libelle or "", module=corps.module,
+                     parent_id=corps.parent_id or None, ordre=corps.ordre)
+
+
+@router.patch("/themes/{theme_id}")
+def modifier_theme(theme_id: str, corps: ThemeEcriture, u: sv.Utilisateur = Depends(utilisateur),
+                   db: Session = Depends(get_db)):
+    return _ecriture(db, th.modifier_theme, u, theme_id, libelle=corps.libelle, parent_id=corps.parent_id,
+                     ordre=corps.ordre, actif=corps.actif)
+
+
+@router.delete("/themes/{theme_id}", status_code=204)
+def supprimer_theme(theme_id: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    _ecriture(db, th.supprimer_theme, u, theme_id)
+    return Response(status_code=204)
+
+
+@router.put("/modeles/{modele_id}/reglage")
+def regler_modele(modele_id: str, corps: Reglage, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """Actif, thème et ordre du modèle pour la société active."""
+    return _ecriture(db, th.regler_modele, u, modele_id, actif=corps.actif, theme_id=corps.theme_id, ordre=corps.ordre)
+
+
+@router.get("/menus/{module}")
+def menu_module(module: str, tout: bool = Query(False), u: sv.Utilisateur = Depends(utilisateur_metier),
+                db: Session = Depends(get_db)):
+    """Arborescence des états d'un module (Paie › Éditions de la paie)."""
+    return _lecture(db, th.arbre, u, module.upper(), tout)
+
+
+@router.post("/menus/{module}/demandes", status_code=201)
+def lancer_menu(module: str, corps: LancementMenu, u: sv.Utilisateur = Depends(utilisateur_metier),
+                db: Session = Depends(get_db)):
+    return _ecriture(db, th.lancer, u, module.upper(), corps.modele_id, corps.parametres, corps.forme)

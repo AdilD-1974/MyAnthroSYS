@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, Download, ExternalLink, FileText, Globe, Building2, Loader2, Lock, Pencil, Play, Plus, Search, ShieldCheck } from "lucide-react";
+import { Copy, Download, ExternalLink, FileText, Folder, Globe, Building2, Loader2, Lock, Pencil, Play, Plus, Search, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
@@ -19,6 +19,7 @@ import {
 import type { Parametre } from "./types";
 import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresForm";
 import { BoutonMenus, libelleEcran, useEcransCategorie } from "./MenusModele";
+import { Switch } from "@/components/ui/switch";
 
 const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 
@@ -58,6 +59,17 @@ export default function EditionsPage() {
     } catch (e: any) {
       toast({ title: "Création impossible", description: e.message, variant: "destructive" });
       setCreation((c) => ({ ...c, occupe: false }));
+    }
+  };
+
+  const basculerActif = async (m: Modele, actif: boolean) => {
+    setModeles((l) => l && l.map((x) => (x.id === m.id ? { ...x, actif } : x)));
+    try {
+      await editionsApi.reglerModele(m.id, { actif });
+      toast({ title: actif ? "État activé" : "État désactivé", description: actif ? "Il est de nouveau proposé dans les menus." : "Il n'est plus proposé dans les menus ni lançable." });
+    } catch (e: any) {
+      setModeles((l) => l && l.map((x) => (x.id === m.id ? { ...x, actif: !actif } : x)));
+      toast({ title: "Modification impossible", description: e.message, variant: "destructive" });
     }
   };
 
@@ -124,22 +136,33 @@ export default function EditionsPage() {
 
       <div className="grid gap-3 md:grid-cols-2">
         {visibles.map((m) => (
-          <div key={m.id} className="flex flex-col rounded-lg border bg-card p-4">
+          <div key={m.id} className={`flex flex-col rounded-lg border bg-card p-4 ${m.actif === false ? "bg-muted/40" : ""}`}>
             <div className="mb-2 flex items-start gap-2">
               <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{m.libelle}</div>
+                <div className={`truncate font-medium ${m.actif === false ? "text-muted-foreground line-through decoration-1" : ""}`}>{m.libelle}</div>
                 <div className="text-xs text-muted-foreground">{m.code} · {CATEGORIES.find((c) => c.code === m.categorie)?.libelle}</div>
               </div>
               <Badges m={m} />
+              {/* RG-EDT-ACTIF-01 : indicateur Actif (par société) */}
+              <label className="ml-1 flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground" title="Inactif : l'état n'est plus proposé dans les menus ni lançable">
+                <Switch checked={m.actif !== false} onCheckedChange={(v) => basculerActif(m, v)} />
+                {m.actif === false ? "Inactif" : "Actif"}
+              </label>
             </div>
+            {m.theme_libelle && (
+              <div className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Folder className="h-3 w-3 fill-amber-200 text-amber-500" />{m.theme_module === "RH" ? "RH" : "Paie"} › {m.theme_libelle}
+              </div>
+            )}
             {m.description && <p className="mb-2 line-clamp-2 text-xs text-muted-foreground">{m.description}</p>}
             <div className="mb-3 text-xs text-muted-foreground">
               {m.numero_publie ? `Version ${m.numero_publie} publiée${m.publie_le ? ` le ${new Date(m.publie_le).toLocaleDateString("fr-FR")}` : ""}` : "Jamais publié"}
               {m.brouillon_id && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">brouillon en cours</span>}
             </div>
             <div className="mt-auto flex flex-wrap gap-2">
-              <Button size="sm" disabled={!m.version_publiee_id} onClick={() => ouvrirLancement(m)} title={m.version_publiee_id ? "" : "Publiez une version pour pouvoir lancer"}>
+              <Button size="sm" disabled={!m.version_publiee_id || m.actif === false} onClick={() => ouvrirLancement(m)}
+                title={m.actif === false ? "État inactif : activez-le pour le lancer" : m.version_publiee_id ? "" : "Publiez une version pour pouvoir lancer"}>
                 <Play className="mr-1 h-3.5 w-3.5" />Lancer
               </Button>
               <Button size="sm" variant="outline" onClick={() => navigate(`/editions/${m.id}/designer`)}>
@@ -149,7 +172,7 @@ export default function EditionsPage() {
                 onClick={() => setCreation({ ouvert: true, code: `${m.code}_COPIE`, libelle: `${m.libelle} (copie)`, categorie: m.categorie, visibilite: "SOCIETE", origine: m.id })}>
                 <Copy className="mr-1 h-3.5 w-3.5" />Copier
               </Button>
-              <BoutonMenus modele={m} />
+              <BoutonMenus modele={m} onChange={charger} />
             </div>
           </div>
         ))}
@@ -248,7 +271,7 @@ function MenusProposes({ categorie }: { categorie: Categorie }) {
   return (
     <div className="rounded border border-primary/20 bg-primary/5 px-2 py-1.5 text-[11px] text-muted-foreground">
       Une fois publié, il sera proposé dans : <span className="font-medium text-foreground">{ecrans.map(libelleEcran).join(" · ")}</span>
-      <span className="block">(réglable ensuite par le bouton « Menus »)</span>
+      <span className="block">(dossier et menus réglables ensuite par le bouton « Classement »)</span>
     </div>
   );
 }

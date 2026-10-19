@@ -2,18 +2,17 @@
  * LanceurEcran.tsx — Les éditions dans les menus métier.
  * Auteur : Adil DAIA — 19/10/2026 (migration 077)
  *
- *  - EditionMenuPage : page d'un menu (ex. Paie › Édition des bulletins) — choix du modèle
- *    proposé sur l'écran, paramètres du modèle, production et impression en un seul PDF.
+ *  - PanneauProduction : paramètres d'un modèle, production et impression en un seul PDF
+ *    (utilisé par le menu en arborescence MenuEditions.tsx).
  *  - BoutonImprimer  : bouton « Imprimer » d'un écran (traitement, consultation du bulletin) ;
  *    l'écran transmet son contexte (période, collaborateur, bulletin) — RG-EDT-ECRAN-05.
  *
  * Les modèles proposés et le modèle par défaut se règlent dans les éditions (bouton « Menus »
  * du modèle) — RG-EDT-ECRAN-01..04.
  */
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ChevronDown, Download, ExternalLink, FileText, Loader2, Printer, Settings2, ShieldCheck, Star } from "lucide-react";
+import { ChevronDown, Download, ExternalLink, FileText, Loader2, Printer, ShieldCheck, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -151,37 +150,26 @@ export function BoutonImprimer({ ecran, contexte, desactive, className }: {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Page d'un menu d'éditions (ex. Paie › Édition des bulletins)
+// Paramètres + production d'un modèle (pages de menus)
 // ════════════════════════════════════════════════════════════════════════════
-export default function EditionMenuPage({ ecran, titre, description }: { ecran: string; titre: string; description?: string }) {
-  const navigate = useNavigate();
-  const { modeles, defaut, erreur, charge } = useModelesEcran(ecran);
-  const [modeleId, setModeleId] = useState<string | null>(null);
+export type Lanceur = (corps: { modele_id: string; parametres: Record<string, unknown>; forme?: string }) =>
+  Promise<{ demande_id: string; documents: DocumentProduit[]; modele: { code: string } }>;
+
+export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEcran; lancer: Lanceur; entete?: ReactNode }) {
   const [valeurs, setValeurs] = useState<Valeurs>({});
-  const [forme, setForme] = useState<string | undefined>();
+  const [forme, setForme] = useState<string | undefined>(modele.forme_par_defaut ?? undefined);
   const [occupe, setOccupe] = useState<null | "ouvrir" | "produire">(null);
   const [resultat, setResultat] = useState<{ demande_id: string; documents: DocumentProduit[]; modele: string } | null>(null);
-
-  useEffect(() => {
-    if (!charge || modeleId) return;
-    const memo = lireChoix(ecran);
-    setModeleId(modeles.some((m) => m.id === memo) ? memo : defaut);
-  }, [charge, modeles, defaut, ecran, modeleId]);
-
-  const modele = useMemo(() => modeles.find((m) => m.id === modeleId) ?? null, [modeles, modeleId]);
-  useEffect(() => { setForme(modele?.forme_par_defaut ?? undefined); setResultat(null); }, [modele]);
+  useEffect(() => { setForme(modele.forme_par_defaut ?? undefined); setResultat(null); }, [modele]);
 
   const produire = async (ouvrir: boolean) => {
-    if (!modele) return;
     const manquants = parametresManquants(modele.parametres, valeurs);
     if (manquants.length) { toast.error("Paramètres manquants", { description: manquants.join(", ") }); return; }
     const onglet = ouvrir ? ongletDAttente() : null;
     setOccupe(ouvrir ? "ouvrir" : "produire");
     setResultat(null);
     try {
-      const r = await editionsApi.lancerEcran(ecran, {
-        modele_id: modele.id, parametres: valeurs, forme: modele.formes.length ? forme : undefined,
-      });
+      const r = await lancer({ modele_id: modele.id, parametres: valeurs, forme: modele.formes.length ? forme : undefined });
       setResultat({ demande_id: r.demande_id, documents: r.documents, modele: r.modele.code });
       toast.success("Édition produite", { description: `${r.documents.length} document(s)` });
       if (ouvrir) await ouvrirPdf(() => editionsApi.pdfDemande(r.demande_id), onglet);
@@ -195,123 +183,59 @@ export default function EditionMenuPage({ ecran, titre, description }: { ecran: 
 
   const nbAnomalies = resultat?.documents.reduce((n, d) => n + d.anomalies.length, 0) ?? 0;
   const nbPages = resultat?.documents.reduce((n, d) => n + d.nb_pages, 0) ?? 0;
-
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-6 flex flex-wrap items-start gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Printer className="h-5 w-5" /></div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold">{titre}</h1>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        </div>
-        <Button variant="outline" size="sm" onClick={() => navigate("/editions")} title="Concevoir les modèles et régler les menus où ils sont proposés">
-          <Settings2 className="mr-1.5 h-4 w-4" />Gérer les modèles
+    <div className="rounded-lg border bg-card p-4">
+      {entete}
+      <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Paramètres</div>
+      {modele.formes.length > 1 && (
+        <label className="mb-3 block">
+          <span className="mb-1 block text-xs font-medium">Mise en forme</span>
+          <select className={classe} value={forme} onChange={(e) => { setForme(e.target.value); setResultat(null); }}>
+            {modele.formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}</option>)}
+          </select>
+        </label>
+      )}
+      <ParametresForm parametres={modele.parametres} valeurs={valeurs} onChange={(v) => { setValeurs(v); setResultat(null); }} />
+      <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
+        <Button disabled={!!occupe} onClick={() => produire(true)}>
+          {occupe === "ouvrir" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
+          Produire et imprimer
+        </Button>
+        <Button variant="outline" disabled={!!occupe} onClick={() => produire(false)} title="Produire sans ouvrir : la liste des documents s'affiche ci-dessous">
+          {occupe === "produire" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Produire seulement
         </Button>
       </div>
-
-      {erreur && <div className="rounded border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{erreur}</div>}
-      {!charge && <div className="flex items-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Chargement…</div>}
-      {charge && !erreur && !modeles.length && (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Aucun modèle publié n'est proposé dans ce menu.<br />
-          Publiez un modèle de la catégorie dans <button className="text-primary underline" onClick={() => navigate("/editions")}>Éditions</button>, ou rattachez-en un à ce menu (bouton « Menus » du modèle).
-        </div>
-      )}
-
-      {modeles.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-[280px_1fr]">
-          {/* modèles proposés */}
-          <div className="space-y-2">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Modèle</div>
-            {modeles.map((m) => (
-              <button key={m.id} type="button" onClick={() => { setModeleId(m.id); memoriserChoix(ecran, m.id); }}
-                className={`flex w-full items-start gap-2 rounded-lg border p-3 text-left transition-colors ${m.id === modeleId ? "border-primary bg-primary/5 ring-1 ring-primary" : "bg-card hover:bg-muted/60"}`}>
-                <FileText className={`mt-0.5 h-4 w-4 shrink-0 ${m.id === modeleId ? "text-primary" : "text-muted-foreground"}`} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{m.libelle}</div>
-                  <div className="text-[11px] text-muted-foreground">{m.code} · version {m.numero_publie}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {m.par_defaut && <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800"><Star className="h-2.5 w-2.5 fill-current" />Par défaut</span>}
-                    {m.est_systeme && <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] text-sky-800"><ShieldCheck className="h-2.5 w-2.5" />Système</span>}
-                  </div>
-                </div>
-              </button>
-            ))}
+      {resultat && (
+        <div className="mt-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium">{resultat.documents.length} document(s)</span>
+            <span className="text-muted-foreground">· {nbPages} page(s)</span>
+            {nbAnomalies > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{nbAnomalies} anomalie(s)</span>}
+            <div className="ml-auto flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => ouvrirPdf(() => editionsApi.pdfDemande(resultat.demande_id), ongletDAttente())}>
+                <ExternalLink className="mr-1 h-3.5 w-3.5" />Tout ouvrir
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => ouvrirPdf(() => editionsApi.pdfDemande(resultat.demande_id), null, `${resultat.modele.toLowerCase()}.pdf`, true)}>
+                <Download className="mr-1 h-3.5 w-3.5" />Tout télécharger
+              </Button>
+            </div>
           </div>
-
-          {/* paramètres et production */}
-          <div className="rounded-lg border bg-card p-4">
-            {modele && (
-              <>
-                <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Paramètres</div>
-                {modele.formes.length > 1 && (
-                  <label className="mb-3 block">
-                    <span className="mb-1 block text-xs font-medium">Mise en forme</span>
-                    <select className={classe} value={forme} onChange={(e) => { setForme(e.target.value); setResultat(null); }}>
-                      {modele.formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}</option>)}
-                    </select>
-                  </label>
+          <div className="max-h-80 overflow-auto rounded border">
+            {resultat.documents.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 border-b px-2 py-1.5 text-sm last:border-0">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate">{d.nom_fichier}</span>
+                <span className="text-xs text-muted-foreground">{d.nb_pages} p.</span>
+                {d.anomalies.length > 0 && (
+                  <span className="text-xs text-amber-700" title={d.anomalies.map((a) => `${a.element} : ${a.message}`).join("\n")}>{d.anomalies.length} anomalie(s)</span>
                 )}
-                <ParametresForm parametres={modele.parametres} valeurs={valeurs}
-                  onChange={(v) => { setValeurs(v); setResultat(null); }} />
-                <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
-                  <Button disabled={!!occupe} onClick={() => produire(true)}>
-                    {occupe === "ouvrir" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
-                    Produire et imprimer
-                  </Button>
-                  <Button variant="outline" disabled={!!occupe} onClick={() => produire(false)}
-                    title="Produire sans ouvrir : la liste des documents s'affiche ci-dessous">
-                    {occupe === "produire" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Produire seulement
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {resultat && (
-              <div className="mt-4">
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium">{resultat.documents.length} document(s)</span>
-                  <span className="text-muted-foreground">· {nbPages} page(s)</span>
-                  {nbAnomalies > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{nbAnomalies} anomalie(s)</span>}
-                  <div className="ml-auto flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => ouvrirPdf(() => editionsApi.pdfDemande(resultat.demande_id), ongletDAttente())}>
-                      <ExternalLink className="mr-1 h-3.5 w-3.5" />Tout ouvrir
-                    </Button>
-                    <Button size="sm" variant="outline"
-                      onClick={() => ouvrirPdf(() => editionsApi.pdfDemande(resultat.demande_id), null, `${resultat.modele.toLowerCase()}.pdf`, true)}>
-                      <Download className="mr-1 h-3.5 w-3.5" />Tout télécharger
-                    </Button>
-                  </div>
-                </div>
-                <div className="max-h-80 overflow-auto rounded border">
-                  {resultat.documents.map((d) => (
-                    <div key={d.id} className="flex items-center gap-2 border-b px-2 py-1.5 text-sm last:border-0">
-                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate">{d.nom_fichier}</span>
-                      <span className="text-xs text-muted-foreground">{d.nb_pages} p.</span>
-                      {d.anomalies.length > 0 && (
-                        <span className="text-xs text-amber-700" title={d.anomalies.map((a) => `${a.element} : ${a.message}`).join("\n")}>
-                          {d.anomalies.length} anomalie(s)
-                        </span>
-                      )}
-                      <button type="button" title="Ouvrir" onClick={() => ouvrirPdf(() => editionsApi.pdfDocumentEcran(d.id), ongletDAttente())}><ExternalLink className="h-4 w-4" /></button>
-                      <button type="button" title="Télécharger" onClick={() => ouvrirPdf(() => editionsApi.pdfDocumentEcran(d.id), null, d.nom_fichier, true)}><Download className="h-4 w-4" /></button>
-                    </div>
-                  ))}
-                </div>
+                <button type="button" title="Ouvrir" onClick={() => ouvrirPdf(() => editionsApi.pdfDocumentEcran(d.id), ongletDAttente())}><ExternalLink className="h-4 w-4" /></button>
+                <button type="button" title="Télécharger" onClick={() => ouvrirPdf(() => editionsApi.pdfDocumentEcran(d.id), null, d.nom_fichier, true)}><Download className="h-4 w-4" /></button>
               </div>
-            )}
+            ))}
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-/** Paie › Édition des bulletins (/paie/edition-bulletins). */
-export function EditionBulletinsPage() {
-  return (
-    <EditionMenuPage ecran="edition_bulletins" titre="Édition des bulletins"
-      description="Imprimez les bulletins d'une période avec les modèles conçus dans les éditions : tous les salariés, un plan de paie ou une sélection." />
   );
 }

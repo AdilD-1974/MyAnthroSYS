@@ -117,6 +117,8 @@ def creer_base():
             curseur.execute(migration)
             m077 = (RACINE / "migration" / "077_editions_ecrans.sql").read_text(encoding="utf-8")
             curseur.execute(_sans_public(m077).replace("BEGIN;", "").replace("ROLLBACK;", ""))
+            m078 = (RACINE / "migration" / "078_editions_themes.sql").read_text(encoding="utf-8")
+            curseur.execute(_sans_public(m078).replace("BEGIN;", "").replace("ROLLBACK;", ""))
             curseur.execute(DONNEES)
             curseur.execute(SQL_PATRONAL)
         session = Session(moteur)

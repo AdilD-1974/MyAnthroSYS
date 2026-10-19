@@ -82,7 +82,30 @@ export interface Modele {
   numero_publie?: number | null;
   publie_le?: string | null;
   brouillon_id?: string | null;
+  /** RG-EDT-ACTIF-01 : actif pour la société active (inactif : ni proposé ni lançable). */
+  actif?: boolean;
+  /** RG-EDT-THEME-01/02 : thème choisi (null : celui de la catégorie). */
+  theme_id?: string | null;
+  theme_effectif_id?: string | null;
+  theme_libelle?: string | null;
+  theme_module?: string | null;
+  theme_implicite?: boolean;
 }
+
+export interface Theme {
+  id: string;
+  code: string;
+  libelle: string;
+  module: string;
+  parent_id: string | null;
+  societe_id: string | null;
+  categorie_defaut: Categorie | null;
+  ordre: number;
+  actif: boolean;
+  est_systeme: boolean;
+}
+export interface ThemeMenu extends Theme { modeles: ModeleEcran[] }
+export interface ArbreMenu { module: string; libelle: string; themes: ThemeMenu[] }
 
 export type StatutVersion = "BROUILLON" | "EN_REVUE" | "PUBLIEE" | "RETIREE";
 
@@ -215,6 +238,7 @@ export interface ModeleEcran {
   id: string;
   code: string;
   libelle: string;
+  description?: string | null;
   categorie: Categorie;
   est_systeme: boolean;
   numero_publie: number;
@@ -310,6 +334,20 @@ export const editionsApi = {
     const r = await fetch(`${API_BASE}/editions/images/${encodeURIComponent(code)}/fichier`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     return r.ok ? URL.createObjectURL(await r.blob()) : null;
   },
+
+  // ── thèmes, actif, menu en arborescence (RG-EDT-THEME/ACTIF/MENU) ──
+  themes: (module?: string) => appel<Theme[]>("GET", `/themes${module ? `?module=${module}` : ""}`),
+  creerTheme: (corps: { libelle: string; module?: string; parent_id?: string | null }) => appel<Theme>("POST", "/themes", corps),
+  modifierTheme: (id: string, corps: { libelle?: string; parent_id?: string | null; ordre?: number; actif?: boolean }) =>
+    appel<Theme>("PATCH", `/themes/${id}`, corps),
+  supprimerTheme: (id: string) => appel<void>("DELETE", `/themes/${id}`),
+  /** theme_id : undefined = inchangé, null = thème de la catégorie. */
+  reglerModele: (modeleId: string, corps: { actif?: boolean; theme_id?: string | null; ordre?: number }) =>
+    appel<Modele>("PUT", `/modeles/${modeleId}/reglage`, { ...corps, theme_id: corps.theme_id === undefined ? "" : corps.theme_id }),
+  menuModule: (module: string, tout = false) => appel<ArbreMenu>("GET", `/menus/${module}${tout ? "?tout=true" : ""}`),
+  lancerMenu: (module: string, corps: { modele_id: string; parametres?: Record<string, unknown>; forme?: string }) =>
+    appel<{ demande_id: string; statut: string; documents: DocumentProduit[]; modele: { id: string; code: string; libelle: string } }>(
+      "POST", `/menus/${module}/demandes`, corps),
 
   // ── menus métier ──
   ecrans: () => appel<Ecran[]>("GET", "/ecrans"),

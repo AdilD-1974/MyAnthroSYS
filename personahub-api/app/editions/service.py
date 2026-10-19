@@ -200,6 +200,11 @@ COLONNES_MODELE = """m.id, m.code, m.libelle, m.description, m.categorie, m.mote
     m.archive, m.cree_le, m.modifie_le"""
 
 
+# RG-EDT-ACTIF-01 / RG-EDT-THEME-01 (migration 078) : actif et classement par société
+COLONNES_REGLAGE = "COALESCE(rg.actif, true) AS actif, rg.theme_id, COALESCE(rg.ordre, 0) AS ordre_theme"
+JOINTURE_REGLAGE = "LEFT JOIN edt_modele_reglage rg ON rg.modele_id = m.id AND rg.societe_id = :s"
+
+
 def _visible_sql(u: Utilisateur) -> str:
     admin = " OR (m.visibilite = 'PRIVE' AND m.societe_id = :s)" if u.admin else ""
     return f"""(m.est_systeme = true OR m.visibilite = 'GLOBAL'
@@ -223,10 +228,11 @@ def lister_modeles(db: Session, u: Utilisateur, categorie: Optional[str] = None,
     if categorie:
         filtres.append("m.categorie = :cat")
     rows = db.execute(text(f"""
-        SELECT {COLONNES_MODELE}, v.numero AS numero_publie, v.publie_le,
+        SELECT {COLONNES_MODELE}, {COLONNES_REGLAGE}, v.numero AS numero_publie, v.publie_le,
                (SELECT b.id FROM edt_modele_version b WHERE b.modele_id = m.id
                   AND b.statut IN ('BROUILLON','EN_REVUE')) AS brouillon_id
         FROM edt_modele m LEFT JOIN edt_modele_version v ON v.id = m.version_publiee_id
+        {JOINTURE_REGLAGE}
         WHERE {' AND '.join(filtres)}
         ORDER BY m.categorie, m.libelle"""),
         {"s": u.societe_id, "u": _uuid(u.id), "cat": categorie}).mappings().all()
@@ -236,7 +242,8 @@ def lister_modeles(db: Session, u: Utilisateur, categorie: Optional[str] = None,
 def lire_modele(db: Session, u: Utilisateur, modele_id: str) -> dict:
     if not _uuid(modele_id):
         raise Introuvable("Modèle introuvable")
-    r = db.execute(text(f"SELECT {COLONNES_MODELE} FROM edt_modele m WHERE m.id = :id AND {_visible_sql(u)}"),
+    r = db.execute(text(f"""SELECT {COLONNES_MODELE}, {COLONNES_REGLAGE} FROM edt_modele m {JOINTURE_REGLAGE}
+                            WHERE m.id = :id AND {_visible_sql(u)}"""),
                    {"id": modele_id, "s": u.societe_id, "u": _uuid(u.id)}).mappings().first()
     if r is None or not peut(db, u, "VOIR", r):
         raise Introuvable("Modèle introuvable")          # 404 et non 403 : ne révèle pas son existence
@@ -650,6 +657,8 @@ def lancer(db: Session, u: Utilisateur, modele_id: str, parametres: dict, forme:
     conservés sous <racine_documents>/<société>/<AAAA>/<MM>/<demande>/."""
     m = lire_modele(db, u, modele_id)
     exiger(db, u, "LANCER", m)
+    if not m.get("actif", True):                                              # RG-EDT-ACTIF-01
+        raise Conflit("Cet état est désactivé : réactivez-le (indicateur Actif) pour le lancer")
     if not m["version_publiee_id"]:
         raise Conflit("Ce modèle n'a pas de version publiée")
     v, _ = lire_version(db, u, m["version_publiee_id"])
