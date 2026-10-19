@@ -17,6 +17,7 @@ import { ChoixPolice } from "./Polices";
 import { Case, Ligne, Nombre, classeChamp } from "./Inspecteur";
 import { ajusterColonnes } from "./Canevas";
 import type { Editeur } from "./useEditeur";
+import Liste from "../Liste";
 
 const FORMATS: { v: NonNullable<Page["format"]>; l: string }[] = [
   { v: "A4", l: "A4" }, { v: "A3", l: "A3" }, { v: "A5", l: "A5" }, { v: "A6", l: "A6" }, { v: "B5", l: "B5" },
@@ -85,14 +86,12 @@ export function ReglagesPage({ editeur, ro }: { editeur: Editeur; ro: boolean })
             </div>
           </Ligne>
           <Ligne libelle="Format">
-            <select className={classeChamp} disabled={ro} value={page.format ?? "A4"}
-              onChange={(e) => changer((p) => {
-                p.format = e.target.value as Page["format"];
+            <Liste compact disabled={ro} value={page.format ?? "A4"}
+              onChange={(x) => changer((p) => {
+                p.format = x as Page["format"];
                 if (p.format === "PERSONNALISE" && (!p.largeur || !p.hauteur)) { p.largeur = 210; p.hauteur = 297; }
-              }, "fmt")}>
-              {FORMATS.map((f) => <option key={f.v} value={f.v}>
-                {f.l}{f.v !== "PERSONNALISE" ? ` — ${FORMATS_PAGE_MM[f.v][0]} × ${FORMATS_PAGE_MM[f.v][1]} mm` : ""}</option>)}
-            </select>
+              }, "fmt")}
+              options={FORMATS.map((f) => ({ v: f.v, l: `${f.l}${f.v !== "PERSONNALISE" ? ` — ${FORMATS_PAGE_MM[f.v][0]} × ${FORMATS_PAGE_MM[f.v][1]} mm` : ""}` }))} />
           </Ligne>
           {page.format === "PERSONNALISE" && (
             <div className="grid grid-cols-2 gap-1">
@@ -129,10 +128,9 @@ export function ReglagesPage({ editeur, ro }: { editeur: Editeur; ro: boolean })
         <Ligne libelle="Police de l'état" aide="Pour tous les objets qui n'ont pas leur propre police">
           <ChoixPolice value={page.police} disabled={ro} onChange={(v) => changer((p) => { p.police = v; }, "pol")} /></Ligne>
         <Ligne libelle="Taille par défaut (pt)">
-          <select className={classeChamp} disabled={ro} value={page.taille ?? ""} onChange={(e) => changer((p) => { p.taille = e.target.value ? Number(e.target.value) : null; }, "tai")}>
-            <option value="">9 (défaut)</option>
-            {TAILLES.filter((t) => t <= 24).map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <Liste compact disabled={ro} value={page.taille ? String(page.taille) : ""} vide="9 (défaut)"
+            onChange={(x) => changer((p) => { p.taille = x ? Number(x) : null; }, "tai")}
+            options={TAILLES.filter((t) => t <= 24).map((t) => ({ v: String(t), l: String(t) }))} />
         </Ligne>
       </div>
       <Ligne libelle="Couleur de fond des pages">

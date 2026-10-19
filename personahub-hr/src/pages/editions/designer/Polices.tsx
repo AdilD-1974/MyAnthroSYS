@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { editionsApi, type PoliceEdition } from "@/lib/editionsApi";
+import Liste from "../Liste";
 
 let cache: Promise<PoliceEdition[]> | null = null;
 const charger = () => (cache ??= editionsApi.polices().catch(() => { cache = null; return [] as PoliceEdition[]; }));
@@ -26,24 +27,17 @@ export function ChoixPolice({ value, onChange, disabled, vide = "Par défaut (He
   const [polices, setPolices] = useState<PoliceEdition[] | null>(null);
   useEffect(() => { let actif = true; void charger().then((p) => { if (actif) setPolices(p); }); return () => { actif = false; }; }, []);
   const inconnue = value && polices && !polices.some((p) => p.nom === value);
+  // RG-EDT-UI-02 : Select du thème ; chaque police est montrée dans sa propre fonte
   return (
-    <select disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}
-      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs" style={{ fontFamily: cssPolice(value) }}
-      title={inconnue ? "Police absente de ce serveur : Helvetica sera utilisée" : undefined}>
-      <option value="">{vide}</option>
-      {inconnue && <option value={value!}>{value} (absente du serveur)</option>}
-      {(["PDF", "TrueType"] as const).map((o) => {
-        const liste = (polices ?? []).filter((p) => p.origine === o && !(o === "PDF" && p.nom === "Helvetica"));
-        return liste.length ? (
-          <optgroup key={o} label={o === "PDF" ? "Polices PDF standard" : "Polices du serveur"}>
-            {liste.map((p) => (
-              <option key={p.nom} value={p.nom} style={{ fontFamily: cssPolice(p.nom) }}>
-                {p.nom}{!p.gras ? " (sans gras)" : ""}
-              </option>
-            ))}
-          </optgroup>
-        ) : null;
-      })}
-    </select>
+    <Liste compact disabled={disabled} value={value ?? ""} vide={vide} onChange={(v) => onChange(v || null)}
+      style={{ fontFamily: cssPolice(value) }}
+      title={inconnue ? "Police absente de ce serveur : Helvetica sera utilisée" : undefined}
+      options={[
+        ...(inconnue ? [{ v: value!, l: `${value} (absente du serveur)` }] : []),
+        ...(["PDF", "TrueType"] as const).flatMap((o) => (polices ?? [])
+          .filter((p) => p.origine === o && !(o === "PDF" && p.nom === "Helvetica"))
+          .map((p) => ({ v: p.nom, l: `${p.nom}${!p.gras ? " (sans gras)" : ""}`, style: { fontFamily: cssPolice(p.nom) },
+                         groupe: o === "PDF" ? "Polices PDF standard" : "Polices du serveur" }))),
+      ]} />
   );
 }

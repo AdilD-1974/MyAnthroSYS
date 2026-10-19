@@ -15,6 +15,7 @@ import { sourceDuJeu, useReferentiels } from "./contexte";
 import { TYPE_DND_CHAMP, TYPE_DND_CORPS, TYPE_DND_ELEMENT } from "./Canevas";
 import { PaletteImages } from "./BibliothequeImages";
 import type { Editeur } from "./useEditeur";
+import Liste from "../Liste";
 
 const ICONES: Record<TypeElement, React.ComponentType<{ className?: string }>> = {
   TEXTE: Type, CHAMP: Braces, TEXTE_RICHE: FileText, IMAGE: IconeImage,
@@ -172,10 +173,8 @@ function ListeBandes({ editeur, lectureSeule }: { editeur: Editeur; lectureSeule
       })}
       {!lectureSeule && (
         <div className="mt-2 flex gap-1">
-          <select value={nouveau} onChange={(e) => setNouveau(e.target.value as TypeBande)}
-            className="min-w-0 flex-1 rounded border bg-background px-1 py-1 text-xs">
-            {ORDRE_BANDES.map((t) => <option key={t} value={t}>{LIBELLES_BANDE[t]}</option>)}
-          </select>
+          <Liste compact className="flex-1" value={nouveau} onChange={(x) => setNouveau(x as TypeBande)}
+            options={ORDRE_BANDES.map((t) => ({ v: t, l: LIBELLES_BANDE[t] }))} />
           <button type="button" onClick={ajouterBande} className="rounded border px-2 text-xs hover:bg-muted" title="Ajouter la bande">
             <Plus className="h-3 w-3" />
           </button>
@@ -210,9 +209,8 @@ function CatalogueChamps({ lectureSeule, onAjouter }: { lectureSeule: boolean; o
 
   return (
     <div className="p-2">
-      <select value={codeJeu} onChange={(e) => setJeu(e.target.value)} className="mb-2 w-full rounded border bg-background px-1 py-1 text-xs">
-        {(definition?.jeux ?? []).map((j) => <option key={j.code} value={j.code}>Jeu « {j.code} » — {j.source}</option>)}
-      </select>
+      <div className="mb-2"><Liste compact value={codeJeu} onChange={setJeu}
+        options={(definition?.jeux ?? []).map((j) => ({ v: j.code, l: `Jeu « ${j.code} » — ${j.source}` }))} /></div>
       <div className="relative mb-2">
         <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Chercher un champ…"

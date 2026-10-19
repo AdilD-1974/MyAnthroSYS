@@ -16,6 +16,8 @@ import {
   Pencil, Play, Plus, Search, ShieldCheck, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Liste from "./Liste";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -27,7 +29,6 @@ import FiltresPopulation, { filtresUtiles, type Filtres } from "./FiltresPopulat
 import { BoutonMenus, libelleEcran, useEcransCategorie } from "./MenusModele";
 import { Switch } from "@/components/ui/switch";
 
-const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 export default function EditionsPage() {
   const retour = useRetour();
@@ -188,11 +189,11 @@ export default function EditionsPage() {
   return (
     <div className="ecran-editions w-full">
       <ReturnTrail current="Éditions" />
-      <div className="w-full space-y-4 p-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="w-full space-y-3 px-6 py-4">
+      <div className="flex flex-wrap items-end gap-3">
         <div>
-          <h1 className="titre-ecran font-semibold">Éditions</h1>
-          <p className="text-sm text-muted-foreground">Bulletins, journaux, attestations et états : concevez, publiez et produisez vos documents.</p>
+          <h1 className="titre-ecran text-xl font-semibold tracking-tight">Éditions</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">Bulletins, journaux, attestations et états : concevez, publiez et produisez vos documents.</p>
         </div>
         <Button className="ml-auto" onClick={() => setCreation({ ouvert: true, code: "", libelle: "", categorie: categorie || "LISTE", visibilite: "SOCIETE", origine: "" })}>
           <Plus className="mr-1 h-4 w-4" />Nouveau modèle
@@ -218,8 +219,8 @@ export default function EditionsPage() {
             className={`rounded px-2 py-1 ${vue === "LISTE" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}><List className="h-4 w-4" /></button>
         </div>
         <div className="relative w-64">
-          <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher…" className={`${classe} pl-8`} />
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher…" className="h-9 pl-8" />
         </div>
       </div>
 
@@ -305,33 +306,28 @@ export default function EditionsPage() {
         <DialogContent className="ecran-editions-texte max-w-md">
           <DialogHeader><DialogTitle>{creation.origine ? "Copier un modèle" : "Nouveau modèle"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <label className="block text-xs font-medium">Libellé
-              <input className={`${classe} mt-1`} value={creation.libelle} onChange={(e) => setCreation((c) => ({ ...c, libelle: e.target.value }))} />
+            <label className="block text-xs font-medium text-muted-foreground">Libellé
+              <Input className="mt-1.5 text-foreground" value={creation.libelle} onChange={(e) => setCreation((c) => ({ ...c, libelle: e.target.value }))} />
             </label>
-            <label className="block text-xs font-medium">Code (unique dans la société)
-              <input className={`${classe} mt-1 uppercase`} value={creation.code}
+            <label className="block text-xs font-medium text-muted-foreground">Code (unique dans la société)
+              <Input className="mt-1.5 uppercase text-foreground" value={creation.code}
                 onChange={(e) => setCreation((c) => ({ ...c, code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_") }))} />
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <label className="block text-xs font-medium">Catégorie
-                <select className={`${classe} mt-1`} value={creation.categorie} onChange={(e) => setCreation((c) => ({ ...c, categorie: e.target.value as Categorie }))}>
-                  {CATEGORIES.map((c) => <option key={c.code} value={c.code}>{c.libelle}</option>)}
-                </select>
-              </label>
-              <label className="block text-xs font-medium">Visible par
-                <select className={`${classe} mt-1`} value={creation.visibilite} onChange={(e) => setCreation((c) => ({ ...c, visibilite: e.target.value as Visibilite }))}>
-                  <option value="SOCIETE">Toute la société</option>
-                  <option value="PRIVE">Moi seulement</option>
-                </select>
-              </label>
+              <div className="text-xs font-medium text-muted-foreground"><span className="mb-1.5 block">Catégorie</span>
+                <Liste value={creation.categorie} onChange={(v) => setCreation((c) => ({ ...c, categorie: v as Categorie }))}
+                  options={CATEGORIES.map((c) => ({ v: c.code, l: c.libelle }))} />
+              </div>
+              <div className="text-xs font-medium text-muted-foreground"><span className="mb-1.5 block">Visible par</span>
+                <Liste value={creation.visibilite} onChange={(v) => setCreation((c) => ({ ...c, visibilite: v as Visibilite }))}
+                  options={[{ v: "SOCIETE", l: "Toute la société" }, { v: "PRIVE", l: "Moi seulement" }]} />
+              </div>
             </div>
             <MenusProposes categorie={creation.categorie} />
-            <label className="block text-xs font-medium">Partir de
-              <select className={`${classe} mt-1`} value={creation.origine} onChange={(e) => setCreation((c) => ({ ...c, origine: e.target.value }))}>
-                <option value="">Un modèle vierge</option>
-                {(modeles ?? []).map((m) => <option key={m.id} value={m.id}>{m.libelle} ({m.code})</option>)}
-              </select>
-            </label>
+            <div className="text-xs font-medium text-muted-foreground"><span className="mb-1.5 block">Partir de</span>
+              <Liste value={creation.origine} vide="Un modèle vierge" onChange={(v) => setCreation((c) => ({ ...c, origine: v }))}
+                options={(modeles ?? []).map((m) => ({ v: m.id, l: `${m.libelle} (${m.code})` }))} />
+            </div>
           </div>
           <DialogFooter>
             <Button disabled={!creation.code || !creation.libelle || creation.occupe} onClick={creer}>
@@ -349,10 +345,9 @@ export default function EditionsPage() {
             <>
               {lancement.formes.length > 1 && (
                 <label className="mb-3 block">
-                  <span className="mb-1 block text-xs font-medium">Mise en forme</span>
-                  <select className={classe} value={lancement.forme} onChange={(e) => setLancement((l) => l && { ...l, forme: e.target.value, documents: undefined })}>
-                    {lancement.formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}</option>)}
-                  </select>
+                  <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Mise en forme</span>
+                  <Liste value={lancement.forme} onChange={(v) => setLancement((l) => l && { ...l, forme: v, documents: undefined })}
+                    options={lancement.formes.map((f) => ({ v: f.code, l: f.libelle }))} />
                 </label>
               )}
               <ParametresForm parametres={lancement.parametres} valeurs={lancement.valeurs}

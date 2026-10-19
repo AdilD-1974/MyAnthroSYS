@@ -36,6 +36,7 @@ import "../editions.css";
 import { coller, copier as copierObjets, deplacer as deplacerObjets, dupliquer, idsSelection, supprimer as supprimerObjets, trouver } from "./selection";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
+import Liste from "../Liste";
 
 const LIBELLES_STATUT: Record<string, string> = {
   BROUILLON: "Brouillon", EN_REVUE: "En revue", PUBLIEE: "Publiée", RETIREE: "Retirée",
@@ -540,9 +541,8 @@ function SelecteurForme({ editeur, lectureSeule }: { editeur: ReturnType<typeof 
   return (
     <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
       <span className="text-muted-foreground">Mise en forme</span>
-      <select className="rounded border bg-background px-2 py-1 text-sm" value={courante} onChange={(e) => choisir(e.target.value)}>
-        {formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}{f.code === defaut ? " ★" : ""}</option>)}
-      </select>
+      <Liste compact className="w-64" value={courante} onChange={choisir}
+        options={formes.map((f) => ({ v: f.code, l: `${f.libelle}${f.code === defaut ? " ★" : ""}` }))} />
       {courante === defaut
         ? <span className="text-muted-foreground" title="Imprimée quand on ne choisit pas">★ par défaut</span>
         : !lectureSeule && <button type="button" className="text-primary underline" onClick={() => editeur.modifier((x) => { x.usages = { ...(x.usages ?? {}), forme_par_defaut: courante }; }, "forme-defaut")}>Définir par défaut</button>}

@@ -19,6 +19,8 @@ import {
   type Affectation, type AttributAffecte, type Corps, type Definition, type TypeColonneCorps, type Usages, type Variable,
 } from "@/pages/editions/types";
 import FormuleInput from "./FormuleInput";
+import Liste from "../Liste";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useReferentiels } from "./contexte";
 import { deplacer, useGlisser } from "./glisser";
 import { EMPLACEMENTS, emplacementDe, libelleBande, placementConforme, placerCorps, usagesDuCorps, type Emplacement } from "@/pages/editions/placement";
@@ -226,9 +228,8 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
                 onChange={(e) => setNouveau({ ...nouveau, libelle: e.target.value })} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && nouveau.libelle) ajouter(); }} />
             </label>
             <label className="w-56 text-xs">Nature
-              <select className={`${classeChamp} mt-1`} value={nouveau.nature} onChange={(e) => setNouveau({ ...nouveau, nature: e.target.value as Corps["nature"] })}>
-                {(Object.keys(LIBELLES_NATURE) as Corps["nature"][]).map((n) => <option key={n} value={n}>{LIBELLES_NATURE[n]}</option>)}
-              </select>
+              <div className="mt-1"><Liste compact value={nouveau.nature} onChange={(v) => setNouveau({ ...nouveau, nature: v as Corps["nature"] })}
+                options={(Object.keys(LIBELLES_NATURE) as Corps["nature"][]).map((n) => ({ v: n, l: LIBELLES_NATURE[n] }))} /></div>
             </label>
             <Button size="sm" disabled={!nouveau.libelle.trim()} onClick={ajouter}><Plus className="mr-1 h-4 w-4" />Ajouter le corps</Button>
           </div>
@@ -295,9 +296,8 @@ function EmplacementCorps({ d, c, editeur, ro, compact }: { d: Definition; c: Co
   return (
     <label className="text-xs">Emplacement à l'impression
       <div className="mt-1 flex items-center gap-2">
-        <select className={`${classeChamp} w-44`} disabled={ro} value={e} onChange={(ev) => appliquer(ev.target.value as Emplacement)}>
-          {EMPLACEMENTS.map((x) => <option key={x.v} value={x.v} title={x.aide}>{x.l}</option>)}
-        </select>
+        <Liste compact className="w-44" disabled={ro} value={e} onChange={(v) => appliquer(v as Emplacement)}
+          options={EMPLACEMENTS.map((x) => ({ v: x.v, l: x.l, titre: x.aide }))} />
         <span className={`max-w-xs truncate ${ok ? "text-muted-foreground" : "font-medium text-[hsl(var(--warning))]"}`} title={etat}>
           {ok ? "✓ " : "⚠ "}{etat}
         </span>
@@ -326,18 +326,17 @@ function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
             <div className="mt-1 py-1 text-sm"><span className="font-mono">{c.code}</span> · {LIBELLES_NATURE[c.nature].toLowerCase()}</div></div>
           {c.nature !== "CASES" && (
             <label className="flex items-center gap-1.5 self-center pt-4 text-xs" title="Titre imprimé au-dessus des lignes du corps qui n'ont pas de groupe">
-              <input type="checkbox" disabled={ro} checked={c.afficher_titre ?? true}
-                onChange={(e) => majC((z) => poser(z, "afficher_titre", e.target.checked ? null : false), "titre")} />
+              <Checkbox disabled={ro} checked={c.afficher_titre ?? true}
+                onCheckedChange={(coche) => majC((z) => poser(z, "afficher_titre", (coche === true) ? null : false), "titre")} />
               Imprimer le titre du corps
             </label>
           )}
           <EmplacementCorps d={d} c={c} editeur={editeur} ro={ro} />
           {c.nature !== "CASES" && (
             <label className="text-xs">Tri des lignes
-              <select className={`${classeChamp} mt-1 w-56`} disabled={ro} value={c.tri ?? "AFFECTATION"}
-                onChange={(e) => majC((z) => poser(z, "tri", e.target.value === "AFFECTATION" ? null : e.target.value), "tri")}>
-                <option value="AFFECTATION">Ordre des affectations</option><option value="PAIE">Ordre d'affichage de la paie</option><option value="CODE">Code rubrique</option>
-              </select></label>
+              <div className="mt-1 w-56"><Liste compact disabled={ro} value={c.tri ?? "AFFECTATION"}
+                onChange={(v) => majC((z) => poser(z, "tri", v === "AFFECTATION" ? null : v), "tri")}
+                options={[{ v: "AFFECTATION", l: "Ordre des affectations" }, { v: "PAIE", l: "Ordre d'affichage de la paie" }, { v: "CODE", l: "Code rubrique" }]} /></div></label>
           )}
         </div>
         <div className="mb-3 flex gap-1 border-b text-sm">
@@ -409,8 +408,8 @@ function GrilleColonnes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro
                 onChange={(v) => majC((z) => poser(z.colonnes[i], "type", v === "MONTANT" ? null : v), `ct${i}`)} /></td>
               <td className={`${td} w-44`}><Choix value={col.masque} disabled={ro} vide="Selon le type" options={masques.map((m) => ({ v: m.code, l: `${m.libelle} (${m.exemple})` }))}
                 onChange={(v) => majC((z) => poser(z.colonnes[i], "masque", v), `cm${i}`)} /></td>
-              <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro} checked={!!col.total}
-                onChange={(e) => majC((z) => poser(z.colonnes[i], "total", e.target.checked || null), `cto${i}`)} /></td>
+              <td className={`${td} w-14 text-center`}><Checkbox disabled={ro} checked={!!col.total}
+                onCheckedChange={(coche) => majC((z) => poser(z.colonnes[i], "total", (coche === true) || null), `cto${i}`)} /></td>
               <td className={`${td} w-20 text-right`}>{!ro && !fixes && <>
                 <button type="button" onClick={() => majC((z) => { if (i > 0) [z.colonnes[i - 1], z.colonnes[i]] = [z.colonnes[i], z.colonnes[i - 1]]; }, "co")}><ArrowUp className="inline h-3 w-3" /></button>
                 <button type="button" onClick={() => majC((z) => { if (i < z.colonnes.length - 1) [z.colonnes[i + 1], z.colonnes[i]] = [z.colonnes[i], z.colonnes[i + 1]]; }, "co")}><ArrowDown className="inline h-3 w-3" /></button>
@@ -520,12 +519,10 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
   const selCible = (a: Affectation, i: number, attr: AttributAffecte) => {
     const interdit = a.periode === "CUMUL" && (attr === "TX" || attr === "TXP");
     return (
-      <select className={`${classeChamp} min-w-[88px] ${a.cibles[attr] ? "bg-primary/5 font-medium" : ""}`} disabled={ro || interdit}
-        title={interdit ? "Pas de cumul pour cet attribut" : undefined} value={a.cibles[attr] ?? ""}
-        onChange={(e) => majA(i, (z) => { if (e.target.value) z.cibles[attr] = e.target.value; else delete z.cibles[attr]; }, `t${attr}`)}>
-        <option value="">—</option>
-        {cibles.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-      </select>
+      <Liste compact className={`min-w-[96px] ${a.cibles[attr] ? "bg-primary/5 font-medium" : ""}`} disabled={ro || interdit}
+        title={interdit ? "Pas de cumul pour cet attribut" : undefined} value={a.cibles[attr] ?? ""} vide="—"
+        onChange={(v) => majA(i, (z) => { if (v) z.cibles[attr] = v; else delete z.cibles[attr]; }, `t${attr}`)}
+        options={cibles} />
     );
   };
 
@@ -564,10 +561,8 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                     </td>
                     {exo ? <td className={`${td} text-xs text-muted-foreground`}>Évaluée mois par mois</td> : <td className={td} colSpan={ATTRIBUTS_AFFECTABLES.length}>
                       <span className="mr-2 text-xs text-muted-foreground">Valeur →</span>
-                      <select className={`${classeChamp} inline-block w-48`} disabled={ro} value={a.cibles.VAL ?? ""}
-                        onChange={(e) => majA(i, (z) => { z.cibles = e.target.value ? { VAL: e.target.value } : {}; }, "fv")}>
-                        <option value="">—</option>{cibles.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-                      </select>
+                      <span className="inline-block w-48 align-middle"><Liste compact disabled={ro} value={a.cibles.VAL ?? ""} vide="—"
+                        onChange={(v) => majA(i, (z) => { z.cibles = v ? { VAL: v } : {}; }, "fv")} options={cibles} /></span>
                     </td>}
                   </>
                 ) : (
@@ -578,23 +573,20 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                     </td>
                     {exo ? (
                       <td className={`${td} w-56`}>
-                        <select className={`${classeChamp} ${Object.keys(a.cibles).length ? "bg-primary/5 font-medium" : ""}`} disabled={ro}
-                          value={Object.keys(a.cibles)[0] ?? ""}
-                          onChange={(e) => majA(i, (z) => { z.cibles = e.target.value ? { [e.target.value]: "mois" } : {}; }, "ex")}>
-                          <option value="">—</option>
-                          {ATTRIBUTS_AFFECTABLES.map((x) => <option key={x.code} value={x.code}>{LIBELLES_ATTRIBUT[x.code]}</option>)}
-                        </select>
+                        <Liste compact className={Object.keys(a.cibles).length ? "bg-primary/5 font-medium" : ""} disabled={ro}
+                          value={Object.keys(a.cibles)[0] ?? ""} vide="—"
+                          onChange={(v) => majA(i, (z) => { z.cibles = v ? { [v]: "mois" } : {}; }, "ex")}
+                          options={ATTRIBUTS_AFFECTABLES.map((x) => ({ v: x.code, l: LIBELLES_ATTRIBUT[x.code] }))} />
                       </td>
                     ) : <>
                     <td className={`${td} w-28`}>
-                      <select className={classeChamp} disabled={ro} value={a.periode ?? "MOIS"}
+                      <Liste compact disabled={ro} value={a.periode ?? "MOIS"}
                         title={PERIODES_AFFECTATION.find((p) => p.v === (a.periode ?? "MOIS"))?.aide}
-                        onChange={(e) => majA(i, (z) => {
-                          poser(z, "periode", e.target.value === "MOIS" ? null : e.target.value);
-                          if (e.target.value === "CUMUL") { delete z.cibles.TX; delete z.cibles.TXP; }
-                        }, "p")}>
-                        {PERIODES_AFFECTATION.map((p) => <option key={p.v} value={p.v} title={p.aide}>{p.l}</option>)}
-                      </select>
+                        onChange={(v) => majA(i, (z) => {
+                          poser(z, "periode", v === "MOIS" ? null : v);
+                          if (v === "CUMUL") { delete z.cibles.TX; delete z.cibles.TXP; }
+                        }, "p")}
+                        options={PERIODES_AFFECTATION.map((p) => ({ v: p.v, l: p.l, titre: p.aide }))} />
                     </td>
                     {ATTRIBUTS_AFFECTABLES.map((x) => <td key={x.code} className={td}>{selCible(a, i, x.code)}</td>)}
                     </>}
@@ -604,27 +596,27 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                   list={`groupes-${c.code}`} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "groupe", e.target.value), "g")} /></td>}
                 <td className={`${td} min-w-[150px]`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.libelle ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : nomRub(a.rubrique) || "—"}
                   onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "libelle", e.target.value), "l")} /></td>
-                <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.negatif} onChange={(e) => majA(i, (z) => poser(z, "negatif", e.target.checked || null), "n")} /></td>
-                <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.nulle} onChange={(e) => majA(i, (z) => poser(z, "nulle", e.target.checked || null), "z")} /></td>
+                <td className={`${td} w-12 text-center`}><Checkbox disabled={ro} checked={!!a.negatif} onCheckedChange={(coche) => majA(i, (z) => poser(z, "negatif", (coche === true) || null), "n")} /></td>
+                <td className={`${td} w-12 text-center`}><Checkbox disabled={ro} checked={!!a.nulle} onCheckedChange={(coche) => majA(i, (z) => poser(z, "nulle", (coche === true) || null), "z")} /></td>
                 {c.nature !== "CASES" && <>
-                  <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro || i === 0 || estFormule(a) !== estFormule(affs[i - 1])}
-                    title={estFormule(a) ? "Même ligne que la formule au-dessus (chaque formule dans sa colonne)" : "S'ajoute à la ligne au-dessus"} checked={!!a.fusion} onChange={(e) => majA(i, (z) => poser(z, "fusion", e.target.checked || null), "fu")} /></td>
-                  <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro || !!a.fusion}
-                    checked={a.gras ?? !!a.formule} onChange={(e) => majA(i, (z) => poser(z, "gras", e.target.checked === !!z.formule ? null : e.target.checked), "gr")} /></td>
+                  <td className={`${td} w-14 text-center`}><Checkbox disabled={ro || i === 0 || estFormule(a) !== estFormule(affs[i - 1])}
+                    title={estFormule(a) ? "Même ligne que la formule au-dessus (chaque formule dans sa colonne)" : "S'ajoute à la ligne au-dessus"} checked={!!a.fusion} onCheckedChange={(coche) => majA(i, (z) => poser(z, "fusion", (coche === true) || null), "fu")} /></td>
+                  <td className={`${td} w-12 text-center`}><Checkbox disabled={ro || !!a.fusion}
+                    checked={a.gras ?? !!a.formule} onCheckedChange={(coche) => majA(i, (z) => poser(z, "gras", (coche === true) === !!z.formule ? null : (coche === true)), "gr")} /></td>
                 </>}
                 <td className={`${td} w-28 whitespace-nowrap text-right`}>{!ro && <>
                   <button type="button" title="Monter" onClick={() => majC((z) => { const y = z.affectations!; if (i > 0) [y[i - 1], y[i]] = [y[i], y[i - 1]]; }, "ao")}><ArrowUp className="inline h-3 w-3" /></button>
                   <button type="button" title="Descendre" onClick={() => majC((z) => { const y = z.affectations!; if (i < y.length - 1) [y[i + 1], y[i]] = [y[i], y[i + 1]]; }, "ao")}><ArrowDown className="inline h-3 w-3" /></button>
                   <button type="button" title="Dupliquer (ex. version Cumul)" onClick={() => majC((z) => { z.affectations!.splice(i + 1, 0, JSON.parse(JSON.stringify(a))); }, "ad")}><Copy className="inline h-3 w-3" /></button>
                   {autres.length > 0 && (
-                    <select className="ml-1 w-5 cursor-pointer appearance-none bg-transparent text-xs" title="Copier vers un autre corps" value=""
-                      onChange={(e) => {
-                        const cible = e.target.value; if (!cible) return;
+                    <Liste compact className="ml-1 inline-flex h-6 w-9 border-0 bg-transparent px-1 shadow-none" title="Copier vers un autre corps"
+                      value="" placeholder="⇢" largeurMenu="w-56"
+                      options={autres.map((z) => ({ v: z.code, l: `Copier vers « ${z.libelle} »` }))}
+                      onChange={(cible) => {
+                        if (!cible) return;
                         editeur.modifier((x) => { const z = x.corps!.find((y) => y.code === cible)!; z.affectations = [...(z.affectations ?? []), { ...JSON.parse(JSON.stringify(a)), cibles: {} }]; }, "acp");
                         toast({ title: "Affectation copiée", description: "Choisissez ses colonnes dans l'autre corps." });
-                      }}>
-                      <option value="">⇢</option>{autres.map((z) => <option key={z.code} value={z.code}>{z.libelle}</option>)}
-                    </select>
+                      }} />
                   )}
                   <button type="button" className="ml-1" title="Retirer" onClick={() => majC((z) => { z.affectations!.splice(i, 1); }, "as")}><Trash2 className="inline h-3 w-3 text-destructive" /></button>
                 </>}</td>
@@ -677,7 +669,7 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
                 const present = deja.has(`${r.code}|${modele.periode ?? "MOIS"}`);
                 return (
                   <label key={r.code} className={`flex cursor-pointer items-center gap-2 border-b px-2 py-1 text-sm hover:bg-muted/40 ${present ? "opacity-50" : ""}`}>
-                    <input type="checkbox" checked={choisies.includes(r.code)} onChange={() => basculer(r.code)} />
+                    <Checkbox checked={choisies.includes(r.code)} onCheckedChange={() => basculer(r.code)} />
                     <span className="w-28 shrink-0 font-mono text-xs">{r.code}</span>
                     <span className="truncate">{r.libelle}</span>
                     {r.total && <span className="ml-auto text-[10px] uppercase text-muted-foreground">total</span>}

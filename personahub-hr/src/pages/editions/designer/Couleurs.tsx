@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Check, X } from "lucide-react";
+import Liste from "../Liste";
 
 /** Palette proposée : neutres, couleurs de bulletin, teintes claires pour les fonds. */
 const PALETTE: { c: string; n: string }[][] = [
@@ -106,11 +107,8 @@ export function ChoixBordures({ value, onChange, disabled }: { value?: string | 
   const v = normaliser(value);
   const connue = BORDURES.some((b) => b.v === v);
   return (
-    <select disabled={disabled} value={v} onChange={(e) => onChange(e.target.value || null)}
-      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs">
-      {!connue && <option value={v}>Personnalisé ({v})</option>}
-      {BORDURES.map((b) => <option key={b.v} value={b.v}>{b.l}</option>)}
-    </select>
+    <Liste compact disabled={disabled} value={v} vide={BORDURES.find((b) => !b.v)?.l ?? "Aucune"} onChange={(x) => onChange(x || null)}
+      options={[...(!connue && v ? [{ v, l: `Personnalisé (${v})` }] : []), ...BORDURES.filter((b) => b.v).map((b) => ({ v: b.v, l: b.l }))]} />
   );
 }
 

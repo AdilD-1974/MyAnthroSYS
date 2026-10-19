@@ -3,6 +3,7 @@
  * déposées une fois et utilisées dans les modèles par ASSET("CODE").
  * Auteur : Adil DAIA — lot 2 bis (17/10/2026) — RG-EDT-IMAGE-01..03
  */
+import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Building2, ImageOff, Loader2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -236,7 +237,7 @@ export function ChoixImage({ valeur, onChoisir, ro }: { valeur: string; onChoisi
                   onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))} placeholder="ex. CACHET" />
               </label>
               <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={remplacer} onChange={(e) => setRemplacer(e.target.checked)} />
+                <Checkbox checked={remplacer} onCheckedChange={(coche) => setRemplacer((coche === true))} />
                 Remplacer l'image de même code
               </label>
               <div className="flex gap-2">

@@ -14,6 +14,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ChevronDown, Download, ExternalLink, FileText, Loader2, Printer, ShieldCheck, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import Liste from "./Liste";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   editionsApi, type ContexteEcran, type DocumentProduit, type Ecran, type ModeleEcran,
@@ -22,7 +24,6 @@ import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresF
 import "./editions.css";
 import FiltresPopulation, { filtresUtiles, type Filtres } from "./FiltresPopulation";
 
-const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 const CLE_CHOIX = (ecran: string) => `editions.ecran.${ecran}.modele`;
 
 function lireChoix(ecran: string): string | null {
@@ -188,15 +189,14 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
   const nbAnomalies = resultat?.documents.reduce((n, d) => n + d.anomalies.length, 0) ?? 0;
   const nbPages = resultat?.documents.reduce((n, d) => n + d.nb_pages, 0) ?? 0;
   return (
-    <div className="carte-edition rounded-lg border bg-card p-4">
+    <Card className="carte-edition p-4">
       {entete}
       <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Paramètres</div>
       {modele.formes.length > 1 && (
         <label className="mb-3 block">
-          <span className="mb-1 block text-xs font-medium">Mise en forme</span>
-          <select className={classe} value={forme} onChange={(e) => { setForme(e.target.value); setResultat(null); }}>
-            {modele.formes.map((f) => <option key={f.code} value={f.code}>{f.libelle}</option>)}
-          </select>
+          <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Mise en forme</span>
+          <Liste value={forme} onChange={(v) => { setForme(v); setResultat(null); }}
+            options={modele.formes.map((f) => ({ v: f.code, l: f.libelle }))} />
         </label>
       )}
       <ParametresForm parametres={modele.parametres} valeurs={valeurs} onChange={(v) => { setValeurs(v); setResultat(null); }} />
@@ -245,6 +245,6 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

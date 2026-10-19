@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Building2, ChevronDown, ChevronRight, Filter, RotateCcw, Search } from "lucide-react";
 import MultiSelect from "@/components/MultiSelect";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { editionsApi, type FiltresValeurs, type UoFiltre } from "@/lib/editionsApi";
 
@@ -91,7 +92,7 @@ export default function FiltresPopulation({ valeur, onChange, ouvertParDefaut = 
               <div className="grid gap-2 sm:grid-cols-2">
                 {donnees.criteres.map((c) => (
                   <label key={c.code} className="block">
-                    <span className="mb-1 block text-xs font-medium">{c.libelle}</span>
+                    <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{c.libelle}</span>
                     <MultiSelect options={c.options.map((o) => ({ value: o.code, label: o.libelle }))}
                       selected={((f as Record<string, unknown>)[c.code] as string[] | undefined) ?? []}
                       onChange={(v) => poser(c.code as keyof Filtres, v)}
@@ -153,8 +154,8 @@ function ArbreUo({ uos, choisies, rattachees, onChange }: {
               {ferme ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </button>
           ) : <span className="w-3" />}
-          <input type="checkbox" checked={couvertes.has(u.id)} disabled={herite} onChange={() => basculer(u.id)}
-            title={herite ? "Incluse : rattachée à une UO cochée" : ""} />
+          <Checkbox checked={couvertes.has(u.id)} disabled={herite} onCheckedChange={() => basculer(u.id)}
+            title={herite ? "Incluse : rattachée à une UO cochée" : ""} className="h-3.5 w-3.5" />
           <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
           <span className={`truncate ${herite ? "text-muted-foreground" : ""}`}>{u.libelle}</span>
           {u.code && <span className="text-[10px] text-muted-foreground">{u.code}</span>}

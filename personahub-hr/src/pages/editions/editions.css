@@ -8,12 +8,15 @@
  *   .ecran-editions        écrans « page » : police, titres et densité
  *   .ecran-editions-texte  designer, dialogues, menus surgissants : police et titres seulement
  *                          (la géométrie du canevas, en mm, ne doit pas bouger)
+ * RG-EDT-UI-02 : composants du thème partout (Select via Liste.tsx, Checkbox, Input, Card, Button),
+ * jamais de <select> natif, qui s'ouvre avec le style du système et ignore les préférences.
  * Les couleurs passent par les jetons du thème (primary, warning, success…), jamais de
  * couleur fixe, sauf le papier blanc du canevas qui représente la feuille imprimée.
  */
 :is(.ecran-editions, .ecran-editions-texte) { font-size: var(--font-size-base, 14px); }
 :is(.ecran-editions, .ecran-editions-texte) :is(h1, h2, h3, .titre-ecran) { font-family: var(--font-family-heading); }
-:is(.ecran-editions, .ecran-editions-texte) .titre-ecran { font-size: var(--font-size-heading, 24px); line-height: 1.2; }
+/* RG-EDT-UI-01 : titre de page comme les autres écrans (text-xl, à l'échelle de la police choisie) */
+:is(.ecran-editions, .ecran-editions-texte) .titre-ecran { letter-spacing: -0.015em; }
 
 :is(.ecran-editions, .ecran-editions-texte) .text-\[9px\]  { font-size: calc(9px * var(--font-scale, 1)); }
 :is(.ecran-editions, .ecran-editions-texte) .text-\[10px\] { font-size: calc(10px * var(--font-scale, 1)); }

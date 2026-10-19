@@ -33,6 +33,8 @@ import { ChoixArrondi, ChoixBordures, ChoixCouleur, ChoixEpaisseur, ChoixTrait, 
 import { useReferentiels } from "./contexte";
 import { ajusterColonnes } from "./Canevas";
 import type { Editeur } from "./useEditeur";
+import Liste from "../Liste";
+import { Checkbox } from "@/components/ui/checkbox";
 
 /** Nouveaux identifiants pour les colonnes, groupes et lignes d'un élément dupliqué. */
 export function renommerSousParties(def: Definition, n: Element) {
@@ -82,19 +84,17 @@ export function Nombre({ value, onChange, disabled, pas = 0.5, min }: { value?: 
 export function Choix<T extends string>({ value, options, onChange, disabled, vide }: {
   value?: T | null; options: { v: T; l: string }[]; onChange: (v: T | null) => void; disabled?: boolean; vide?: string;
 }) {
+  // RG-EDT-UI-02 : Select du thème (jamais de liste native)
   return (
-    <select className={classeChamp} value={value ?? ""} disabled={disabled}
-      onChange={(e) => onChange((e.target.value || null) as T | null)}>
-      {vide !== undefined && <option value="">{vide}</option>}
-      {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-    </select>
+    <Liste compact value={value ?? ""} disabled={disabled} vide={vide} onChange={(v) => onChange((v || null) as T | null)}
+      options={options.map((o) => ({ v: o.v, l: o.l }))} />
   );
 }
 
 export function Case({ libelle, value, onChange, disabled }: { libelle: string; value?: boolean | null; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className="mr-3 inline-flex items-center gap-1 text-xs">
-      <input type="checkbox" checked={!!value} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <Checkbox checked={!!value} disabled={disabled} onCheckedChange={(coche) => onChange((coche === true))} />
       {libelle}
     </label>
   );
@@ -371,10 +371,8 @@ function StyleEditeur({ s, ro, cadre, onChange }: { s?: Style; ro: boolean; cadr
         <Ligne libelle="Police"><ChoixPolice value={v.police} disabled={ro} onChange={(x) => set("police", x)} /></Ligne>
         <div className="grid grid-cols-2 gap-1">
           <Ligne libelle="Taille (pt)">
-            <select className={classeChamp} disabled={ro} value={v.taille ?? ""} onChange={(e) => set("taille", e.target.value ? Number(e.target.value) : null)}>
-              <option value="">9 (défaut)</option>
-              {[...new Set([...TAILLES, ...(v.taille ? [v.taille] : [])])].sort((a, b) => a - b).map((t) => <option key={t} value={t}>{String(t).replace(".", ",")}</option>)}
-            </select>
+            <Liste compact disabled={ro} value={v.taille ? String(v.taille) : ""} vide="9 (défaut)" onChange={(x) => set("taille", x ? Number(x) : null)}
+              options={[...new Set([...TAILLES, ...(v.taille ? [v.taille] : [])])].sort((a, b) => a - b).map((t) => ({ v: String(t), l: String(t).replace(".", ",") }))} />
           </Ligne>
           <Ligne libelle="Alignement">
             <Choix value={v.alignement} disabled={ro} vide="Gauche" onChange={(x) => set("alignement", x === "GAUCHE" ? null : x)}
@@ -397,13 +395,9 @@ function StyleEditeur({ s, ro, cadre, onChange }: { s?: Style; ro: boolean; cadr
           <Case libelle="Souligné" value={v.souligne} disabled={ro} onChange={(x) => set("souligne", x)} />
         </div>
         <Ligne libelle="Casse" aide="Le texte d'origine n'est pas modifié : seul l'affichage change">
-          <select className={classeChamp} disabled={ro} value={v.casse ?? ""} onChange={(e) => set("casse", e.target.value || null)}>
-            <option value="">Telle quelle</option>
-            <option value="MAJUSCULES">MAJUSCULES</option>
-            <option value="MINUSCULES">minuscules</option>
-            <option value="INITIALES">Initiales En Majuscule</option>
-            <option value="PETITES_MAJUSCULES">Petites majuscules</option>
-          </select>
+          <Liste compact disabled={ro} value={v.casse ?? ""} vide="Telle quelle" onChange={(x) => set("casse", x || null)}
+            options={[{ v: "MAJUSCULES", l: "MAJUSCULES" }, { v: "MINUSCULES", l: "minuscules" }, { v: "INITIALES", l: "Initiales En Majuscule" },
+              { v: "PETITES_MAJUSCULES", l: <span style={{ fontVariant: "small-caps" }}>Petites majuscules</span> }]} />
         </Ligne>
       </>}
       <div className="grid grid-cols-2 gap-1">
@@ -465,8 +459,8 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
         <div className="mb-0.5 text-[11px] font-medium text-muted-foreground">Lignes affichées : corps de données (dans l'ordre)</div>
         {corpsLignes.length ? corpsLignes.map((c) => (
           <label key={c.code} className="flex items-center gap-1.5 text-xs">
-            <input type="checkbox" disabled={ro} checked={affiches.includes(c.code)}
-              onChange={(e) => lier(corpsLignes.map((x) => x.code).filter((code) => (code === c.code ? e.target.checked : affiches.includes(code))))} />
+            <Checkbox disabled={ro} checked={affiches.includes(c.code)}
+              onCheckedChange={(coche) => lier(corpsLignes.map((x) => x.code).filter((code) => (code === c.code ? (coche === true) : affiches.includes(code))))} />
             {c.libelle}
           </label>
         )) : <p className="text-[11px] text-muted-foreground">Aucun corps « lignes » : définissez-en à l'étape « 1. Données ».</p>}

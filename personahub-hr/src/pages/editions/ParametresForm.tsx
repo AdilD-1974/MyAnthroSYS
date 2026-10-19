@@ -9,18 +9,22 @@
  * RG-EDT-LANCEMENT-01 (Adil DAIA) : l'année d'abord, puis des listes filtrées sur cette année :
  *   période de paie, mois de paie, plans de paie, et salariés PAYÉS dans l'année / le mois / la
  *   période choisis (sortis compris — un salarié parti reste éditable sur ses anciennes paies).
+ * RG-EDT-UI-02 : composants du thème (Select, Checkbox, Input, Button), jamais de liste native.
  * RG-EDT-LANCEMENT-02 (Adil DAIA) : périodes chargées une fois (cache 2 min) ; la dernière année
  *   choisie est retenue dans le navigateur (simple confort, jamais obligatoire).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { editionsApi, type CollaborateurPaye, type Periode } from "@/lib/editionsApi";
+import Liste from "./Liste";
 import type { Parametre } from "./types";
 
 export type Valeurs = Record<string, unknown>;
 
-const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
-const classeAnnee = `${classe} tabular-nums`;
+const classeLibelle = "mb-1.5 block text-xs font-medium text-muted-foreground";
 
 const MOIS = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 export const libellePeriode = (p: Periode) =>
@@ -122,11 +126,9 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
   if (!parametres.length) return <p className="text-sm text-muted-foreground">Ce modèle ne demande aucun paramètre.</p>;
 
   const choixAnnee = (valeur: number | undefined, onAnnee: (a: number) => void) => (
-    <select className={classeAnnee} value={valeur ?? ""} aria-label="Année"
-      onChange={(e) => { const a = Number(e.target.value); if (a) { retenirAnnee(a); onAnnee(a); } }}>
-      {valeur === undefined && <option value="">Année</option>}
-      {annees.map((a) => <option key={a} value={a}>{a}</option>)}
-    </select>
+    <Liste value={valeur !== undefined ? String(valeur) : undefined} aria-label="Année" placeholder="Année" className="tabular-nums"
+      options={annees.map((a) => ({ v: String(a), l: String(a) }))}
+      onChange={(x) => { const a = Number(x); if (a) { retenirAnnee(a); onAnnee(a); } }} />
   );
 
   return (
@@ -150,11 +152,10 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
                   const d = memeMois ?? ps.find((x) => x.nb_bulletins > 0) ?? ps[0];
                   set(p.code, (p.obligatoire ?? true) || choisie ? d?.id : undefined);
                 })}
-                <select className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)}>
-                  {!obligatoire && <option value="">{p.code === "periode_comparaison" ? "— mois précédent —" : "—"}</option>}
-                  {obligatoire && !choisie && <option value="">— choisir —</option>}
-                  {liste.map((x) => <option key={x.id} value={x.id}>{libelleDansAnnee(x)}</option>)}
-                </select>
+                <Liste value={choisie ? choisie.id : undefined} onChange={(x) => set(p.code, x || undefined)}
+                  vide={obligatoire ? undefined : p.code === "periode_comparaison" ? "— mois précédent —" : "—"}
+                  placeholder={liste.length ? "— choisir —" : `Aucune période en ${an ?? "—"}`}
+                  options={liste.map((x) => ({ v: x.id, l: libelleDansAnnee(x) }))} />
               </div>
             );
             break;
@@ -175,15 +176,14 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
                     const garde = m && moisAn.some((x) => x.mois === m) ? m : (moisAn.find((x) => x.nb_bulletins > 0) ?? moisAn[0])?.mois;
                     poserMois(y, garde);
                   })}
-                  <select className={classe} value={m ?? ""} aria-label="Mois" onChange={(e) => poserMois(an, e.target.value ? Number(e.target.value) : undefined)}>
-                    {(!m || !obligatoire) && <option value="">{obligatoire ? "— choisir —" : "—"}</option>}
-                    {MOIS.slice(1).map((nom, i) => {
+                  <Liste value={m ? String(m) : undefined} aria-label="Mois" placeholder="— choisir —" vide={obligatoire ? undefined : "—"}
+                    onChange={(x) => poserMois(an, x ? Number(x) : undefined)}
+                    options={MOIS.slice(1).flatMap((nom, i) => {
                       const ps = duMois(i + 1);
-                      if (!ps.length) return null;
+                      if (!ps.length) return [];
                       const nb = ps.reduce((t, x) => t + x.nb_bulletins, 0);
-                      return <option key={i + 1} value={i + 1}>{nom.charAt(0).toUpperCase()}{nom.slice(1)} — {ps.length > 1 ? `${ps.length} périodes, ` : ""}{nb ? `${nb} bulletin(s)` : "aucun bulletin"}</option>;
-                    }).reverse()}
-                  </select>
+                      return [{ v: String(i + 1), l: `${nom.charAt(0).toUpperCase()}${nom.slice(1)} — ${ps.length > 1 ? `${ps.length} périodes, ` : ""}${nb ? `${nb} bulletin(s)` : "aucun bulletin"}` }];
+                    }).reverse()} />
                 </div>
                 {choisies.length > 1 && (
                   <p className="mt-1 text-[11px] text-muted-foreground">
@@ -196,15 +196,13 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
           }
           case "ANNEE":
             champ = annees.length ? (
-              <select className={classeAnnee} value={(v as number) ?? ""}
-                onChange={(e) => { const a = e.target.value === "" ? undefined : Number(e.target.value); retenirAnnee(a); set(p.code, a); }}>
-                {!obligatoire && <option value="">—</option>}
-                {annees.map((a) => {
+              <Liste value={v !== undefined && v !== null ? String(v) : undefined} vide={obligatoire ? undefined : "—"} className="tabular-nums"
+                onChange={(x) => { const a = x === "" ? undefined : Number(x); retenirAnnee(a); set(p.code, a); }}
+                options={annees.map((a) => {
                   const n = periodes.filter((x) => x.annee === a).reduce((t, x) => t + x.nb_bulletins, 0);
-                  return <option key={a} value={a}>{a} — {n} bulletin(s)</option>;
-                })}
-              </select>
-            ) : <input type="number" className={classe} value={(v as number) ?? ""} onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))} />;
+                  return { v: String(a), l: `${a} — ${n} bulletin(s)` };
+                })} />
+            ) : <Input type="number" value={(v as number) ?? ""} onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))} />;
             break;
           case "PLAN_PAIE":
             champ = <ChoixPlan valeur={v} multiple={!!p.multiple} obligatoire={obligatoire} annee={portee.annee} onChange={(x) => set(p.code, x)} />;
@@ -213,36 +211,35 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
             champ = <CollaborateursPayes valeur={v} multiple={!!p.multiple} portee={portee} onChange={(x) => set(p.code, x)} />;
             break;
           case "DATE":
-            champ = <input type="date" className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)} />;
+            champ = <Input type="date" value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)} />;
             break;
           case "NOMBRE":
-            champ = <input type="number" className={classe} value={(v as number) ?? ""} placeholder={p.defaut && /^[\d.]+$/.test(p.defaut) ? `${p.defaut} par défaut` : undefined}
+            champ = <Input type="number" value={(v as number) ?? ""} placeholder={p.defaut && /^[\d.]+$/.test(p.defaut) ? `${p.defaut} par défaut` : undefined}
               onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))} />;
             break;
           case "BOOLEEN":
             // non touchée : la valeur par défaut du modèle (VRAI / FAUX) est affichée
-            champ = <input type="checkbox" checked={v === undefined ? /^\s*VRAI\s*$/i.test(p.defaut ?? "") : !!v} onChange={(e) => set(p.code, e.target.checked)} />;
+            champ = <Checkbox checked={v === undefined ? /^\s*VRAI\s*$/i.test(p.defaut ?? "") : !!v} onCheckedChange={(c) => set(p.code, c === true)} />;
             break;
           case "LISTE":
             champ = (
-              <select className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)}>
-                <option value="">{p.defaut && /^".*"$/.test(p.defaut) ? `${p.defaut.slice(1, -1)} (par défaut)` : "—"}</option>
-                {(p.valeurs ?? []).map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
+              <Liste value={(v as string) ?? ""} onChange={(x) => set(p.code, x || undefined)}
+                vide={p.defaut && /^".*"$/.test(p.defaut) ? `${p.defaut.slice(1, -1)} (par défaut)` : "—"}
+                options={(p.valeurs ?? []).map((x) => ({ v: x, l: x }))} />
             );
             break;
           default:
-            champ = <input className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)} />;
+            champ = <Input value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)} />;
         }
         // une case à cocher se lit mieux devant son libellé ; les autres champs sous le leur
         if (p.type === "BOOLEEN") return (
-          <label key={p.code} className="flex items-center gap-2">
-            {champ}<span className="text-xs font-medium">{p.libelle}</span>
+          <label key={p.code} className="flex cursor-pointer items-center gap-2">
+            {champ}<span className="text-sm">{p.libelle}</span>
           </label>
         );
         return (
           <div key={p.code}>
-            <span className="mb-1 block text-xs font-medium">{p.libelle}{obligatoire && <span className="text-destructive"> *</span>}</span>
+            <span className={classeLibelle}>{p.libelle}{obligatoire && <span className="text-destructive"> *</span>}</span>
             {champ}
           </div>
         );
@@ -265,15 +262,14 @@ function ChoixPlan({ valeur, multiple, obligatoire, annee, onChange }: {
   }, [annee]);
   const choisis = Array.isArray(valeur) ? (valeur as string[]) : valeur ? [valeur as string] : [];
   if (multiple) return (
-    <div className="flex flex-wrap gap-1.5 rounded-md border border-input p-1.5">
+    <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background p-1.5">
       {plans.map((x) => {
         const on = choisis.includes(x.id);
         return (
-          <button key={x.id} type="button" title={x.libelle}
-            onClick={() => onChange(on ? choisis.filter((y) => y !== x.id) : [...choisis, x.id])}
-            className={`rounded border px-2 py-0.5 text-xs ${on ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted"}`}>
-            {on && <Check className="mr-1 inline h-3 w-3" />}{x.code}
-          </button>
+          <Button key={x.id} type="button" title={x.libelle} size="sm" variant={on ? "secondary" : "outline"} className="h-7 px-2 text-xs"
+            onClick={() => onChange(on ? choisis.filter((y) => y !== x.id) : [...choisis, x.id])}>
+            {on && <Check className="mr-1 h-3 w-3" />}{x.code}
+          </Button>
         );
       })}
       {!plans.length && <span className="px-1 text-xs text-muted-foreground">Aucun plan en {annee ?? "—"}</span>}
@@ -281,11 +277,10 @@ function ChoixPlan({ valeur, multiple, obligatoire, annee, onChange }: {
     </div>
   );
   return (
-    <select className={classe} value={(valeur as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
-      <option value="">{obligatoire ? "— choisir —" : "— tous —"}</option>
-      {plans.map((x) => <option key={x.id} value={x.id}>{x.code} — {x.libelle}</option>)}
-      {typeof valeur === "string" && valeur && !plans.some((x) => x.id === valeur) && <option value={valeur}>(plan sans période cette année)</option>}
-    </select>
+    <Liste value={(valeur as string) ?? ""} onChange={(x) => onChange(x || undefined)} vide={obligatoire ? undefined : "Tous les plans"}
+      placeholder="— choisir —"
+      options={[...plans.map((x) => ({ v: x.id, l: `${x.code} · ${x.libelle}` })),
+        ...(typeof valeur === "string" && valeur && !plans.some((x) => x.id === valeur) ? [{ v: valeur, l: "(plan sans période cette année)" }] : [])]} />
   );
 }
 
@@ -327,18 +322,19 @@ function CollaborateursPayes({ valeur, multiple, portee, onChange }: {
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOuvert((o) => !o)} className={`${classe} flex items-center gap-2 text-left`}>
+      <button type="button" onClick={() => setOuvert((o) => !o)}
+        className="flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
         <span className={`flex-1 truncate ${choisis.length ? "" : "text-muted-foreground"}`}>
           {choisis.length === 0 ? `Tous les salariés payés ${libellePortee}${liste ? ` (${liste.length})` : ""}`
             : choisis.length === 1 ? (parId.get(choisis[0]) ? nomCollab(parId.get(choisis[0])!) : "1 salarié")
             : `${choisis.length} salariés choisis`}
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
       </button>
       {multiple && choisis.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {choisis.map((id) => (
-            <span key={id} className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs">
+            <span key={id} className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
               {parId.get(id) ? nomCollab(parId.get(id)!) : "salarié hors de la période"}
               <button type="button" aria-label="Retirer" onClick={() => onChange(choisis.filter((x) => x !== id))}><X className="h-3 w-3" /></button>
             </span>

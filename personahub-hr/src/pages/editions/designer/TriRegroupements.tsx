@@ -17,6 +17,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { largeurUtile, nouvelId, type Bande, type Definition, type Element } from "@/pages/editions/types";
 import { useReferentiels } from "./contexte";
 import type { Editeur } from "./useEditeur";
+import Liste from "../Liste";
+import { Checkbox } from "@/components/ui/checkbox";
 
 /** Axes proposés en premier (paie) ; les autres champs de la source restent accessibles. */
 const AXES_GROUPE: [string, string][] = [
@@ -145,21 +147,17 @@ export function BoutonTriRegroupements({ editeur, ro }: { editeur: Editeur; ro: 
     return n;
   };
   const choixChamp = (valeur: string, onChange: (v: string) => void, axes: [string, string][]) => (
-    <select className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs" value={valeur} disabled={ro}
-      onChange={(e) => onChange(e.target.value)}>
-      <option value="">— choisir —</option>
-      <optgroup label="Axes usuels">{axes.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</optgroup>
-      {autresChamps.length > 0 && (
-        <optgroup label="Autres champs">{autresChamps.map((c) => <option key={c.code} value={c.code}>{c.groupe ? `${c.groupe} · ` : ""}{c.libelle}</option>)}</optgroup>
-      )}
-      {valeur && !libelles.has(valeur) && <option value={valeur}>{valeur}</option>}
-    </select>
+    <Liste compact className="flex-1" value={valeur} disabled={ro} placeholder="— choisir —" onChange={onChange}
+      options={[
+        ...axes.map(([c, l]) => ({ v: c, l, groupe: "Axes usuels" })),
+        ...autresChamps.filter((c) => !axes.some(([a]) => a === c.code))
+          .map((c) => ({ v: c.code, l: `${c.groupe ? `${c.groupe} · ` : ""}${c.libelle}`, groupe: "Autres champs" })),
+        ...(valeur && !libelles.has(valeur) ? [{ v: valeur, l: valeur, groupe: "Autres champs" }] : []),
+      ]} />
   );
   const sens = (v: "ASC" | "DESC", onChange: (v: "ASC" | "DESC") => void) => (
-    <select className="h-8 w-24 rounded-md border border-input bg-background px-1 text-xs" value={v} disabled={ro}
-      onChange={(e) => onChange(e.target.value as "ASC" | "DESC")}>
-      <option value="ASC">Croissant</option><option value="DESC">Décroissant</option>
-    </select>
+    <Liste compact className="w-28" value={v} disabled={ro} onChange={(x) => onChange(x as "ASC" | "DESC")}
+      options={[{ v: "ASC", l: "Croissant" }, { v: "DESC", l: "Décroissant" }]} />
   );
   const boutonsOrdre = (i: number, n: number, haut: () => void, bas: () => void, suppr: () => void) => (
     <div className="flex shrink-0 items-center">
@@ -196,8 +194,8 @@ export function BoutonTriRegroupements({ editeur, ro }: { editeur: Editeur; ro: 
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-[72px] text-xs">
                       {([["entete", "En-tête de groupe (titre)"], ["pied", "Pied de groupe (sous-totaux)"], ["saut", "Nouvelle page à chaque groupe"]] as const).map(([cle, l]) => (
                         <label key={cle} className="flex items-center gap-1.5">
-                          <input type="checkbox" disabled={ro} checked={n[cle]}
-                            onChange={(e) => setNiveaux((liste) => liste.map((x, k) => (k === i ? { ...x, [cle]: e.target.checked, ...(cle === "saut" && e.target.checked ? { entete: true } : {}) } : x)))} />
+                          <Checkbox disabled={ro} checked={n[cle]}
+                            onCheckedChange={(coche) => setNiveaux((liste) => liste.map((x, k) => (k === i ? { ...x, [cle]: (coche === true), ...(cle === "saut" && (coche === true) ? { entete: true } : {}) } : x)))} />
                           {l}
                         </label>
                       ))}

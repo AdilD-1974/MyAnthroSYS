@@ -10,10 +10,12 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import {
-  ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, FolderTree, Loader2, Pencil,
+  ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, Pencil,
   Search, Settings2, ShieldCheck, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { editionsApi, type ArbreMenu, type ModeleEcran, type ThemeMenu } from "@/lib/editionsApi";
 import { PanneauProduction } from "./LanceurEcran";
@@ -155,12 +157,11 @@ export default function MenuEditions({ module, titre, description }: { module: s
   return (
     <div className="ecran-editions w-full">
       <ReturnTrail current={titre} />
-      <div className="w-full space-y-4 p-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><FolderTree className="h-5 w-5" /></div>
+      <div className="w-full space-y-3 px-6 py-4">
+      <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="titre-ecran font-semibold">{titre}</h1>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+          <h1 className="titre-ecran text-xl font-semibold tracking-tight">{titre}</h1>
+          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
         </div>
         <Button variant={organiser ? "default" : "outline"} size="sm" onClick={() => setOrganiser((o) => !o)}
           title="Créer des dossiers et y classer les états (glisser-déposer)">
@@ -176,12 +177,11 @@ export default function MenuEditions({ module, titre, description }: { module: s
 
       {arbre && (
         <div className="grid gap-4 lg:grid-cols-[minmax(300px,26%)_1fr]">
-          <div className="flex max-h-[calc(100vh-12rem)] flex-col rounded-lg border bg-card">
+          <Card className="carte-edition flex max-h-[calc(100vh-11rem)] flex-col">
             <div className="border-b p-2">
               <div className="relative">
-                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-                <input value={filtre} onChange={(e) => setFiltre(e.target.value)} placeholder="Rechercher un état…"
-                  className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input value={filtre} onChange={(e) => setFiltre(e.target.value)} placeholder="Rechercher un état…" className="h-9 pl-8" />
               </div>
             </div>
             <div className="flex-1 overflow-auto p-1.5 select-none">
@@ -196,7 +196,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
                 </p>
               )}
             </div>
-          </div>
+          </Card>
 
           <div>
             {selection ? (
@@ -207,7 +207,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
                   <div className="mb-4 border-b pb-3">
                     <div className="text-[11px] text-muted-foreground">{chemin(selection.t).join(" › ")}</div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-semibold">{selection.m.libelle}</h2>
+                      <h2 className="text-base font-semibold">{selection.m.libelle}</h2>
                       {selection.m.est_systeme && <span className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"><ShieldCheck className="h-2.5 w-2.5" />Système</span>}
                     </div>
                     <div className="text-xs text-muted-foreground">{selection.m.code} · version {selection.m.numero_publie}</div>
@@ -215,7 +215,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
                   </div>
                 } />
             ) : (
-              <div className="flex h-full min-h-[240px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+              <div className="flex h-full min-h-[240px] items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
                 Choisissez un état dans l'arborescence.
               </div>
             )}
@@ -227,10 +227,9 @@ export default function MenuEditions({ module, titre, description }: { module: s
       <Dialog open={!!saisie} onOpenChange={(o) => !o && setSaisie(null)}>
         <DialogContent className="ecran-editions-texte max-w-sm">
           <DialogHeader><DialogTitle>{saisie?.titre}</DialogTitle></DialogHeader>
-          <input autoFocus value={saisie?.valeur ?? ""} onChange={(e) => setSaisie((x) => x && { ...x, valeur: e.target.value })}
+          <Input autoFocus value={saisie?.valeur ?? ""} onChange={(e) => setSaisie((x) => x && { ...x, valeur: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Enter" && saisie?.valeur.trim()) { saisie.valider(saisie.valeur.trim()); setSaisie(null); } }}
-            placeholder="ex. Journal de paie Cema"
-            className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            placeholder="ex. Journal de paie Cema" />
           <DialogFooter>
             <Button disabled={!saisie?.valeur.trim()} onClick={() => { saisie!.valider(saisie!.valeur.trim()); setSaisie(null); }}>Valider</Button>
           </DialogFooter>

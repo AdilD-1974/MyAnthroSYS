@@ -9,6 +9,9 @@
 import { useEffect, useState } from "react";
 import { Loader2, MonitorCheck, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import Liste from "./Liste";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { CATEGORIES, editionsApi, type Categorie, type Ecran, type Theme } from "@/lib/editionsApi";
@@ -112,16 +115,15 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
       <DialogContent className="ecran-editions-texte max-w-lg">
         <DialogHeader><DialogTitle>Classement et menus — {modele?.libelle}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-[1fr_180px] gap-3">
-          <label className="block text-xs font-medium">Libellé
-            <input className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
-              value={libelle} disabled={modele?.est_systeme} onChange={(e) => setLibelle(e.target.value)} />
+          <label className="block text-xs font-medium text-muted-foreground">Libellé
+            <Input className="mt-1.5 text-foreground" value={libelle} disabled={modele?.est_systeme} onChange={(e) => setLibelle(e.target.value)} />
           </label>
-          <label className="block text-xs font-medium" title="Le type range le modèle dans l'onglet de la bibliothèque, le dossier par défaut et les écrans Imprimer">
-            Type (catégorie)
-            <select className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
-              value={categorie} disabled={modele?.est_systeme}
-              onChange={(e) => {
-                const c = e.target.value as Categorie;
+          <div className="text-xs font-medium text-muted-foreground" title="Le type range le modèle dans l'onglet de la bibliothèque, le dossier par défaut et les écrans Imprimer">
+            <span className="mb-1.5 block">Type (catégorie)</span>
+            <Liste value={categorie} disabled={modele?.est_systeme}
+              options={CATEGORIES.map((c) => ({ v: c.code, l: c.libelle }))}
+              onChange={(v) => {
+                const c = v as Categorie;
                 setCategorie(c);
                 // les écrans « Imprimer » suivent le type : ceux du nouveau type cochés, ceux de l'ancien décochés
                 setChoix((p) => {
@@ -132,21 +134,17 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
                   });
                   return n;
                 });
-              }}>
-              {CATEGORIES.map((c) => <option key={c.code} value={c.code}>{c.libelle}</option>)}
-            </select>
-          </label>
+              }} />
+          </div>
         </div>
         {modele?.est_systeme && <p className="-mt-2 text-[11px] text-muted-foreground">Modèle système : libellé et type fixes (copiez-le pour les changer).</p>}
         <div className="grid grid-cols-[1fr_auto] items-end gap-3 rounded border bg-muted/30 p-2">
-          <label className="block text-xs font-medium">Dossier (thème) du menu d'éditions
-            <select className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
-              <option value="">Selon le type ({(CATEGORIES.find((c) => c.code === (categorie || modele?.categorie))?.libelle ?? "").toLowerCase()})</option>
-              {themesEnArbre(themes).map(({ t, niveau }) => (
-                <option key={t.id} value={t.id}>{"\u00a0\u00a0\u00a0".repeat(niveau)}{niveau ? "└ " : ""}{t.module === "RH" ? "RH › " : niveau ? "" : "Paie › "}{t.libelle}</option>
-              ))}
-            </select>
-          </label>
+          <div className="text-xs font-medium text-muted-foreground"><span className="mb-1.5 block">Dossier (thème) du menu d'éditions</span>
+            <Liste value={themeId} onChange={setThemeId}
+              vide={`Selon le type (${(CATEGORIES.find((c) => c.code === (categorie || modele?.categorie))?.libelle ?? "").toLowerCase()})`}
+              options={themesEnArbre(themes).map(({ t, niveau }) => ({
+                v: t.id, l: `${"\u00a0\u00a0\u00a0".repeat(niveau)}${niveau ? "└ " : ""}${t.module === "RH" ? "RH › " : niveau ? "" : "Paie › "}${t.libelle}` }))} />
+          </div>
           <label className="flex items-center gap-2 pb-1.5 text-xs font-medium" title="Inactif : l'état n'est plus proposé dans les menus ni lançable">
             <Switch checked={actif} onCheckedChange={setActif} />{actif ? "Actif" : "Inactif"}
           </label>
@@ -167,8 +165,8 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
                     const c = choix[e.code_ecran] ?? { coche: false, defaut: false };
                     return (
                       <div key={e.code_ecran} className="flex items-center gap-2 px-2 py-1.5">
-                        <input type="checkbox" checked={c.coche} id={`ecr-${e.code_ecran}`}
-                          onChange={(x) => setChoix((p) => ({ ...p, [e.code_ecran]: { coche: x.target.checked, defaut: x.target.checked && c.defaut } }))} />
+                        <Checkbox checked={c.coche} id={`ecr-${e.code_ecran}`}
+                          onCheckedChange={(x) => setChoix((p) => ({ ...p, [e.code_ecran]: { coche: x === true, defaut: x === true && c.defaut } }))} />
                         <label htmlFor={`ecr-${e.code_ecran}`} className="min-w-0 flex-1 cursor-pointer">
                           <div className="truncate text-sm">{e.libelle}</div>
                           {e.chemin_route && <div className="truncate text-[10px] text-muted-foreground">{e.chemin_route}</div>}
