@@ -489,7 +489,7 @@ def attestation() -> dict:
               "titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, immatriculé(e) à la CNSS sous le n° "
               "{SIVIDE(identite.num_cnss, \"—\")}, matricule {identite.matricule}, fait partie de notre personnel depuis le "
               "{SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} en qualité de {SIVIDE(affectation.emploi_libelle, \"salarié(e)\")}"
-              "{SI(ESTVIDE(contrat.code_type_contrat), \"\", \", sous contrat \" + contrat.code_type_contrat)}.\n\n"
+              "{SI(ESTVIDE(contrat.code_type_contrat), \"\", \", sous contrat \" + SIVIDE(contrat.type_contrat_libelle, contrat.code_type_contrat))}.\n\n"
               "Sa rémunération pour la période de {FORMAT(@periode.date_fin, \"MOIS_ANNEE\")} et le cumul depuis le début de "
               "l'année s'établissent comme suit :", taille=10),
     ]
@@ -548,7 +548,7 @@ def notification() -> dict:
               taille=10, gras=True),
         champ("dest_adr", 100, 46, 80, 5, 'SIVIDE(adresse.adresse, "")', taille=10),
         champ("dest_cpl", 100, 51, 80, 5, 'SIVIDE(adresse.complement_adresse, "")', taille=10),
-        champ("dest_ville", 100, 56, 80, 5, 'SIVIDE(adresse.code_postal, "") + " " + MAJUSCULE(SIVIDE(adresse.code_ville, ""))',
+        champ("dest_ville", 100, 56, 80, 5, 'SIVIDE(adresse.code_postal, "") + " " + MAJUSCULE(SIVIDE(adresse.ville_libelle, SIVIDE(adresse.code_ville, "")))',
               taille=10),
         champ("lieu_date", 100, 70, 80, 5, 'SIVIDE(societe.ville, "") + ", le " + FORMAT(DATEJOUR(), "DATE_LONGUE")', taille=9),
         champ("reference", 0, 70, 90, 5, '"N/Réf. : DRH/REM/" + @periode.code + "/" + identite.matricule', taille=8, couleur=GRIS),
@@ -729,17 +729,17 @@ def fiche_synthese() -> dict:
     infos = [("Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
              ("Organisation", 'SIVIDE(affectation.organisation_libelle, "—")'),
              ("Date d'embauche", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
-             ("Contrat", 'SIVIDE(contrat.code_type_contrat, "—") + SI(ESTVIDE(contrat.code_temps), "", " · " + contrat.code_temps)'),
+             ("Contrat", 'SIVIDE(contrat.type_contrat_libelle, SIVIDE(contrat.code_type_contrat, "—"))'),
              ("Situation familiale", 'SIVIDE(situation_familiale.libelle, "—") + " · " + SIVIDE(situation_familiale.nb_enfants_a_charge, 0) + " enfant(s)"'),
-             ("Catégorie", 'SIVIDE(qualification.classification_libelle, SIVIDE(qualification.code_categorie_professionnelle, "—"))'),
+             ("Catégorie", 'SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, "—"))'),
              ("N° CNSS", 'SIVIDE(identite.num_cnss, "—")'),
              ("Ancienneté", 'SI(ESTVIDE(contrat.date_embauche), "—", ANNEES(@periode.date_fin, contrat.date_embauche) + " an(s)")')]
     for i, (lib, expr) in enumerate(infos):
         col, rang = i % 2, i // 2
         x = 3 + col * 90
         y = 29 + rang * 7
-        identite += [texte(f"i_l{i}", x, y, 30, 6, lib, taille=7.5, couleur=GRIS),
-                     champ(f"i_v{i}", x + 30, y, 56, 6, expr, taille=8.5, gras=True)]
+        identite += [texte(f"i_l{i}", x, y, 26, 6, lib, taille=7.5, couleur=GRIS),
+                     champ(f"i_v{i}", x + 26, y, 61, 6, expr, taille=8, gras=True)]
     grille = {
         "id": "synthese", "type": "GRILLE", "x": 0, "y": 7, "l": L, "h": 72, "largeur_titres": 62, "hauteur_ligne": 6.5,
         "quadrillage": "COMPLET", "style": {"taille": 8.5, "couleur_bordure": GRIS_CLAIR},
@@ -868,10 +868,10 @@ def bulletin_detaille() -> dict:
         champ("sal_mat", 150, 21.3, 38, 5.5, '"Mat. " + identite.matricule', taille=8, gras=True, couleur=BLANC, alignement="DROITE"),
         *paires("sa", 81, 27.5, 21, 34, [
             ("Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
-            ("Catégorie", 'SIVIDE(qualification.classification_libelle, SIVIDE(qualification.code_categorie_professionnelle, "—"))'),
+            ("Catégorie", 'SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, "—"))'),
             ("Entrée le", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
             ("Ancienneté", ANCIENNETE),
-            ("Contrat", 'SIVIDE(contrat.code_type_contrat, "—")'),
+            ("Contrat", 'SIVIDE(contrat.type_contrat_libelle, SIVIDE(contrat.code_type_contrat, "—"))'),
             ("Organisation", 'SIVIDE(affectation.organisation_libelle, "—")')], pas=4.5, taille=7.5),
         *paires("sb", 137, 27.5, 21, 31, [
             ("CIN", 'SIVIDE(identite.cin, "—")'), ("N° CNSS", 'SIVIDE(identite.num_cnss, "—")'),

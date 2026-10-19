@@ -17,6 +17,10 @@ Auteur : Adil DAIA — 19/10/2026
                       Cas réel : qualification saisie dans la fiche après le calcul de la paie.
                       Ce qui a été figé n'est jamais remplacé ; `situation.completee` liste les blocs
                       complétés. Recalculer la paie du mois refait la situation figée.
+    RG-EDT-LIBELLE-01 (Adil DAIA) chaque code issu d'un référentiel reçoit son intitulé, lu dans le
+                      référentiel (code_grade → grade_libelle dans ref_grade…) : voir LIBELLES_REFERENTIELS.
+                      Un intitulé déjà figé n'est pas remplacé ; un code inconnu du référentiel laisse
+                      l'intitulé vide (le code reste lisible).
     RG-EDT-GROUPE-01  chaque bulletin reçoit des axes prêts à trier et regrouper : UO (code,
                       chemin complet, UO de 1er et 2e niveau), libellés de la catégorie
                       professionnelle et du type de contrat.
@@ -214,14 +218,82 @@ def valeurs(db: Session, societe_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Enrichissement (axes de tri et de regroupement) puis filtrage
 # ---------------------------------------------------------------------------
+# RG-EDT-LIBELLE-01 : (code dans le bulletin, référentiels candidats dans l'ordre, intitulé écrit à côté)
+LIBELLES_REFERENTIELS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    # qualification (écran RH « Classification »)
+    ("qualification.code_motif", ("ref_motif_classification",), "qualification.motif_libelle"),
+    ("qualification.code_fonction", ("ref_fonction",), "qualification.fonction_libelle"),
+    ("qualification.code_categorie_professionnelle", ("ref_categorie_professionnelle",), "qualification.categorie_professionnelle_libelle"),
+    ("qualification.code_college", ("ref_college",), "qualification.college_libelle"),
+    ("qualification.code_responsabilite", ("ref_responsabilite",), "qualification.responsabilite_libelle"),
+    ("qualification.code_niveau", ("ref_niveau_qualification",), "qualification.niveau_libelle"),
+    ("qualification.code_grade", ("ref_grade",), "qualification.grade_libelle"),
+    ("qualification.code_echelle", ("ref_echelle",), "qualification.echelle_libelle"),
+    ("qualification.code_classe", ("ref_classe",), "qualification.classe_libelle"),
+    ("qualification.echelon_actuel", ("ref_echelon",), "qualification.echelon_libelle"),
+    ("qualification.code_filiere", ("ref_filiere",), "qualification.filiere_libelle"),
+    ("qualification.code_activite", ("ref_activite",), "qualification.activite_libelle"),
+    ("qualification.code_classification", ("ref_classification",), "qualification.classification_libelle"),
+    ("qualification.code_qualification", ("ref_qualification",), "qualification.qualification_libelle"),
+    ("qualification.code_emploi", ("ref_emploi",), "qualification.emploi_libelle"),
+    ("qualification.code_secteur", ("ref_secteur_activite",), "qualification.secteur_libelle"),
+    ("qualification.code_categorie", ("ref_categorie_emploi",), "qualification.categorie_libelle"),
+    # affectation (classification requise par le poste)
+    ("affectation.code_classification", ("ref_classification",), "affectation.classification_libelle"),
+    ("affectation.emploi_code", ("ref_emploi",), "affectation.emploi_libelle"),
+    ("affectation.metier_code", ("ref_metier",), "affectation.metier_libelle"),
+    ("affectation.metier_famille", ("ref_famille_metier",), "affectation.metier_famille_libelle"),
+    ("affectation.poste_reference_code", ("ref_poste",), "affectation.poste_reference_libelle"),
+    # contrat
+    ("contrat.code_type_contrat", ("ref_type_contrat",), "contrat.type_contrat_libelle"),
+    ("contrat.code_statut_contrat", ("ref_statut_contrat",), "contrat.statut_contrat_libelle"),
+    ("contrat.code_temps", ("ref_temps_travail", "ref_type_temps"), "contrat.temps_libelle"),
+    # adresse, famille, paiement
+    ("adresse.code_ville", ("ref_ville",), "adresse.ville_libelle"),
+    ("adresse.code_region", ("ref_region",), "adresse.region_libelle"),
+    ("adresse.code_pays", ("ref_pays",), "adresse.pays_libelle"),
+    ("situation_familiale.code", ("ref_situation_familiale",), "situation_familiale.libelle"),
+    ("paiement.code_mode", ("ref_mode_paiement",), "paiement.mode_libelle"),
+    ("paiement.code_banque", ("ref_banque",), "paiement.banque_libelle"),
+)
+
+
+def _referentiel(db: Session, tables: tuple[str, ...], codes: set[str], cache: dict) -> dict[str, str]:
+    """{code: libellé} pour ces codes, dans le 1er référentiel qui les connaît (tables absentes ignorées)."""
+    res: dict[str, str] = {}
+    for t in tables:
+        manquants = sorted(c for c in codes if c not in res)
+        if not manquants:
+            break
+        if t not in cache:
+            cache[t] = {str(r["code"]): r["libelle"] for r in _sur(db, f"SELECT code, libelle FROM {t}", {})}
+        for c in manquants:
+            if cache[t].get(c) not in (None, ""):
+                res[c] = cache[t][c]
+    return res
+
+
+def libeller(db: Session, lignes: list[dict]) -> None:
+    """RG-EDT-LIBELLE-01 : intitulé de chaque code de référentiel, dans tous les bulletins."""
+    cache: dict = {}
+    for chemin_code, tables, chemin_lib in LIBELLES_REFERENTIELS:
+        codes = {str(v) for l in lignes for v in [_lire(l, chemin_code)] if v not in (None, "")}
+        if not codes:
+            continue
+        intitules = _referentiel(db, tables, codes, cache)
+        for l in lignes:
+            v = _lire(l, chemin_code)
+            if v not in (None, "") and str(v) in intitules:
+                _ecrire(l, chemin_lib, intitules[str(v)])
+
+
 def enrichir(db: Session, lignes: list[dict], societe_id: str, liste_uos: Optional[list[dict]] = None) -> None:
     """RG-EDT-GROUPE-01 : complète chaque bulletin (sans écraser le snapshot)."""
     if not lignes:
         return
     liste_uos = uos(db, societe_id) if liste_uos is None else liste_uos
     chemins = _chemins(liste_uos)
-    cats = {str(r["code"]): r["libelle"] for r in _sur(db, "SELECT code, libelle FROM ref_categorie_professionnelle", {})}
-    contrats = {str(r["code"]): r["libelle"] for r in _sur(db, "SELECT code, libelle FROM ref_type_contrat", {})}
+    libeller(db, lignes)                                             # RG-EDT-LIBELLE-01
     for l in lignes:
         chaine = chemins.get(str(_lire(l, "affectation.organisation_id") or ""), [])
         if chaine:
@@ -230,12 +302,6 @@ def enrichir(db: Session, lignes: list[dict], societe_id: str, liste_uos: Option
             _ecrire(l, "affectation.uo_chemin", " › ".join(u["libelle"] for u in chaine))
             _ecrire(l, "affectation.uo_niveau1_libelle", chaine[0]["libelle"])
             _ecrire(l, "affectation.uo_niveau2_libelle", chaine[1]["libelle"] if len(chaine) > 1 else chaine[0]["libelle"])
-        cat = _lire(l, "qualification.code_categorie_professionnelle")
-        if cat:
-            _ecrire(l, "qualification.categorie_professionnelle_libelle", cats.get(str(cat), str(cat)))
-        ct = _lire(l, "contrat.code_type_contrat")
-        if ct:
-            _ecrire(l, "contrat.type_contrat_libelle", contrats.get(str(ct), str(ct)))
 
 
 def normaliser(filtres: Any) -> dict:

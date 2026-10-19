@@ -252,7 +252,7 @@
      "id": "i_l0",
      "x": 3.0,
      "y": 29.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -263,12 +263,12 @@
     },
     {
      "id": "i_v0",
-     "x": 33.0,
+     "x": 29.0,
      "y": 29.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
@@ -281,7 +281,7 @@
      "id": "i_l1",
      "x": 93.0,
      "y": 29.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -292,12 +292,12 @@
     },
     {
      "id": "i_v1",
-     "x": 123.0,
+     "x": 119.0,
      "y": 29.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
@@ -310,7 +310,7 @@
      "id": "i_l2",
      "x": 3.0,
      "y": 36.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -321,12 +321,12 @@
     },
     {
      "id": "i_v2",
-     "x": 33.0,
+     "x": 29.0,
      "y": 36.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
@@ -339,7 +339,7 @@
      "id": "i_l3",
      "x": 93.0,
      "y": 36.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -350,16 +350,16 @@
     },
     {
      "id": "i_v3",
-     "x": 123.0,
+     "x": 119.0,
      "y": 36.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(contrat.code_type_contrat, \"—\") + SI(ESTVIDE(contrat.code_temps), \"\", \" · \" + contrat.code_temps)",
+     "valeur": "SIVIDE(contrat.type_contrat_libelle, SIVIDE(contrat.code_type_contrat, \"—\"))",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -368,7 +368,7 @@
      "id": "i_l4",
      "x": 3.0,
      "y": 43.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -379,12 +379,12 @@
     },
     {
      "id": "i_v4",
-     "x": 33.0,
+     "x": 29.0,
      "y": 43.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
@@ -397,7 +397,7 @@
      "id": "i_l5",
      "x": 93.0,
      "y": 43.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -408,16 +408,16 @@
     },
     {
      "id": "i_v5",
-     "x": 123.0,
+     "x": 119.0,
      "y": 43.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(qualification.classification_libelle, SIVIDE(qualification.code_categorie_professionnelle, \"—\"))",
+     "valeur": "SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, \"—\"))",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -426,7 +426,7 @@
      "id": "i_l6",
      "x": 3.0,
      "y": 50.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -437,12 +437,12 @@
     },
     {
      "id": "i_v6",
-     "x": 33.0,
+     "x": 29.0,
      "y": 50.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",
@@ -455,7 +455,7 @@
      "id": "i_l7",
      "x": 93.0,
      "y": 50.0,
-     "l": 30.0,
+     "l": 26.0,
      "h": 6.0,
      "style": {
       "taille": 7.5,
@@ -466,12 +466,12 @@
     },
     {
      "id": "i_v7",
-     "x": 123.0,
+     "x": 119.0,
      "y": 50.0,
-     "l": 56.0,
+     "l": 61.0,
      "h": 6.0,
      "style": {
-      "taille": 8.5,
+      "taille": 8.0,
       "gras": true
      },
      "type": "CHAMP",

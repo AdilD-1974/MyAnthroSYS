@@ -219,7 +219,7 @@
       "taille": 10.0
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(adresse.code_postal, \"\") + \" \" + MAJUSCULE(SIVIDE(adresse.code_ville, \"\"))",
+     "valeur": "SIVIDE(adresse.code_postal, \"\") + \" \" + MAJUSCULE(SIVIDE(adresse.ville_libelle, SIVIDE(adresse.code_ville, \"\")))",
      "affichage": {
       "valeur_si_vide": ""
      }

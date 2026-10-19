@@ -96,3 +96,24 @@ def test_regroupement_par_uo_avec_sous_totaux(s):                          # RG-
     assert not anomalies and len(pages) == 2                              # nouvelle page à chaque groupe
     assert textes == ["UO de 2e niveau : Commercial", "BENNANI", "Sous-total 1 : 5 100,00",
                       "UO de 2e niveau : Direction financière", "ALAMI", "Sous-total 1 : 8 450,50"]
+
+
+# ---- RG-EDT-LIBELLE-01 : intitulé de chaque code de référentiel ----
+def test_intitules_lus_dans_les_referentiels(db):
+    from sqlalchemy import text
+    from app.editions import population
+    db.execute(text("CREATE TABLE IF NOT EXISTS ref_grade (code text, libelle text)"))
+    db.execute(text("CREATE TABLE IF NOT EXISTS ref_type_temps (code text, libelle text)"))
+    db.execute(text("CREATE TABLE IF NOT EXISTS ref_ville (code text, libelle text)"))
+    db.execute(text("INSERT INTO ref_grade VALUES ('G3', 'Grade 3 — Agent de maîtrise')"))
+    db.execute(text("INSERT INTO ref_type_temps VALUES ('TP', 'Temps plein')"))      # 2e référentiel candidat
+    db.execute(text("INSERT INTO ref_ville VALUES ('RBT', 'Rabat')"))
+    lignes = [{"qualification": {"code_grade": "G3", "code_echelle": "INCONNU"}, "contrat": {"code_temps": "TP"},
+               "adresse": {"code_ville": "RBT"}},
+              {"qualification": {"code_grade": "G3", "grade_libelle": "Libellé figé"}}]
+    population.libeller(db, lignes)
+    assert lignes[0]["qualification"]["grade_libelle"] == "Grade 3 — Agent de maîtrise"
+    assert lignes[0]["contrat"]["temps_libelle"] == "Temps plein" and lignes[0]["adresse"]["ville_libelle"] == "Rabat"
+    assert "echelle_libelle" not in lignes[0]["qualification"]           # code inconnu : pas d'intitulé inventé
+    assert lignes[1]["qualification"]["grade_libelle"] == "Libellé figé"  # le figé n'est pas remplacé
+    db.rollback()

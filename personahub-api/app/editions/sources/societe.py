@@ -36,6 +36,7 @@ CHAMPS_SOCIETE = [
     _t("identifiant_fiscal", "Identifiant fiscal (IF)"), _t("ice", "ICE"),
     _t("registre_commerce", "Registre de commerce"), _t("patente", "Patente"),
     _t("capital_social", "Capital social", "MONTANT"), _t("code_devise_capital", "Devise du capital"),
+    _t("devise_capital_libelle", "Devise du capital (libellé)"),
     _t("nom_gerant", "Gérant"), _t("logo_path", "Logo (chemin)", "IMAGE"),
     _t("numero_cnss", "N° d'affiliation CNSS"), _t("numero_cimr", "N° d'adhésion CIMR"),
     _t("affiliations.*", "N° d'affiliation par organisme"),
@@ -64,6 +65,10 @@ class FournisseurSociete(Fournisseur):
             if r["code_type_affiliation"]:
                 affiliations[str(r["code_type_affiliation"]).upper()] = r["numero_affiliation"]
         ligne["affiliations"] = affiliations
+        # RG-EDT-LIBELLE-01 : intitulé de la devise du capital
+        from app.editions.population import _referentiel
+        dev = ligne.get("code_devise_capital")
+        ligne["devise_capital_libelle"] = _referentiel(db, ("ref_devise",), {str(dev)}, {}).get(str(dev)) if dev else None
         ligne["numero_cnss"] = next((v for k, v in affiliations.items() if "CNSS" in k), None)
         ligne["numero_cimr"] = next((v for k, v in affiliations.items() if "CIMR" in k), None)
         return [ligne]

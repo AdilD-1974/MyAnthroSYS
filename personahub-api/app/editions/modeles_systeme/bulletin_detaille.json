@@ -24,9 +24,6 @@
    "code": "b",
    "source": "BULLETIN",
    "role": "PRINCIPAL",
-   "filtres": [
-    "periode_id = @periode.id"
-   ],
    "tri": [
     {
      "champ": "identite.nom"
@@ -517,7 +514,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(qualification.classification_libelle, SIVIDE(qualification.code_categorie_professionnelle, \"—\"))",
+     "valeur": "SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, \"—\"))",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -604,7 +601,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(contrat.code_type_contrat, \"—\")",
+     "valeur": "SIVIDE(contrat.type_contrat_libelle, SIVIDE(contrat.code_type_contrat, \"—\"))",
      "affichage": {
       "valeur_si_vide": ""
      }
