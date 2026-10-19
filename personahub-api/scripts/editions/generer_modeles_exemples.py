@@ -14,7 +14,7 @@ Chaque modèle est un exemple complet, prêt à l'emploi et à copier pour perso
     AUTRE         Fiche de synthèse annuelle du salarié (cumuls, moyennes, ratios)
     BULLETIN      Bulletins détaillé, moderne, formulaire ; bulletin récapitulatif de l'exercice (12 mois)
     CONTRÔLE      Écarts M / M-1, anomalies, IR, écarts par rubrique, contrôle entre deux périodes,
-                  comparatif des rubriques ; SYNTHÈSE masse salariale ; LISTE émargement
+                  comparatif des rubriques ; SYNTHÈSE masse salariale (par direction et catégorie, par collaborateur) ; LISTE émargement
 Les montants passent par les champs totaux du bulletin : aucun code de rubrique propre à un
 client n'est supposé.
 """
@@ -1403,6 +1403,87 @@ def masse_salariale() -> dict:
         usages={"confidentialite": 2})
 
 
+NIVEAUX_UO = ["UO d'affectation (chemin complet)", "Direction (1er niveau)", "2e niveau"]
+
+
+def masse_par_collaborateur() -> dict:
+    """RG-EDT-MASSE-01 (Adil DAIA) : masse salariale nominative, regroupée UO › catégorie › collaborateur.
+    Population au choix au lancement (UO avec ou sans les UO rattachées, catégories… : RG-EDT-FILTRE-01) ;
+    niveau de regroupement des UO au choix. Une ligne par bulletin du mois (plusieurs périodes : plusieurs lignes)."""
+    L = 277.0
+    cols = [
+        ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
+        ("nom", "Nom et prénom", 58, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
+        ("emp", "Emploi / fonction", 51,
+         'SIVIDE(affectation.emploi_libelle, SIVIDE(qualification.fonction_libelle, SIVIDE(qualification.emploi_libelle, "")))', None, "GAUCHE"),
+        ("brut", "Masse brute", 26, "total_brut", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cot_sal", "Cot. salariales", 24, "total_cot_salariale", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net", "Net à payer", 26, "net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cot_pat", "Cot. patronales", 24, "total_cot_patronale", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cout", "Coût employeur", 31, "SIVIDE(cout_employeur, 0)", "MONTANT_SANS_ZERO", "DROITE"),
+        ("part", "% masse", 19, "SI(TOTAL(total_brut, ETAT) = 0, 0, total_brut / TOTAL(total_brut, ETAT) * 100)",
+         "POURCENTAGE", "DROITE"),
+    ]
+    x_montants = sum(c[2] for c in cols[:3])
+
+    def rangee(prefixe, portee, libelle, couleur, fond_, gras, y=0.5, h=6, retrait=1):
+        el = [fond(f"{prefixe}_fond", 0, y, L, h, fond_)] if fond_ else []
+        el.append(champ(f"{prefixe}_lib", retrait, y, x_montants - retrait, h, libelle, taille=8, gras=gras, couleur=couleur))
+        x = x_montants
+        for code, _t, l, expr, _m, _a in cols[3:]:
+            if code == "part":
+                v = f"SI(TOTAL(total_brut, ETAT) = 0, 0, TOTAL(total_brut, {portee}) / TOTAL(total_brut, ETAT) * 100)"
+                masque = "POURCENTAGE"
+            else:
+                v, masque = f"TOTAL({expr}, {portee})", "MONTANT"
+            el.append(champ(f"{prefixe}_{code}", x + 0.8, y, l - 1.6, h, v, masque=masque, taille=8, gras=gras,
+                            couleur=couleur, alignement="DROITE"))
+            x += l
+        return el
+
+    en_tete = entete_societe(L, "Masse salariale par collaborateur",
+                             f'"Par unité organisationnelle et catégorie — " + {MOIS}') + entete_colonnes("c", cols, 21, L)
+    g1_tete = [fond("g1_fond", 0, 1, L, 6.5, BLEU_CLAIR),
+               champ("g1_titre", 1.5, 1, 260, 6.5, "uo_groupe", taille=8.5, gras=True, couleur=BLEU)]
+    g2_tete = [champ("g2_titre", 4, 0.5, 200, 5.5, "categorie_groupe", taille=8, gras=True, italique=True, couleur=BLEU),
+               ligne("g2_filet", 4, 5.8, 120, couleur=GRIS_CLAIR, epaisseur=0.3)]
+    corps = ligne_valeurs("v", cols)
+    g2_pied = rangee("g2", "GROUPE", '"Total " + categorie_groupe + " — " + NB(id, GROUPE) + " bulletin(s)"',
+                     None, None, True, retrait=4) + [ligne("g2_sep", 0, 6.6, L, couleur=GRIS_CLAIR, epaisseur=0.2)]
+    g1_pied = rangee("g1", "GROUPE", '"Total " + uo_groupe + " — " + NB(id, GROUPE) + " bulletin(s)"', BLEU, None, True)
+    g1_pied.append(ligne("g1_filet", 0, 0.4, L, couleur=BLEU, epaisseur=0.5))
+    total = rangee("t", "ETAT", '"TOTAL SOCIÉTÉ — " + NB(id, ETAT) + " bulletin(s)"', BLANC, BLEU, True, y=2, h=8)
+    total.append(riche("t_note", 0, 13, L, 10,
+                       "Population : celle choisie au lancement (unités organisationnelles avec ou sans les UO rattachées, "
+                       "catégories, classifications…). % masse : part de la masse brute de l'état. Un salarié payé sur "
+                       "plusieurs périodes du mois figure sur plusieurs lignes.", taille=7, italique=True, couleur=GRIS))
+    uo = ('SI(@niveau_uo = "Direction (1er niveau)", SIVIDE(affectation.uo_niveau1_libelle, "Sans unité organisationnelle"), '
+          'SI(@niveau_uo = "2e niveau", SIVIDE(affectation.uo_niveau2_libelle, "Sans unité organisationnelle"), '
+          'SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, "Sans unité organisationnelle"))))')
+    return definition(
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS,
+         {"code": "niveau_uo", "libelle": "Regrouper les UO par", "type": "LISTE", "obligatoire": False,
+          "valeurs": NIVEAUX_UO, "defaut": '"' + NIVEAUX_UO[0] + '"'}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
+          "calculs": [{"code": "uo_groupe", "expression": uo},
+                      {"code": "categorie_groupe", "expression":
+                       'SIVIDE(qualification.categorie_professionnelle_libelle, "Catégorie non renseignée")'}],
+          "groupes": ["uo_groupe", "categorie_groupe"],
+          "tri": [{"champ": "uo_groupe"}, {"champ": "categorie_groupe"}, {"champ": "identite.nom"},
+                  {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("g1_tete", "EN_TETE_GROUPE", 8, g1_tete, niveau_groupe=1),
+         bande("g2_tete", "EN_TETE_GROUPE", 6.5, g2_tete, niveau_groupe=2),
+         bande("detail", "CORPS", 5, corps),
+         bande("g2_pied", "PIED_GROUPE", 7, g2_pied, niveau_groupe=2),
+         bande("g1_pied", "PIED_GROUPE", 9, g1_pied, niveau_groupe=1),
+         bande("total", "PIED_ETAT", 24, total, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Masse salariale nominative — document confidentiel"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Masse_salariale_collaborateurs_" + @periode.code'},
+        usages={"confidentialite": 3})
+
+
 def emargement() -> dict:
     """Liste des nets à payer par mode de paiement, avec colonne d'émargement (espèces, chèques)."""
     L = 180.0
@@ -1827,6 +1908,7 @@ MODELES = {
     "controle_anomalies.json": controle_anomalies,
     "controle_ir.json": controle_ir,
     "masse_salariale.json": masse_salariale,
+    "masse_salariale_collaborateurs.json": masse_par_collaborateur,
     "emargement.json": emargement,
     "ecarts_rubriques.json": ecarts_rubriques,
     "controle_deux_periodes.json": controle_deux_periodes,

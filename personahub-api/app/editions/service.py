@@ -82,6 +82,7 @@ MODELES_SYSTEME = {
     "controle_anomalies.json": ("CONTROLE_ANOMALIES_PAIE", "Contrôle des bulletins (anomalies)", "AUTRE"),
     "controle_ir.json": ("CONTROLE_IR", "Contrôle de l'IR retenu", "AUTRE"),
     "masse_salariale.json": ("MASSE_SALARIALE", "Masse salariale par direction et catégorie", "AUTRE"),
+    "masse_salariale_collaborateurs.json": ("MASSE_SALARIALE_COLLABORATEURS", "Masse salariale par collaborateur (UO › catégorie)", "AUTRE"),
     "emargement.json": ("ETAT_EMARGEMENT", "État d'émargement (nets par mode de paiement)", "LISTE"),
     # comparaisons entre périodes et récapitulatif de l'exercice
     "ecarts_rubriques.json": ("ECARTS_RUBRIQUES", "Écarts par salarié et par rubrique", "AUTRE"),

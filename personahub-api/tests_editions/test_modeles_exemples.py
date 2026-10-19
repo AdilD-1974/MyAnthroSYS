@@ -16,7 +16,7 @@ ATTENDUS = {  # code : (catégorie, nb de documents pour septembre : 1 = un éta
     "ETAT_COTISATIONS_SOCIALES": ("DECLARATION", 1), "FICHE_SYNTHESE_ANNUELLE": ("AUTRE", 2),
     "BULLETIN_DETAILLE": ("BULLETIN", 2), "BULLETIN_MODERNE": ("BULLETIN", 2), "BULLETIN_FORMULAIRE": ("BULLETIN", 2),
     "ETAT_ECARTS_M_M1": ("AUTRE", 1), "CONTROLE_ANOMALIES_PAIE": ("AUTRE", 1), "CONTROLE_IR": ("AUTRE", 1),
-    "MASSE_SALARIALE": ("AUTRE", 1), "ETAT_EMARGEMENT": ("LISTE", 1),
+    "MASSE_SALARIALE": ("AUTRE", 1), "MASSE_SALARIALE_COLLABORATEURS": ("AUTRE", 1), "ETAT_EMARGEMENT": ("LISTE", 1),
     "ECARTS_RUBRIQUES": ("AUTRE", 1), "COMPARATIF_RUBRIQUES": ("AUTRE", 1),
 }
 # états qui demandent d'autres paramètres que la période (code : paramètres, nb de documents)
@@ -58,7 +58,7 @@ def test_exemples_ranges_dans_le_menu_de_la_paie(s):
     assert a["États standard"] == {"ORDRE_VIREMENT", "ETAT_EMARGEMENT"}
     assert a["États de contrôle paie"] == {"ETAT_ECARTS_M_M1", "CONTROLE_ANOMALIES_PAIE", "CONTROLE_IR", "ECARTS_RUBRIQUES",
                                            "CONTROLE_DEUX_PERIODES", "COMPARATIF_RUBRIQUES"}
-    assert a["États de synthèse"] == {"MASSE_SALARIALE", "FICHE_SYNTHESE_ANNUELLE"}
+    assert a["États de synthèse"] == {"MASSE_SALARIALE", "MASSE_SALARIALE_COLLABORATEURS", "FICHE_SYNTHESE_ANNUELLE"}
     rh = {t["libelle"]: {m["code"] for m in t["modeles"]} for t in th.arbre(s, PAIE, "RH")["themes"]}
     assert rh == {"Attestations": {"ATTESTATION_TRAVAIL_SALAIRE"}, "Courriers": {"NOTIFICATION_REMUNERATION"}}
 
