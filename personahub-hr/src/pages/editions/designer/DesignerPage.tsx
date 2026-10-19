@@ -28,6 +28,7 @@ import Structure from "./Structure";
 import Donnees, { type CibleErreur } from "./Donnees";
 import { changerPlan } from "./plans";
 import { BoutonMiseEnPage } from "./MiseEnPage";
+import { BoutonMenus, libelleEcran } from "@/pages/editions/MenusModele";
 import { coller, copier as copierObjets, deplacer as deplacerObjets, dupliquer, idsSelection, supprimer as supprimerObjets, trouver } from "./selection";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
@@ -149,7 +150,10 @@ export default function DesignerPage() {
     setOccupe("publier");
     try {
       const r = await editionsApi.publier(version.id, jeton.current);
-      toast({ title: `Version ${r.numero} publiée`, description: `Empreinte ${r.empreinte.slice(0, 12)}…` });
+      // RG-EDT-ECRAN-01 : on dit où le modèle publié est proposé
+      const menus = await editionsApi.ecransDuModele(version.modele.id).catch(() => []);
+      toast({ title: `Version ${r.numero} publiée`,
+        description: menus.length ? `Proposée dans : ${menus.map(libelleEcran).join(" · ")}` : "Lancement depuis la bibliothèque des éditions (aucun menu rattaché)" });
       navigate(`/editions/${modeleId}/designer`, { replace: true });
       charger();
     } catch (e: any) {
@@ -351,6 +355,7 @@ export default function DesignerPage() {
             <span className="w-10 text-center text-xs">{Math.round(zoom * 100)} %</span>
             <Button variant="ghost" size="sm" title="Zoom avant" onClick={() => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 10) / 10))}><ZoomIn className="h-4 w-4" /></Button>
             <Button variant="ghost" size="sm" title="Définition JSON" onClick={() => setJson({ ouvert: true, texte: JSON.stringify(editeur.definition, null, 2) })}><Braces className="h-4 w-4" /></Button>
+            <BoutonMenus modele={m} variante="outline" />
             <Button variant="outline" size="sm" onClick={() => setApercu((a) => ({ ...a, ouvert: true }))}><Eye className="mr-1 h-4 w-4" />Aperçu</Button>
             {lectureSeule ? (
               m.est_systeme

@@ -91,6 +91,9 @@ const VueDeclarationsPage     = lazy(() => import("@/pages/paie/VueDeclarationsP
 const TraitementPaiePage      = lazy(() => import("@/pages/paie/TraitementPaiePage"));  // moteur de paie (Adil DAIA)
 const EtatsPage               = lazy(() => import("@/pages/configuration/Editions/EtatsPage"));  // ✅ GÉNÉRATEUR D'ÉTATS (MODULE_ETATS_PAIE.md)
 const EtatNouveauPage         = lazy(() => import("@/pages/configuration/Editions/EtatNouveauPage"));  // ✅ Assistant de création (4 étapes, §15.5)
+const EditionsPage            = lazy(() => import("@/pages/editions/EditionsPage"));             // ✅ ÉDITIONS UNIFIÉES — bibliothèque et lancement
+const EditionsDesignerPage    = lazy(() => import("@/pages/editions/designer/DesignerPage"));    // ✅ ÉDITIONS UNIFIÉES — designer (lot 2)
+const EditionBulletinsPage    = lazy(() => import("@/pages/editions/LanceurEcran").then(m => ({ default: m.EditionBulletinsPage })));  // ✅ Paie › Édition des bulletins (RG-EDT-ECRAN, Adil DAIA)
 const ClotureAnnuellePage     = lazy(() => import("@/pages/paie/ClotureAnnuellePage"));  // clôture annuelle (Adil DAIA)
 const LancementPaiePage       = lazy(() => import("@/pages/paie/LancementPaiePage"));    // lancement en masse (Adil DAIA)
 const VueTraitementPage       = lazy(() => import("@/pages/paie/VueTraitementPage"));     // vue d'ensemble traitement (Adil DAIA)
@@ -464,6 +467,10 @@ const App = () => (
                   <Route path="/etats/nouveau" element={<EtatNouveauPage />} />
                   <Route path="/etats/:id/modifier" element={<EtatNouveauPage />} />
                   <Route path="/etats" element={<EtatsPage />} />
+                  {/* ── ✅ ÉDITIONS UNIFIÉES — accès contrôlé côté serveur par require_menu_access("editions")
+                       (menu_role) et par les droits fins edt_droit : pas de liste de rôles figée ici. ── */}
+                  <Route path="/editions" element={<EditionsPage />} />
+                  <Route path="/editions/:modeleId/designer" element={<EditionsDesignerPage />} />
                   <Route path="/paie/declarations/ir" element={
                     <ProtectedRoute roles={["administrateur", "gestionnaire_rh", "gestionnaire_paie"]}>
                       <DeclarationIrPage />
@@ -570,6 +577,11 @@ const App = () => (
                   <Route path="/paie/editions/journaux" element={
                     <ProtectedRoute roles={["administrateur", "gestionnaire_paie"]}>
                       <RapportTemplatesPage />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/paie/edition-bulletins" element={
+                    <ProtectedRoute roles={["administrateur", "gestionnaire_rh", "gestionnaire_paie"]}>
+                      <EditionBulletinsPage />
                     </ProtectedRoute>
                   } />
                   <Route path="/paie/editions/bulletins" element={

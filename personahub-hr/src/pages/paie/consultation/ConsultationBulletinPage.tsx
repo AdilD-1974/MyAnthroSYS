@@ -339,6 +339,7 @@ export default function ConsultationBulletinPage() {
             onOpenCollab={ouvrirCollaborateur}
             onOpenRubrique={ouvrirRubrique}
             panneauCycle={false}
+            ecranEdition="consultation_bulletin"
           />
         </>
       )}

@@ -115,6 +115,8 @@ def creer_base():
             curseur = c.connection.cursor()        # SQL brut : les « % » ne sont pas des paramètres
             curseur.execute(_sans_public((ICI / "schema_recette.sql").read_text(encoding="utf-8")))
             curseur.execute(migration)
+            m077 = (RACINE / "migration" / "077_editions_ecrans.sql").read_text(encoding="utf-8")
+            curseur.execute(_sans_public(m077).replace("BEGIN;", "").replace("ROLLBACK;", ""))
             curseur.execute(DONNEES)
             curseur.execute(SQL_PATRONAL)
         session = Session(moteur)

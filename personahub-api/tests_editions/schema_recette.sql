@@ -284,3 +284,19 @@ CREATE TABLE public.cumul (
   "base" numeric,
   "montant_patronal" numeric DEFAULT 0
 );
+
+-- navigation (barre latérale) — colonnes réelles d'AnthroBase
+CREATE TABLE nav_section (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, code varchar(60) NOT NULL UNIQUE,
+  label varchar(100) NOT NULL, ordre integer DEFAULT 0 NOT NULL, actif boolean DEFAULT true NOT NULL);
+CREATE TABLE nav_menu_item (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, code varchar(80) NOT NULL UNIQUE,
+  label varchar(120) NOT NULL, icone varchar(80), chemin varchar(200), section_id uuid REFERENCES nav_section(id),
+  parent_id uuid REFERENCES nav_menu_item(id), ordre integer DEFAULT 0 NOT NULL, actif boolean DEFAULT true NOT NULL,
+  module_code text);
+CREATE TABLE nav_role_visibilite (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, item_id uuid NOT NULL,
+  role_code varchar(60) NOT NULL, UNIQUE (item_id, role_code));
+INSERT INTO nav_section (id, code, label) VALUES ('5e000000-0000-0000-0000-000000000001', 'paie', 'Paie');
+INSERT INTO nav_menu_item (id, code, label, chemin, section_id, ordre, module_code) VALUES
+  ('5e000000-0000-0000-0000-000000000002', 'paie_editions_bulletins', 'Bulletins (ancien)', '/paie/editions/bulletins',
+   '5e000000-0000-0000-0000-000000000001', 40, 'paie');
+INSERT INTO nav_role_visibilite (item_id, role_code) VALUES
+  ('5e000000-0000-0000-0000-000000000002', 'administrateur'), ('5e000000-0000-0000-0000-000000000002', 'gestionnaire_paie');

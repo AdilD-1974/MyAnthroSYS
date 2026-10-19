@@ -11,7 +11,7 @@
  * If-Match avec le jeton lu ; un 409 signifie « modifié ailleurs ».
  */
 import { API_BASE, tokenStore } from "@/lib/api";
-import type { Definition } from "@/pages/editions/types";
+import type { Definition, Parametre } from "@/pages/editions/types";
 
 export class ErreurEdition extends Error {
   constructor(public statut: number, message: string, public details?: any) {
@@ -193,6 +193,56 @@ export interface Periode {
   nb_bulletins: number;
 }
 
+// ── Menus métier (RG-EDT-ECRAN-01..06) ─────────────────────────────────────
+export interface Ecran {
+  code_ecran: string;
+  libelle: string;
+  module_libelle: string | null;
+  chemin_route: string | null;
+  categorie_edition: Categorie | null;
+  contexte_disponible: string[];
+}
+export interface RattachementEcran {
+  code_ecran: string;
+  par_defaut: boolean;
+  libelle?: string;
+  module_libelle?: string | null;
+  chemin_route?: string | null;
+  /** Proposé d'office (aucun rattachement dans la société pour cet écran). */
+  implicite?: boolean;
+}
+export interface ModeleEcran {
+  id: string;
+  code: string;
+  libelle: string;
+  categorie: Categorie;
+  est_systeme: boolean;
+  numero_publie: number;
+  par_defaut: boolean;
+  parametres: Parametre[];
+  formes: { code: string; libelle: string }[];
+  forme_par_defaut: string | null;
+}
+/** Contexte transmis par l'écran : il remplit les paramètres du modèle selon leur type. */
+export interface ContexteEcran {
+  periode_id?: string | null;
+  plan_paie_id?: string | null;
+  collaborateur_id?: string | null;
+  collaborateur_ids?: string[];
+  bulletin_id?: string | null;
+  annee?: number | null;
+}
+
+async function pdfAvecJeton(chemin: string): Promise<Blob> {
+  const token = tokenStore.get();
+  const r = await fetch(`${API_BASE}/editions${chemin}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new ErreurEdition(r.status, e?.detail?.message ?? `Erreur ${r.status}`);
+  }
+  return r.blob();
+}
+
 // ── Appels ──────────────────────────────────────────────────────────────────
 export const editionsApi = {
   catalogue: () => appel<{ sources: SourceCatalogue[] }>("GET", "/catalogue").then((r) => r.sources),
@@ -260,6 +310,20 @@ export const editionsApi = {
     const r = await fetch(`${API_BASE}/editions/images/${encodeURIComponent(code)}/fichier`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     return r.ok ? URL.createObjectURL(await r.blob()) : null;
   },
+
+  // ── menus métier ──
+  ecrans: () => appel<Ecran[]>("GET", "/ecrans"),
+  ecransDuModele: (modeleId: string) => appel<RattachementEcran[]>("GET", `/modeles/${modeleId}/ecrans`),
+  rattacher: (modeleId: string, ecrans: { code_ecran: string; par_defaut: boolean }[]) =>
+    appel<RattachementEcran[]>("PUT", `/modeles/${modeleId}/ecrans`, { ecrans }),
+  modelesEcran: (codeEcran: string) =>
+    appel<{ ecran: Ecran; modeles: ModeleEcran[]; defaut: string | null }>("GET", `/ecrans/${codeEcran}/modeles`),
+  lancerEcran: (codeEcran: string, corps: { modele_id?: string; contexte?: ContexteEcran; parametres?: Record<string, unknown>; forme?: string }) =>
+    appel<{ demande_id: string; statut: string; documents: DocumentProduit[]; modele: { id: string; code: string; libelle: string } }>(
+      "POST", `/ecrans/${codeEcran}/demandes`, corps),
+  /** Tous les documents d'une demande en un seul PDF (impression en série). */
+  pdfDemande: (demandeId: string) => pdfAvecJeton(`/ecrans/demandes/${demandeId}/pdf`),
+  pdfDocumentEcran: (documentId: string) => pdfAvecJeton(`/ecrans/documents/${documentId}/fichier`),
 
   async ouvrirDocument(documentId: string, telecharger = false, nom = "document.pdf") {
     const token = tokenStore.get();

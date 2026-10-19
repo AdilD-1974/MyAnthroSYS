@@ -24,8 +24,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_societe_active_id, require_menu_access, roles_from_payload
+from sqlalchemy import bindparam, text
+
+from app.core.security import (get_current_user_payload, get_societe_active_id, require_menu_access,
+                               roles_from_payload)
 from app.editions import expressions as ex
+from app.editions import ecrans as ec
 from app.editions import service as sv
 
 router = APIRouter(prefix="/editions", tags=["Éditions"])
@@ -34,6 +38,26 @@ router = APIRouter(prefix="/editions", tags=["Éditions"])
 def utilisateur(payload: dict = Depends(require_menu_access("editions")),
                 societe_id: str = Depends(get_societe_active_id)) -> sv.Utilisateur:
     return sv.Utilisateur(payload.get("sub"), str(societe_id), frozenset(roles_from_payload(payload)))
+
+
+# RG-EDT-ECRAN-06 : les écrans métier (paie…) lancent les éditions sans exiger le menu
+# « Éditions » : gestionnaires, administrateur, ou rôle ayant un menu d'édition métier.
+ROLES_METIER = {"administrateur", "gestionnaire_rh", "gestionnaire_paie"}
+MENUS_METIER = ("editions", "paie_edition_bulletins")
+
+
+def utilisateur_metier(payload: dict = Depends(get_current_user_payload),
+                       societe_id: str = Depends(get_societe_active_id),
+                       db: Session = Depends(get_db)) -> sv.Utilisateur:
+    roles = set(roles_from_payload(payload))
+    if not roles & ROLES_METIER:
+        ok = roles and db.execute(text("""SELECT 1 FROM menu_role mr JOIN menu_items m ON m.id = mr.menu_id
+                                          WHERE m.code IN :menus AND m.actif = true AND mr.role IN :roles"""
+                                       ).bindparams(bindparam("menus", expanding=True), bindparam("roles", expanding=True)),
+                                  {"menus": list(MENUS_METIER), "roles": sorted(roles)}).first()
+        if not ok:
+            raise HTTPException(status_code=403, detail={"message": "Accès refusé aux éditions de cet écran"})
+    return sv.Utilisateur(payload.get("sub"), str(societe_id), frozenset(roles))
 
 
 def _http(e: sv.ErreurEdition) -> HTTPException:
@@ -84,6 +108,17 @@ class VersionEcriture(BaseModel):
 class Execution(BaseModel):
     parametres: dict = {}
     forme: Optional[str] = None               # mise en forme choisie (« Multiple modèle »)
+
+
+class LancementEcran(BaseModel):
+    modele_id: Optional[str] = None           # sinon le modèle par défaut de l'écran
+    contexte: dict = {}                       # periode_id, collaborateur_id(s), bulletin_id, plan_paie_id…
+    parametres: dict = {}                     # saisis à l'écran : priment sur le contexte
+    forme: Optional[str] = None
+
+
+class Rattachements(BaseModel):
+    ecrans: list[dict] = []                   # [{code_ecran, par_defaut}]
 
 
 class ExpressionAnalyse(BaseModel):
@@ -163,7 +198,7 @@ def lister_modeles(categorie: Optional[str] = None, archives: bool = False,
 
 @router.post("/modeles", status_code=201)
 def creer_modele(corps: ModeleCreation, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
-    return _ecriture(db, sv.creer_modele, u, **corps.model_dump())
+    return _ecriture(db, ec.creer_modele, u, **corps.model_dump())
 
 
 @router.get("/modeles/{modele_id}")
@@ -290,3 +325,53 @@ def logo(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)
     p = _lecture(db, sv.fichier_logo, u)
     types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".svg": "image/svg+xml", ".gif": "image/gif", ".webp": "image/webp"}
     return FileResponse(p, media_type=types.get(p.suffix.lower(), "application/octet-stream"), headers={"Cache-Control": "private, no-store"})
+
+
+# ---------------------------------------------------------------- menus métier (RG-EDT-ECRAN-01..06)
+@router.get("/ecrans")
+def ecrans(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """Écrans (menus) où un modèle peut être proposé."""
+    return _lecture(db, ec.lister_ecrans, u)
+
+
+@router.get("/modeles/{modele_id}/ecrans")
+def ecrans_du_modele(modele_id: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, ec.ecrans_du_modele, u, modele_id)
+
+
+@router.put("/modeles/{modele_id}/ecrans")
+def rattacher(modele_id: str, corps: Rattachements, u: sv.Utilisateur = Depends(utilisateur),
+              db: Session = Depends(get_db)):
+    return _ecriture(db, ec.rattacher, u, modele_id, corps.ecrans)
+
+
+@router.get("/ecrans/{code_ecran}/modeles")
+def modeles_ecran(code_ecran: str, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    """Modèles publiés proposés sur un écran métier, le défaut en tête."""
+    return _lecture(db, ec.modeles_ecran, u, code_ecran)
+
+
+@router.post("/ecrans/{code_ecran}/demandes", status_code=201)
+def lancer_ecran(code_ecran: str, corps: LancementEcran, u: sv.Utilisateur = Depends(utilisateur_metier),
+                 db: Session = Depends(get_db)):
+    return _ecriture(db, ec.lancer, u, code_ecran, corps.modele_id, corps.contexte, corps.parametres, corps.forme)
+
+
+@router.get("/ecrans/demandes/{demande_id}/pdf")
+def pdf_demande(demande_id: str, telecharger: bool = Query(False), u: sv.Utilisateur = Depends(utilisateur_metier),
+                db: Session = Depends(get_db)):
+    """Tous les documents d'une demande réunis en un PDF, pour l'impression en série."""
+    contenu, nom = _ecriture(db, ec.pdf_demande, u, demande_id)
+    mode = "attachment" if telecharger else "inline"
+    return Response(contenu, media_type="application/pdf", headers={
+        "Content-Disposition": f"{mode}; filename*=UTF-8''{quote(nom)}", "Cache-Control": "private, no-store"})
+
+
+@router.get("/ecrans/documents/{document_id}/fichier")
+def fichier_ecran(document_id: str, telecharger: bool = Query(False), u: sv.Utilisateur = Depends(utilisateur_metier),
+                  db: Session = Depends(get_db)):
+    """Un document produit depuis un écran métier (mêmes contrôles que /documents/{id}/fichier)."""
+    chemin, nom = _ecriture(db, sv.fichier_document, u, document_id)
+    mode = "attachment" if telecharger else "inline"
+    return FileResponse(chemin, media_type="application/pdf", headers={
+        "Content-Disposition": f"{mode}; filename*=UTF-8''{quote(nom)}", "Cache-Control": "private, no-store"})

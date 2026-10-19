@@ -18,6 +18,7 @@ import {
 } from "@/lib/editionsApi";
 import type { Parametre } from "./types";
 import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresForm";
+import { BoutonMenus, libelleEcran, useEcransCategorie } from "./MenusModele";
 
 const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 
@@ -148,6 +149,7 @@ export default function EditionsPage() {
                 onClick={() => setCreation({ ouvert: true, code: `${m.code}_COPIE`, libelle: `${m.libelle} (copie)`, categorie: m.categorie, visibilite: "SOCIETE", origine: m.id })}>
                 <Copy className="mr-1 h-3.5 w-3.5" />Copier
               </Button>
+              <BoutonMenus modele={m} />
             </div>
           </div>
         ))}
@@ -179,6 +181,7 @@ export default function EditionsPage() {
                 </select>
               </label>
             </div>
+            <MenusProposes categorie={creation.categorie} />
             <label className="block text-xs font-medium">Partir de
               <select className={`${classe} mt-1`} value={creation.origine} onChange={(e) => setCreation((c) => ({ ...c, origine: e.target.value }))}>
                 <option value="">Un modèle vierge</option>
@@ -234,6 +237,18 @@ export default function EditionsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** RG-EDT-ECRAN-02 : où le modèle sera proposé une fois publié. */
+function MenusProposes({ categorie }: { categorie: Categorie }) {
+  const ecrans = useEcransCategorie(categorie);
+  if (!ecrans.length) return null;
+  return (
+    <div className="rounded border border-primary/20 bg-primary/5 px-2 py-1.5 text-[11px] text-muted-foreground">
+      Une fois publié, il sera proposé dans : <span className="font-medium text-foreground">{ecrans.map(libelleEcran).join(" · ")}</span>
+      <span className="block">(réglable ensuite par le bouton « Menus »)</span>
     </div>
   );
 }

@@ -35,6 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { buildTrail } from "@/components/navigation/ReturnTrail";
 import { useFormatMasks } from "@/hooks/useFormatMasks";
 import CyclePaie from "./CyclePaie";
+import { BoutonImprimer } from "@/pages/editions/LanceurEcran";
 
 // ---- Types locaux -------------------------------------------------------
 type Collab = { id: string; matricule: string; nom: string; prenom: string };
@@ -665,11 +666,13 @@ function exporterExcel(result: CalculBulletinResult, lignesParGroupe: Record<Gro
 }
 
 // ============================ Résultat ====================================
-export function Resultat({ result, prevTotaux, onDelete, deleting, onOpenCollab, onOpenRubrique, panneauCycle = true }: {
+export function Resultat({ result, prevTotaux, onDelete, deleting, onOpenCollab, onOpenRubrique, panneauCycle = true, ecranEdition = "traitement_paie" }: {
   result: CalculBulletinResult; prevTotaux?: CalculBulletinResult["totaux"] | null; onDelete?: () => void; deleting?: boolean;
   onOpenCollab?: () => void; onOpenRubrique?: (code: string) => void;
   /** Masquer le panneau CyclePaie (validation/dévalidation/clôture) — utile pour un écran de consultation pure lecture. */
   panneauCycle?: boolean;
+  /** RG-EDT-ECRAN-05 (Adil DAIA) : écran de lancement des éditions (bouton « Imprimer »). */
+  ecranEdition?: string;
 }) {
   const t = result.totaux;
   const c = result.collaborateur;
@@ -828,6 +831,20 @@ export function Resultat({ result, prevTotaux, onDelete, deleting, onOpenCollab,
                 </button>
               ))}
             </div>
+            <BoutonImprimer
+              ecran={ecranEdition}
+              contexte={{
+                bulletin_id: result.bulletin_id ?? null,
+                collaborateur_id: result.collaborateur.id,
+                periode_id: result.periode.id,
+                plan_paie_id: result.periode.plan_paie_id ?? null,
+              }}
+              desactive={
+                !result.bulletin_id ? "Enregistrez le bulletin pour pouvoir l'imprimer"
+                  : result.origine === "TEMP" ? "Précalcul non enregistré : enregistrez-le pour l'imprimer"
+                  : null
+              }
+            />
             <button
               onClick={() => exporterExcel(result, lignesParGroupe)}
               title="Exporter le bulletin en Excel"
