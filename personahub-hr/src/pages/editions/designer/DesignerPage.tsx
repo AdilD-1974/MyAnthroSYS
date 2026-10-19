@@ -9,7 +9,7 @@
  * Suppr supprimer · Ctrl+D dupliquer · flèches déplacer (Maj : 5 mm) · Échap désélectionner.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle, ArrowLeft, Braces, CheckCircle2, Copy, Eye, Loader2, Lock, Pencil, Redo2, Save, Send,
   Undo2, ZoomIn, ZoomOut,
@@ -29,6 +29,8 @@ import Donnees, { type CibleErreur } from "./Donnees";
 import { changerPlan } from "./plans";
 import { BoutonMiseEnPage } from "./MiseEnPage";
 import { BoutonMenus, libelleEcran } from "@/pages/editions/MenusModele";
+import { useRetour } from "@/pages/editions/retour";
+import "../editions.css";
 import { coller, copier as copierObjets, deplacer as deplacerObjets, dupliquer, idsSelection, supprimer as supprimerObjets, trouver } from "./selection";
 import { ContexteDesigner } from "./contexte";
 import { useEditeur } from "./useEditeur";
@@ -41,6 +43,8 @@ export default function DesignerPage() {
   const { modeleId } = useParams<{ modeleId: string }>();
   const [recherche] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const retour = useRetour();                                // RG-EDT-NAV-01 : retour à l'écran appelant
   const editeur = useEditeur(null);
 
   const [version, setVersion] = useState<Version | null>(null);
@@ -102,7 +106,7 @@ export default function DesignerPage() {
 
   const quitter = () => {
     if (editeur.modifie && !confirm("Des modifications ne sont pas enregistrées. Quitter quand même ?")) return;
-    navigate("/editions");
+    retour.revenir("/editions");
   };
 
   // ── actions serveur ──────────────────────────────────────────────────────
@@ -154,7 +158,7 @@ export default function DesignerPage() {
       const menus = await editionsApi.ecransDuModele(version.modele.id).catch(() => []);
       toast({ title: `Version ${r.numero} publiée`,
         description: menus.length ? `Proposée dans : ${menus.map(libelleEcran).join(" · ")}` : "Lancement depuis la bibliothèque des éditions (aucun menu rattaché)" });
-      navigate(`/editions/${modeleId}/designer`, { replace: true });
+      retour.remplacer(`/editions/${modeleId}/designer`);
       charger();
     } catch (e: any) {
       if (e instanceof ErreurEdition && e.statut === 422 && e.details?.erreurs) {
@@ -171,7 +175,7 @@ export default function DesignerPage() {
     setOccupe("brouillon");
     try {
       const r = await editionsApi.ouvrirBrouillon(modeleId);
-      navigate(`/editions/${modeleId}/designer?version=${r.version_id}`, { replace: true });
+      retour.remplacer(`/editions/${modeleId}/designer?version=${r.version_id}`);
     } catch (e: any) {
       toast({ title: "Modification impossible", description: e.message, variant: "destructive" });
     } finally { setOccupe(""); }
@@ -186,7 +190,7 @@ export default function DesignerPage() {
       });
       setCopieDlg({ ouvert: false, code: "", libelle: "" });
       toast({ title: "Copie créée", description: "Vous modifiez maintenant votre propre modèle." });
-      navigate(`/editions/${r.modele_id}/designer`);
+      navigate(`/editions/${r.modele_id}/designer`, { state: location.state });
     } catch (e: any) {
       toast({ title: "Copie impossible", description: e.message, variant: "destructive" });
     }
@@ -326,7 +330,7 @@ export default function DesignerPage() {
     return (
       <div className="p-8">
         <p className="mb-4 text-destructive">{erreurChargement ?? "Modèle introuvable."}</p>
-        <Button variant="outline" onClick={() => navigate("/editions")}><ArrowLeft className="mr-1 h-4 w-4" />Retour aux éditions</Button>
+        <Button variant="outline" onClick={() => retour.revenir("/editions")}><ArrowLeft className="mr-1 h-4 w-4" />Retour {retour.origine ? `: ${retour.origine}` : "aux éditions"}</Button>
       </div>
     );
   }
@@ -334,16 +338,16 @@ export default function DesignerPage() {
   const m = version.modele;
   return (
     <ContexteDesigner.Provider value={referentiels}>
-      <div className="flex h-[calc(100vh-4rem)] flex-col bg-background">
+      <div className="ecran-editions-texte flex h-[calc(100vh-4rem)] flex-col bg-background">
         {/* barre d'outils */}
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-          <Button variant="ghost" size="sm" onClick={quitter}><ArrowLeft className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={quitter} title={`Retour : ${retour.origine ?? "Éditions"}`}><ArrowLeft className="h-4 w-4" /></Button>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{m.libelle}</div>
             <div className="text-[11px] text-muted-foreground">
-              {m.code} · version {version.numero} · <span className={version.statut === "PUBLIEE" ? "text-emerald-700" : ""}>{LIBELLES_STATUT[version.statut]}</span>
+              {m.code} · version {version.numero} · <span className={version.statut === "PUBLIEE" ? "text-[hsl(var(--success))]" : ""}>{LIBELLES_STATUT[version.statut]}</span>
               {m.est_systeme && " · modèle système"}
-              {editeur.modifie && <span className="text-amber-600"> · modifications non enregistrées</span>}
+              {editeur.modifie && <span className="text-[hsl(var(--warning))]"> · modifications non enregistrées</span>}
             </div>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-1">
@@ -373,7 +377,7 @@ export default function DesignerPage() {
         </div>
 
         {lectureSeule && (
-          <div className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+          <div className="flex items-center gap-2 border-b bg-[hsl(var(--warning)/0.08)] px-3 py-1.5 text-xs text-[hsl(var(--warning))]">
             <Lock className="h-3.5 w-3.5" />
             {m.est_systeme
               ? "Modèle système livré avec l'application : il ne se modifie pas. Copiez-le pour le personnaliser."
@@ -444,7 +448,7 @@ export default function DesignerPage() {
 
       {/* JSON */}
       <Dialog open={json.ouvert} onOpenChange={(o) => setJson((j) => ({ ...j, ouvert: o }))}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="ecran-editions-texte max-w-3xl">
           <DialogHeader><DialogTitle>Définition JSON</DialogTitle></DialogHeader>
           <textarea value={json.texte} readOnly={lectureSeule} spellCheck={false}
             onKeyDown={(e) => e.stopPropagation()}
@@ -468,7 +472,7 @@ export default function DesignerPage() {
 
       {/* copie d'un modèle système */}
       <Dialog open={copieDlg.ouvert} onOpenChange={(o) => setCopieDlg((c) => ({ ...c, ouvert: o }))}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="ecran-editions-texte max-w-md">
           <DialogHeader><DialogTitle>Copier pour personnaliser</DialogTitle></DialogHeader>
           <label className="block text-xs font-medium">Code
             <input className="mt-1 w-full rounded border px-2 py-1.5 text-sm uppercase" value={copieDlg.code}

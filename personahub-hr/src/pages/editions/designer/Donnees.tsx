@@ -283,7 +283,7 @@ function EmplacementCorps({ d, c, editeur, ro, compact }: { d: Definition; c: Co
     : ok ? usages.map((u) => `${u.element.id} · ${libelleBande(u.bande.type)}`).join(", ")
     : usages.length ? `imprimé ailleurs : ${usages.map((u) => libelleBande(u.bande.type)).join(", ")}` : "pas encore dans la mise en forme";
   if (compact) return (
-    <span className={`whitespace-nowrap text-xs ${ok ? "" : "font-medium text-amber-700"}`} title={etat}>
+    <span className={`whitespace-nowrap text-xs ${ok ? "" : "font-medium text-[hsl(var(--warning))]"}`} title={etat}>
       {EMPLACEMENTS.find((x) => x.v === e)?.l}{!ok && " ⚠"}
     </span>
   );
@@ -293,7 +293,7 @@ function EmplacementCorps({ d, c, editeur, ro, compact }: { d: Definition; c: Co
         <select className={`${classeChamp} w-44`} disabled={ro} value={e} onChange={(ev) => appliquer(ev.target.value as Emplacement)}>
           {EMPLACEMENTS.map((x) => <option key={x.v} value={x.v} title={x.aide}>{x.l}</option>)}
         </select>
-        <span className={`max-w-xs truncate ${ok ? "text-muted-foreground" : "font-medium text-amber-700"}`} title={etat}>
+        <span className={`max-w-xs truncate ${ok ? "text-muted-foreground" : "font-medium text-[hsl(var(--warning))]"}`} title={etat}>
           {ok ? "✓ " : "⚠ "}{etat}
         </span>
         {!ok && !ro && <Button size="sm" variant="outline" className="h-7" onClick={() => appliquer()}>Placer</Button>}
@@ -542,7 +542,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
           <tbody>
             {visibles.map(({ a, i }) => { const er = ligneErreur(erreurs, `corps[${ci}].affectations[${i}]`); return (
               <tr key={i} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title}
-                className={`hover:bg-muted/30 ${a.fusion && !er.rouge ? "bg-sky-50/60" : ""} ${er.rouge} ${dnd.ligne(i).className}`}>
+                className={`hover:bg-muted/30 ${a.fusion && !er.rouge ? "bg-primary/5" : ""} ${er.rouge} ${dnd.ligne(i).className}`}>
                 <td className={`${td} w-12 whitespace-nowrap text-center text-xs text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{a.fusion ? "↳" : i + 1}</td>
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
@@ -634,7 +634,7 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
 
   return (
     <Dialog open onOpenChange={(o) => !o && onFermer()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="ecran-editions-texte max-w-3xl">
         <DialogHeader><DialogTitle>Ajouter des rubriques au corps « {c.libelle} »</DialogTitle></DialogHeader>
         <div className="grid grid-cols-[1fr_260px] gap-4">
           <div>
@@ -826,7 +826,7 @@ function OngletApercu({ d, version, ro, enregistrer }: { d: Definition; version:
           {l && (
             <div className="space-y-5">
               {l.anomalies.length > 0 && (
-                <div className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <div className="rounded border border-[hsl(var(--warning)/0.5)] bg-[hsl(var(--warning)/0.08)] p-2 text-xs text-[hsl(var(--warning))]">
                   {l.anomalies.map((a, i) => <div key={i}><b>{a.element}</b> : {a.message}</div>)}
                 </div>
               )}

@@ -163,7 +163,7 @@ export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider,
 
   return (
     <Dialog open onOpenChange={(o) => !o && onFermer()}>
-      <DialogContent className="max-w-5xl" onKeyDown={(e) => e.stopPropagation()}>
+      <DialogContent className="ecran-editions-texte max-w-5xl" onKeyDown={(e) => e.stopPropagation()}>
         <DialogHeader><DialogTitle>Assistant de formule</DialogTitle></DialogHeader>
 
         <textarea ref={zone} value={formule} onChange={(e) => setFormule(e.target.value)} rows={3} spellCheck={false}
@@ -216,7 +216,7 @@ export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider,
                       <div className="text-sm">{e.titre}</div>
                       {e.detail && <div className="text-[11px] text-muted-foreground">{e.detail}</div>}
                       {(e.exemple || (onglet === "recettes" && e.insert)) && (
-                        <div className="mt-0.5 font-mono text-[11px] text-sky-800">{e.exemple ?? e.insert}</div>
+                        <div className="mt-0.5 font-mono text-[11px] text-primary">{e.exemple ?? e.insert}</div>
                       )}
                     </button>
                   ))}
@@ -240,7 +240,7 @@ export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider,
                   <div className="text-[11px] text-muted-foreground">{r.titre}</div>
                   {r.erreur ? <div className="text-destructive">{r.erreur}</div>
                     : <div className="font-mono font-medium">{r.type === "VIDE" ? <span className="text-muted-foreground">VIDE</span> : r.texte}</div>}
-                  {r.manques.length > 0 && <div className="text-[10px] text-amber-700">Introuvable : {r.manques.join(", ")}</div>}
+                  {r.manques.length > 0 && <div className="text-[10px] text-[hsl(var(--warning))]">Introuvable : {r.manques.join(", ")}</div>}
                 </div>
               ))}
               {test && !test.resultats.length && <p className="text-muted-foreground">Aucun document pour ces paramètres.</p>}

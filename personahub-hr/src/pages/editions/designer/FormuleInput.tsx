@@ -188,7 +188,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
         <div className="mt-1 flex items-start gap-1 text-[11px]">
           {enCours ? <Loader2 className="mt-0.5 h-3 w-3 animate-spin text-muted-foreground" />
             : erreur ? <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
-            : analyse ? <CheckCircle2 className="mt-0.5 h-3 w-3 text-emerald-600" /> : null}
+            : analyse ? <CheckCircle2 className="mt-0.5 h-3 w-3 text-[hsl(var(--success))]" /> : null}
           {erreur && <span className="text-destructive">{erreur.message}{erreur.debut != null ? ` (position ${erreur.debut + 1})` : ""}</span>}
         </div>
       )}

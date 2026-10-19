@@ -19,6 +19,7 @@ import {
   editionsApi, type ContexteEcran, type DocumentProduit, type Ecran, type ModeleEcran,
 } from "@/lib/editionsApi";
 import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresForm";
+import "./editions.css";
 
 const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 const CLE_CHOIX = (ecran: string) => `editions.ecran.${ecran}.modele`;
@@ -123,7 +124,7 @@ export function BoutonImprimer({ ecran, contexte, desactive, className }: {
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-72 p-1">
+        <PopoverContent align="end" className="ecran-editions-texte w-72 p-1">
           <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Imprimer avec</div>
           {erreur && <div className="px-2 py-1.5 text-xs text-destructive">{erreur}</div>}
           {!erreur && !modeles.length && <div className="flex items-center px-2 py-1.5 text-xs text-muted-foreground"><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Chargement…</div>}
@@ -135,8 +136,8 @@ export function BoutonImprimer({ ecran, contexte, desactive, className }: {
                 className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${courant ? "font-medium" : ""}`}>
                 <FileText className="h-4 w-4 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 truncate">{m.libelle}</span>
-                {m.par_defaut && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" />}
-                {m.est_systeme && <ShieldCheck className="h-3 w-3 shrink-0 text-sky-600" />}
+                {m.par_defaut && <Star className="h-3 w-3 shrink-0 fill-[hsl(var(--warning))] text-[hsl(var(--warning))]" />}
+                {m.est_systeme && <ShieldCheck className="h-3 w-3 shrink-0 text-primary" />}
               </button>
             );
           })}
@@ -184,7 +185,7 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
   const nbAnomalies = resultat?.documents.reduce((n, d) => n + d.anomalies.length, 0) ?? 0;
   const nbPages = resultat?.documents.reduce((n, d) => n + d.nb_pages, 0) ?? 0;
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="carte-edition rounded-lg border bg-card p-4">
       {entete}
       <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Paramètres</div>
       {modele.formes.length > 1 && (
@@ -210,7 +211,7 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
           <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
             <span className="font-medium">{resultat.documents.length} document(s)</span>
             <span className="text-muted-foreground">· {nbPages} page(s)</span>
-            {nbAnomalies > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{nbAnomalies} anomalie(s)</span>}
+            {nbAnomalies > 0 && <span className="rounded bg-[hsl(var(--warning)/0.15)] px-1.5 py-0.5 text-xs text-[hsl(var(--warning))]">{nbAnomalies} anomalie(s)</span>}
             <div className="ml-auto flex gap-1">
               <Button size="sm" variant="outline" onClick={() => ouvrirPdf(() => editionsApi.pdfDemande(resultat.demande_id), ongletDAttente())}>
                 <ExternalLink className="mr-1 h-3.5 w-3.5" />Tout ouvrir
@@ -227,7 +228,7 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
                 <span className="flex-1 truncate">{d.nom_fichier}</span>
                 <span className="text-xs text-muted-foreground">{d.nb_pages} p.</span>
                 {d.anomalies.length > 0 && (
-                  <span className="text-xs text-amber-700" title={d.anomalies.map((a) => `${a.element} : ${a.message}`).join("\n")}>{d.anomalies.length} anomalie(s)</span>
+                  <span className="text-xs text-[hsl(var(--warning))]" title={d.anomalies.map((a) => `${a.element} : ${a.message}`).join("\n")}>{d.anomalies.length} anomalie(s)</span>
                 )}
                 <button type="button" title="Ouvrir" onClick={() => ouvrirPdf(() => editionsApi.pdfDocumentEcran(d.id), ongletDAttente())}><ExternalLink className="h-4 w-4" /></button>
                 <button type="button" title="Télécharger" onClick={() => ouvrirPdf(() => editionsApi.pdfDocumentEcran(d.id), null, d.nom_fichier, true)}><Download className="h-4 w-4" /></button>

@@ -109,7 +109,7 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
 
   return (
     <Dialog open={ouvert} onOpenChange={(o) => !o && onFermer()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="ecran-editions-texte max-w-lg">
         <DialogHeader><DialogTitle>Classement et menus — {modele?.libelle}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-[1fr_180px] gap-3">
           <label className="block text-xs font-medium">Libellé
@@ -153,7 +153,7 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
         </div>
         <p className="text-xs text-muted-foreground">
           Écrans où ce modèle a un bouton « Imprimer » : cochez-les. L'étoile en fait le modèle imprimé par défaut dans ce menu.
-          {!modele?.version_publiee_id && <span className="mt-1 block text-amber-700">Le modèle n'apparaîtra dans les menus qu'une fois publié.</span>}
+          {!modele?.version_publiee_id && <span className="mt-1 block text-[hsl(var(--warning))]">Le modèle n'apparaîtra dans les menus qu'une fois publié.</span>}
           {implicite && <span className="mt-1 block">Proposé d'office : aucun modèle n'est encore rattaché à ces menus pour la société.</span>}
         </p>
         {!ecrans && <div className="flex items-center py-6 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Chargement…</div>}
@@ -176,7 +176,7 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
                         <button type="button" disabled={!c.coche} title="Modèle par défaut de ce menu"
                           onClick={() => setChoix((p) => ({ ...p, [e.code_ecran]: { ...c, defaut: !c.defaut } }))}
                           className="rounded p-1 hover:bg-muted disabled:opacity-30">
-                          <Star className={`h-4 w-4 ${c.defaut ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
+                          <Star className={`h-4 w-4 ${c.defaut ? "fill-[hsl(var(--warning))] text-[hsl(var(--warning))]" : "text-muted-foreground"}`} />
                         </button>
                       </div>
                     );

@@ -387,8 +387,8 @@ function ElementVue({ el, bande, editeur, mm, largeur, lectureSeule, erreur }: {
       style={{ left: el.x * mm, top: el.y * mm, width: el.l * mm, height: Math.max(el.h * mm, 2) }}
     >
       <Contenu el={el} mm={mm} colonne={selectionne ? editeur.selection.colonne ?? null : null} />
-      {(el.verrou && el.verrou !== "AUCUN") && <Lock className="absolute -right-1 -top-1 h-3 w-3 rounded bg-amber-100 text-amber-700" />}
-      {el.condition && <Filter className="absolute -left-1 -top-1 h-3 w-3 rounded bg-sky-100 text-sky-700" />}
+      {(el.verrou && el.verrou !== "AUCUN") && <Lock className="absolute -right-1 -top-1 h-3 w-3 rounded bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))]" />}
+      {el.condition && <Filter className="absolute -left-1 -top-1 h-3 w-3 rounded bg-primary/10 text-primary" />}
       {selectionne && !dansMulti && !lectureSeule && (
         <div onPointerDown={(e) => tirer(e, "taille")}
           className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize border border-primary bg-white" />
@@ -478,15 +478,15 @@ function Contenu({ el, mm, colonne }: { el: Element; mm: number; colonne: string
     case "TEXTE": {
       const lit = texteLitteral(el.valeur);
       return <div className="h-full w-full overflow-hidden whitespace-pre-wrap" style={st}>
-        {lit ?? <span className="text-violet-700">ƒ {el.valeur}</span>}
+        {lit ?? <span className="text-[hsl(var(--accent))]">ƒ {el.valeur}</span>}
       </div>;
     }
     case "CHAMP":
-      return <div className="h-full w-full overflow-hidden whitespace-nowrap bg-sky-50/70" style={st}>
-        <span className="text-sky-800">{el.affichage?.texte_avant ?? ""}{`{${el.valeur || "?"}}`}{el.affichage?.texte_apres ?? ""}</span>
+      return <div className="h-full w-full overflow-hidden whitespace-nowrap bg-primary/5" style={st}>
+        <span className="text-primary">{el.affichage?.texte_avant ?? ""}{`{${el.valeur || "?"}}`}{el.affichage?.texte_apres ?? ""}</span>
       </div>;
     case "TEXTE_RICHE":
-      return <div className="h-full w-full overflow-hidden whitespace-pre-wrap bg-violet-50/50" style={st}>{el.contenu}</div>;
+      return <div className="h-full w-full overflow-hidden whitespace-pre-wrap bg-[hsl(var(--accent)/0.08)]" style={st}>{el.contenu}</div>;
     case "IMAGE":
       return <ApercuImage el={el} l={el.l * mm} h={Math.max(el.h * mm, 2)} />;
     case "LIGNE":
@@ -528,7 +528,7 @@ function ApercuTableau({ t, mm, colonne }: { t: ElTableau; mm: number; colonne: 
   const titre = (texte: string, cle: string) => (
     <div key={cle} className="bg-muted/50 px-1 font-semibold" style={{ fontSize: fs, height: hl, lineHeight: `${hl}px` }}>{texte}</div>
   );
-  const valeur = (c: typeof cols[number], expr?: string) => <span className="text-sky-800">{`{${expr ?? c.valeur}}`}</span>;
+  const valeur = (c: typeof cols[number], expr?: string) => <span className="text-primary">{`{${expr ?? c.valeur}}`}</span>;
   const sections = t.sections?.length ? t.sections : [null];
   let lignes = 0;
   return (
@@ -543,7 +543,7 @@ function ApercuTableau({ t, mm, colonne }: { t: ElTableau; mm: number; colonne: 
             ? s.rubriques.map((r, k) => { lignes++; return (
                 <div key={k}>{ligne((c) => (c.valeur === "code_rubrique" ? r.code
                   : c.valeur === "libelle" ? (r.libelle ?? <span className="text-muted-foreground">{r.code}</span>)
-                  : r.valeurs?.[c.id] ? valeur(c, r.valeurs[c.id]) : <span className="text-sky-800/40">{`{${c.valeur}}`}</span>),
+                  : r.valeurs?.[c.id] ? valeur(c, r.valeurs[c.id]) : <span className="text-primary/40">{`{${c.valeur}}`}</span>),
                   "", !!r.style?.gras)}</div>); })
             : (lignes++, ligne((c) => valeur(c)))}
         </div>
@@ -584,7 +584,7 @@ function ApercuGrille({ g, mm, colonne }: { g: ElGrille; mm: number; colonne: st
         <div key={l.id} className="flex items-stretch">
           {!!g.largeur_titres && cellule(`t${l.id}`, g.largeur_titres, l.titre, stTitres, "", undefined, true)}
           {g.colonnes.map((c) => cellule(`${l.id}${c.id}`, c.largeur,
-            l.valeurs?.[c.id] ? <span className="text-sky-800">{`{${l.valeurs[c.id]}}`}</span> : "", { fontFamily: cssPolice(base.police) }, "", c.id))}
+            l.valeurs?.[c.id] ? <span className="text-primary">{`{${l.valeurs[c.id]}}`}</span> : "", { fontFamily: cssPolice(base.police) }, "", c.id))}
         </div>
       ))}
     </div>

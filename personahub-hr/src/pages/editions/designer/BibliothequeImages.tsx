@@ -317,7 +317,7 @@ export function DialogueRognage({ el, ouvert, onFermer, onValider }: {
 
   return (
     <Dialog open={ouvert} onOpenChange={(o) => !o && onFermer()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="ecran-editions-texte max-w-3xl">
         <DialogHeader><DialogTitle>Rogner l'image</DialogTitle></DialogHeader>
         {!url ? (
           <p className="py-8 text-center text-sm text-muted-foreground">

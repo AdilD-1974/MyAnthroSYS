@@ -470,7 +470,7 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
             {c.libelle}
           </label>
         )) : <p className="text-[11px] text-muted-foreground">Aucun corps « lignes » : définissez-en à l'étape « 1. Données ».</p>}
-        {!affiches.length && corpsLignes.length > 0 && <p className="mt-1 text-[10px] text-amber-700">Le tableau affiche encore un jeu de lignes (mode expert) : cochez vos corps pour qu'il imprime ce que vous avez défini.</p>}
+        {!affiches.length && corpsLignes.length > 0 && <p className="mt-1 text-[10px] text-[hsl(var(--warning))]">Le tableau affiche encore un jeu de lignes (mode expert) : cochez vos corps pour qu'il imprime ce que vous avez défini.</p>}
       </div>
       {t.corps ? (
         <div className="mb-2 rounded bg-primary/5 p-1.5 text-[11px]">

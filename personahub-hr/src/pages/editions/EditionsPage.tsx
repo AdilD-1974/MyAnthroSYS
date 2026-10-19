@@ -8,7 +8,9 @@
  * un message clair, jamais un écran blanc.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import ReturnTrail from "@/components/navigation/ReturnTrail";
+import { useRetour } from "./retour";
+import "./editions.css";
 import { Copy, Download, ExternalLink, FileText, Folder, Globe, Building2, Loader2, Lock, Pencil, Play, Plus, Search, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +26,9 @@ import { Switch } from "@/components/ui/switch";
 const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 export default function EditionsPage() {
-  const navigate = useNavigate();
+  const retour = useRetour();
+  // RG-EDT-NAV-01 : le designer ramène ici, et d'ici à l'écran qui a ouvert les éditions
+  const concevoir = (id: string) => retour.ouvrir(`/editions/${id}/designer`, "Éditions");
   const [modeles, setModeles] = useState<Modele[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [categorie, setCategorie] = useState<Categorie | "">("");
@@ -55,7 +59,7 @@ export default function EditionsPage() {
         code: creation.code, libelle: creation.libelle, categorie: creation.categorie,
         visibilite: creation.visibilite, origine_id: creation.origine || undefined,
       });
-      navigate(`/editions/${r.modele_id}/designer`);
+      concevoir(r.modele_id);
     } catch (e: any) {
       toast({ title: "Création impossible", description: e.message, variant: "destructive" });
       setCreation((c) => ({ ...c, occupe: false }));
@@ -107,10 +111,12 @@ export default function EditionsPage() {
     editionsApi.ouvrirDocument(d.id, telecharger, d.nom_fichier).catch((e) => toast({ title: "Ouverture impossible", description: e.message, variant: "destructive" }));
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+    <div className="ecran-editions w-full">
+      <ReturnTrail current="Éditions" />
+      <div className="w-full space-y-4 p-6">
+      <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Éditions</h1>
+          <h1 className="titre-ecran font-semibold">Éditions</h1>
           <p className="text-sm text-muted-foreground">Bulletins, journaux, attestations et états : concevez, publiez et produisez vos documents.</p>
         </div>
         <Button className="ml-auto" onClick={() => setCreation({ ouvert: true, code: "", libelle: "", categorie: categorie || "LISTE", visibilite: "SOCIETE", origine: "" })}>
@@ -118,7 +124,7 @@ export default function EditionsPage() {
         </Button>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setCategorie("")}
           className={`rounded-full px-3 py-1 text-xs ${categorie === "" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Tous</button>
         {CATEGORIES.map((c) => (
@@ -134,9 +140,9 @@ export default function EditionsPage() {
       {erreur && <div className="rounded border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{erreur}</div>}
       {!modeles && !erreur && <div className="flex items-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Chargement…</div>}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {visibles.map((m) => (
-          <div key={m.id} className={`flex flex-col rounded-lg border bg-card p-4 ${m.actif === false ? "bg-muted/40" : ""}`}>
+          <div key={m.id} className={`carte-edition flex flex-col rounded-lg border bg-card p-4 ${m.actif === false ? "bg-muted/40" : ""}`}>
             <div className="mb-2 flex items-start gap-2">
               <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="min-w-0 flex-1">
@@ -152,20 +158,20 @@ export default function EditionsPage() {
             </div>
             {m.theme_libelle && (
               <div className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Folder className="h-3 w-3 fill-amber-200 text-amber-500" />{m.theme_module === "RH" ? "RH" : "Paie"} › {m.theme_libelle}
+                <Folder className="h-3 w-3 fill-[hsl(var(--warning)/0.3)] text-[hsl(var(--warning))]" />{m.theme_module === "RH" ? "RH" : "Paie"} › {m.theme_libelle}
               </div>
             )}
             {m.description && <p className="mb-2 line-clamp-2 text-xs text-muted-foreground">{m.description}</p>}
             <div className="mb-3 text-xs text-muted-foreground">
               {m.numero_publie ? `Version ${m.numero_publie} publiée${m.publie_le ? ` le ${new Date(m.publie_le).toLocaleDateString("fr-FR")}` : ""}` : "Jamais publié"}
-              {m.brouillon_id && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">brouillon en cours</span>}
+              {m.brouillon_id && <span className="ml-2 rounded bg-[hsl(var(--warning)/0.15)] px-1.5 py-0.5 text-[hsl(var(--warning))]">brouillon en cours</span>}
             </div>
             <div className="mt-auto flex flex-wrap gap-2">
               <Button size="sm" disabled={!m.version_publiee_id || m.actif === false} onClick={() => ouvrirLancement(m)}
                 title={m.actif === false ? "État inactif : activez-le pour le lancer" : m.version_publiee_id ? "" : "Publiez une version pour pouvoir lancer"}>
                 <Play className="mr-1 h-3.5 w-3.5" />Lancer
               </Button>
-              <Button size="sm" variant="outline" onClick={() => navigate(`/editions/${m.id}/designer`)}>
+              <Button size="sm" variant="outline" onClick={() => concevoir(m.id)}>
                 {m.est_systeme ? <><Lock className="mr-1 h-3.5 w-3.5" />Voir</> : <><Pencil className="mr-1 h-3.5 w-3.5" />Concevoir</>}
               </Button>
               <Button size="sm" variant="ghost" title="Créer un modèle à partir de celui-ci"
@@ -184,9 +190,11 @@ export default function EditionsPage() {
         </p>
       )}
 
+      </div>
+
       {/* création */}
       <Dialog open={creation.ouvert} onOpenChange={(o) => setCreation((c) => ({ ...c, ouvert: o }))}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="ecran-editions-texte max-w-md">
           <DialogHeader><DialogTitle>{creation.origine ? "Copier un modèle" : "Nouveau modèle"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <label className="block text-xs font-medium">Libellé
@@ -227,7 +235,7 @@ export default function EditionsPage() {
 
       {/* lancement */}
       <Dialog open={!!lancement} onOpenChange={(o) => !o && setLancement(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="ecran-editions-texte max-w-lg">
           <DialogHeader><DialogTitle>Lancer — {lancement?.modele.libelle}</DialogTitle></DialogHeader>
           {lancement && (
             <>
@@ -248,7 +256,7 @@ export default function EditionsPage() {
                       <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="flex-1 truncate">{d.nom_fichier}</span>
                       <span className="text-xs text-muted-foreground">{d.nb_pages} p.</span>
-                      {d.anomalies.length > 0 && <span className="text-xs text-amber-700" title={d.anomalies.map((a) => `${a.element} : ${a.message}`).join("\n")}>{d.anomalies.length} anomalie(s)</span>}
+                      {d.anomalies.length > 0 && <span className="text-xs text-[hsl(var(--warning))]" title={d.anomalies.map((a) => `${a.element} : ${a.message}`).join("\n")}>{d.anomalies.length} anomalie(s)</span>}
                       <button type="button" title="Ouvrir" onClick={() => ouvrirDoc(d)}><ExternalLink className="h-4 w-4" /></button>
                       <button type="button" title="Télécharger" onClick={() => ouvrirDoc(d, true)}><Download className="h-4 w-4" /></button>
                     </div>
@@ -282,7 +290,7 @@ function MenusProposes({ categorie }: { categorie: Categorie }) {
 }
 
 function Badges({ m }: { m: Modele }) {
-  if (m.est_systeme) return <span title="Livré avec l'application" className="inline-flex items-center gap-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] text-sky-800"><ShieldCheck className="h-3 w-3" />Système</span>;
+  if (m.est_systeme) return <span title="Livré avec l'application" className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"><ShieldCheck className="h-3 w-3" />Système</span>;
   if (m.visibilite === "GLOBAL") return <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px]"><Globe className="h-3 w-3" />Toutes sociétés</span>;
   if (m.visibilite === "SOCIETE") return <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px]"><Building2 className="h-3 w-3" />Société</span>;
   return <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px]"><Lock className="h-3 w-3" />Privé</span>;

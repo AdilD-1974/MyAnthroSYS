@@ -166,7 +166,7 @@ export function BoutonMiseEnPage({ editeur, ro }: { editeur: Editeur; ro: boolea
         <FileText className="h-3.5 w-3.5" />Mise en page <span className="text-muted-foreground">· {resume}</span>
       </Button>
       <Dialog open={ouvert} onOpenChange={setOuvert}>
-        <DialogContent className="max-w-xl" onKeyDown={(e) => e.stopPropagation()}>
+        <DialogContent className="ecran-editions-texte max-w-xl" onKeyDown={(e) => e.stopPropagation()}>
           <DialogHeader><DialogTitle>Mise en page</DialogTitle></DialogHeader>
           <ReglagesPage editeur={editeur} ro={ro} />
           <DialogFooter><Button onClick={() => setOuvert(false)}>Fermer</Button></DialogFooter>

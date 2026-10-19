@@ -84,6 +84,7 @@ export const MODULES: Record<string, ModuleMeta> = {
   administration: { code: "administration", label: "Administration",       couleur: "#F87171" },
   pilotage:       { code: "pilotage",       label: "Pilotage & Audit",     couleur: "#FCD34D" },
   requeteur:      { code: "requeteur",      label: "Requêteur",            couleur: "#5EEAD4" },
+  editions:       { code: "editions",       label: "Éditions",             couleur: "#60A5FA" },  // RG-EDT-NAV-02 (migration 079)
 };
 
 export const couleurModule = (code?: string): string =>

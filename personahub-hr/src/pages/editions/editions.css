@@ -1,0 +1,40 @@
+/*
+ * editions.css — Respect strict des préférences d'apparence dans les éditions.
+ * Auteur : Adil DAIA — 19/10/2026 — RG-EDT-UI-01
+ *
+ * Tailwind dimensionne en rem (16 px du navigateur) : sans ces règles, la taille de police,
+ * la police des titres et la densité choisies par l'utilisateur (ThemeContext → --font-scale,
+ * --font-family-heading, --font-size-heading, --space-scale) seraient ignorées ici.
+ *   .ecran-editions        écrans « page » : police, titres et densité
+ *   .ecran-editions-texte  designer, dialogues, menus surgissants : police et titres seulement
+ *                          (la géométrie du canevas, en mm, ne doit pas bouger)
+ * Les couleurs passent par les jetons du thème (primary, warning, success…), jamais de
+ * couleur fixe, sauf le papier blanc du canevas qui représente la feuille imprimée.
+ */
+:is(.ecran-editions, .ecran-editions-texte) { font-size: var(--font-size-base, 14px); }
+:is(.ecran-editions, .ecran-editions-texte) :is(h1, h2, h3, .titre-ecran) { font-family: var(--font-family-heading); }
+:is(.ecran-editions, .ecran-editions-texte) .titre-ecran { font-size: var(--font-size-heading, 24px); line-height: 1.2; }
+
+:is(.ecran-editions, .ecran-editions-texte) .text-\[9px\]  { font-size: calc(9px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-\[10px\] { font-size: calc(10px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-\[11px\] { font-size: calc(11px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-xs   { font-size: calc(12px * var(--font-scale, 1)); line-height: calc(16px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-sm   { font-size: calc(14px * var(--font-scale, 1)); line-height: calc(20px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-base { font-size: calc(16px * var(--font-scale, 1)); line-height: calc(24px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-lg   { font-size: calc(18px * var(--font-scale, 1)); line-height: calc(28px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-xl   { font-size: calc(20px * var(--font-scale, 1)); line-height: calc(28px * var(--font-scale, 1)); }
+:is(.ecran-editions, .ecran-editions-texte) .text-2xl  { font-size: calc(24px * var(--font-scale, 1)); line-height: calc(32px * var(--font-scale, 1)); }
+
+/* densité (compact 0,8 · confortable 1 · spacieuse 1,25) */
+.ecran-editions .p-6  { padding: calc(1.5rem * var(--space-scale, 1)); }
+.ecran-editions .p-4  { padding: calc(1rem * var(--space-scale, 1)); }
+.ecran-editions .p-3  { padding: calc(0.75rem * var(--space-scale, 1)); }
+.ecran-editions .p-2  { padding: calc(0.5rem * var(--space-scale, 1)); }
+.ecran-editions .gap-2 { gap: calc(0.5rem * var(--space-scale, 1)); }
+.ecran-editions .gap-3 { gap: calc(0.75rem * var(--space-scale, 1)); }
+.ecran-editions .gap-4 { gap: calc(1rem * var(--space-scale, 1)); }
+.ecran-editions .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: calc(0.75rem * var(--space-scale, 1)); }
+.ecran-editions .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: calc(1rem * var(--space-scale, 1)); }
+
+/* ombres selon la préférence (aucune, légère, standard, marquée) */
+.ecran-editions .carte-edition { box-shadow: var(--shadow-app, none); }

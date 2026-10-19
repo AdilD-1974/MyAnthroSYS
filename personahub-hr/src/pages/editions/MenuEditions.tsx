@@ -8,7 +8,6 @@
  * de la société, et glisser un état d'un dossier à l'autre (RG-EDT-THEME-01..03).
  */
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, FolderTree, Loader2, Pencil,
@@ -18,6 +17,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { editionsApi, type ArbreMenu, type ModeleEcran, type ThemeMenu } from "@/lib/editionsApi";
 import { PanneauProduction } from "./LanceurEcran";
+import { useRetour } from "./retour";
+import "./editions.css";
+import ReturnTrail from "@/components/navigation/ReturnTrail";
 
 const TYPE_DND = "application/x-edition-modele";
 const cleChoix = (module: string) => `editions.menu.${module}.modele`;
@@ -41,7 +43,7 @@ function construire(themes: ThemeMenu[], filtre: string): Noeud[] {
 }
 
 export default function MenuEditions({ module, titre, description }: { module: string; titre: string; description?: string }) {
-  const navigate = useNavigate();
+  const retour = useRetour();
   const [arbre, setArbre] = useState<ArbreMenu | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [organiser, setOrganiser] = useState(false);
@@ -112,7 +114,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
           onDragLeave={organiser ? () => setSurvol((s) => (s === t.id ? null : s)) : undefined}
           onDrop={organiser ? (e) => deposer(e, t) : undefined}>
           {ouvert ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-          {ouvert ? <FolderOpen className="h-4 w-4 shrink-0 text-amber-500" /> : <Folder className="h-4 w-4 shrink-0 fill-amber-200 text-amber-500" />}
+          {ouvert ? <FolderOpen className="h-4 w-4 shrink-0 text-[hsl(var(--warning))]" /> : <Folder className="h-4 w-4 shrink-0 fill-[hsl(var(--warning)/0.3)] text-[hsl(var(--warning))]" />}
           <span className="min-w-0 flex-1 truncate font-medium">{t.libelle}</span>
           <span className="text-[10px] text-muted-foreground">{n.total}</span>
           {organiser && (
@@ -136,9 +138,9 @@ export default function MenuEditions({ module, titre, description }: { module: s
                 title={organiser ? "Glissez l'état sur un dossier pour le classer" : m.code}
                 className={`flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-sm ${m.id === choix ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
                 style={{ paddingLeft: 22 + (niveau + 1) * 16 }}>
-                <FileText className={`h-4 w-4 shrink-0 ${m.id === choix ? "" : "text-sky-700"}`} />
+                <FileText className={`h-4 w-4 shrink-0 ${m.id === choix ? "" : "text-primary"}`} />
                 <span className="min-w-0 flex-1 truncate">{m.libelle}</span>
-                {m.est_systeme && <ShieldCheck className={`h-3 w-3 shrink-0 ${m.id === choix ? "" : "text-sky-600"}`} />}
+                {m.est_systeme && <ShieldCheck className={`h-3 w-3 shrink-0 ${m.id === choix ? "" : "text-primary"}`} />}
               </div>
             ))}
             {organiser && !t.modeles.length && !n.enfants.length && (
@@ -151,18 +153,20 @@ export default function MenuEditions({ module, titre, description }: { module: s
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-5 flex flex-wrap items-start gap-3">
+    <div className="ecran-editions w-full">
+      <ReturnTrail current={titre} />
+      <div className="w-full space-y-4 p-6">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><FolderTree className="h-5 w-5" /></div>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold">{titre}</h1>
+          <h1 className="titre-ecran font-semibold">{titre}</h1>
           {description && <p className="text-sm text-muted-foreground">{description}</p>}
         </div>
         <Button variant={organiser ? "default" : "outline"} size="sm" onClick={() => setOrganiser((o) => !o)}
           title="Créer des dossiers et y classer les états (glisser-déposer)">
           <FolderPlus className="mr-1.5 h-4 w-4" />{organiser ? "Terminer l'organisation" : "Organiser"}
         </Button>
-        <Button variant="outline" size="sm" onClick={() => navigate("/editions")} title="Concevoir les états, les activer ou les désactiver">
+        <Button variant="outline" size="sm" onClick={() => retour.ouvrir("/editions", titre)} title="Concevoir les états, les activer ou les désactiver">
           <Settings2 className="mr-1.5 h-4 w-4" />Gérer les états
         </Button>
       </div>
@@ -171,7 +175,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
       {!arbre && !erreur && <div className="flex items-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Chargement…</div>}
 
       {arbre && (
-        <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(300px,26%)_1fr]">
           <div className="flex max-h-[calc(100vh-12rem)] flex-col rounded-lg border bg-card">
             <div className="border-b p-2">
               <div className="relative">
@@ -182,7 +186,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
             </div>
             <div className="flex-1 overflow-auto p-1.5 select-none">
               <div className="flex items-center gap-1 px-1 py-0.5 text-sm font-semibold">
-                <FolderOpen className="h-4 w-4 text-amber-500" />États {arbre.libelle}
+                <FolderOpen className="h-4 w-4 text-[hsl(var(--warning))]" />États {arbre.libelle}
                 {organiser && <button type="button" className="ml-auto rounded p-0.5 hover:bg-muted" title="Nouveau dossier" onClick={() => nouveauDossier(null)}><FolderPlus className="h-4 w-4" /></button>}
               </div>
               {racines.map((n) => rendreNoeud(n, 1))}
@@ -204,7 +208,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
                     <div className="text-[11px] text-muted-foreground">{chemin(selection.t).join(" › ")}</div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-lg font-semibold">{selection.m.libelle}</h2>
-                      {selection.m.est_systeme && <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] text-sky-800"><ShieldCheck className="h-2.5 w-2.5" />Système</span>}
+                      {selection.m.est_systeme && <span className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"><ShieldCheck className="h-2.5 w-2.5" />Système</span>}
                     </div>
                     <div className="text-xs text-muted-foreground">{selection.m.code} · version {selection.m.numero_publie}</div>
                     {selection.m.description && <p className="mt-1 text-xs text-muted-foreground">{selection.m.description}</p>}
@@ -219,8 +223,9 @@ export default function MenuEditions({ module, titre, description }: { module: s
         </div>
       )}
 
+      </div>
       <Dialog open={!!saisie} onOpenChange={(o) => !o && setSaisie(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="ecran-editions-texte max-w-sm">
           <DialogHeader><DialogTitle>{saisie?.titre}</DialogTitle></DialogHeader>
           <input autoFocus value={saisie?.valeur ?? ""} onChange={(e) => setSaisie((x) => x && { ...x, valeur: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Enter" && saisie?.valeur.trim()) { saisie.valider(saisie.valeur.trim()); setSaisie(null); } }}

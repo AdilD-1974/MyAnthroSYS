@@ -232,7 +232,7 @@ function CatalogueChamps({ lectureSeule, onAjouter }: { lectureSeule: boolean; o
               title={c.code}
               className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] hover:bg-muted">
               <span className="truncate">{c.libelle}</span>
-              {c.sensible && <ShieldAlert className="h-3 w-3 shrink-0 text-amber-600" aria-label="Donnée sensible" />}
+              {c.sensible && <ShieldAlert className="h-3 w-3 shrink-0 text-[hsl(var(--warning))]" aria-label="Donnée sensible" />}
               <span className="ml-auto shrink-0 text-[9px] uppercase text-muted-foreground">{c.type_donnee}</span>
             </button>
           ))}
