@@ -1,0 +1,985 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "periode_comparaison",
+   "libelle": "Période de comparaison (vide : mois précédent)",
+   "type": "PERIODE",
+   "obligatoire": false
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  },
+  {
+   "code": "affichage",
+   "libelle": "Rubriques affichées",
+   "type": "LISTE",
+   "obligatoire": false,
+   "defaut": "\"Toutes les rubriques\"",
+   "valeurs": [
+    "Toutes les rubriques",
+    "Rubriques en écart seulement"
+   ]
+  },
+  {
+   "code": "seuil",
+   "libelle": "Seuil d'alerte (écart en %)",
+   "type": "NOMBRE",
+   "obligatoire": false,
+   "defaut": "10"
+  }
+ ],
+ "jeux": [
+  {
+   "code": "r",
+   "source": "COMPARAISON_RUBRIQUES",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "OU(@affichage = \"Toutes les rubriques\", en_ecart = 1, sens = \"TOTAL\")"
+   ],
+   "tri": [
+    {
+     "champ": "rang_sens"
+    },
+    {
+     "champ": "ordre_affichage"
+    },
+    {
+     "champ": "code_rubrique"
+    }
+   ],
+   "groupes": [
+    "sens_libelle"
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 2
+ },
+ "page": {
+  "orientation": "PAYSAGE",
+  "marges": [
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 31.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 167.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Comparatif des rubriques\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 167.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "FORMAT(@periode.date_fin, \"MOIS_ANNEE\") + \" comparé à \" + SI(ESTVIDE(@periode_comparaison), \"mois précédent\", FORMAT(@periode_comparaison.date_fin, \"MOIS_ANNEE\"))",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 21.0,
+     "l": 277.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_code",
+     "x": 0.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Code\""
+    },
+    {
+     "id": "c_lib",
+     "x": 20.8,
+     "y": 21.0,
+     "l": 60.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Rubrique\""
+    },
+    {
+     "id": "c_sal_p",
+     "x": 82.8,
+     "y": 21.0,
+     "l": 12.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Sal. réf.\""
+    },
+    {
+     "id": "c_mt_p",
+     "x": 96.8,
+     "y": 21.0,
+     "l": 25.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Montant réf.\""
+    },
+    {
+     "id": "c_sal",
+     "x": 123.8,
+     "y": 21.0,
+     "l": 12.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Sal.\""
+    },
+    {
+     "id": "c_mt",
+     "x": 137.8,
+     "y": 21.0,
+     "l": 25.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Montant\""
+    },
+    {
+     "id": "c_ecart",
+     "x": 164.8,
+     "y": 21.0,
+     "l": 24.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Écart\""
+    },
+    {
+     "id": "c_pct",
+     "x": 190.8,
+     "y": 21.0,
+     "l": 14.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Écart %\""
+    },
+    {
+     "id": "c_pat",
+     "x": 206.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Écart patronal\""
+    },
+    {
+     "id": "c_mvt",
+     "x": 227.8,
+     "y": 21.0,
+     "l": 28.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salariés + / − / ≠\""
+    },
+    {
+     "id": "c_statut",
+     "x": 257.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Statut\""
+    }
+   ]
+  },
+  {
+   "id": "g_tete",
+   "type": "EN_TETE_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 9.0,
+   "elements": [
+    {
+     "id": "g_fond",
+     "x": 0.0,
+     "y": 1.5,
+     "l": 277.0,
+     "h": 6.5,
+     "style": {
+      "fond": "#E8F1F5"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "g_titre",
+     "x": 1.5,
+     "y": 1.5,
+     "l": 220.0,
+     "h": 6.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "sens_libelle",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.0,
+   "elements": [
+    {
+     "id": "alerte",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 277.0,
+     "h": 5.0,
+     "style": {
+      "fond": "#FEF3C7"
+     },
+     "condition": {
+      "expression": "ET(sens <> \"TOTAL\", OU(statut = \"NOUVELLE\", statut = \"SUPPRIMEE\", ABS(SIVIDE(ecart_pct, 0)) >= @seuil))"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "v_code",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SI(sens = \"TOTAL\", \"\", code_rubrique)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_lib",
+     "x": 20.8,
+     "y": 0.0,
+     "l": 60.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "libelle",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_sal_p",
+     "x": 82.8,
+     "y": 0.0,
+     "l": 12.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "p_nb_salaries",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "v_mt_p",
+     "x": 96.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "p_montant",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_sal",
+     "x": 123.8,
+     "y": 0.0,
+     "l": 12.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "nb_salaries",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "v_mt",
+     "x": 137.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "montant",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_ecart",
+     "x": 164.8,
+     "y": 0.0,
+     "l": 24.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "ecart_montant",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_pct",
+     "x": 190.8,
+     "y": 0.0,
+     "l": 14.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "ecart_pct",
+     "affichage": {
+      "masque": "POURCENTAGE"
+     }
+    },
+    {
+     "id": "v_pat",
+     "x": 206.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "ecart_patronal",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_mvt",
+     "x": 227.8,
+     "y": 0.0,
+     "l": 28.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "SI(sens = \"TOTAL\", SI(nb_modifies > 0, \"≠ \" + nb_modifies, \"\"), \"+\" + nb_nouveaux + \" / −\" + nb_disparus + \" / ≠\" + nb_modifies)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_statut",
+     "x": 257.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "SI(statut = \"IDENTIQUE\", \"\", statut_libelle)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 4.8,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "style_trait": "POINTILLES",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "g_pied",
+   "type": "PIED_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 8.0,
+   "condition": "sens <> \"TOTAL\"",
+   "elements": [
+    {
+     "id": "g_lib",
+     "x": 1.0,
+     "y": 0.5,
+     "l": 120.0,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Total \" + sens_libelle",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "g_mt_p",
+     "x": 96.8,
+     "y": 0.5,
+     "l": 25.4,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(p_montant, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "g_mt",
+     "x": 137.8,
+     "y": 0.5,
+     "l": 25.4,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(montant, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "g_ecart",
+     "x": 164.8,
+     "y": 0.5,
+     "l": 24.4,
+     "h": 6.0,
+     "style": {
+      "taille": 8.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(ecart_montant, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "g_filet",
+     "x": 0.0,
+     "y": 0.3,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "note",
+   "type": "PIED_ETAT",
+   "hauteur": 34.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "e0_c",
+     "x": 0.5,
+     "y": 4.0,
+     "l": 68.25,
+     "h": 12.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.0
+    },
+    {
+     "id": "e0_l",
+     "x": 1.0,
+     "y": 4.5,
+     "l": 67.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.0,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Effectif de référence\""
+    },
+    {
+     "id": "e0_v",
+     "x": 1.0,
+     "y": 9.0,
+     "l": 67.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "p_effectif",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "e1_c",
+     "x": 69.75,
+     "y": 4.0,
+     "l": 68.25,
+     "h": 12.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.0
+    },
+    {
+     "id": "e1_l",
+     "x": 70.25,
+     "y": 4.5,
+     "l": 67.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.0,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Effectif de la période\""
+    },
+    {
+     "id": "e1_v",
+     "x": 70.25,
+     "y": 9.0,
+     "l": 67.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "effectif",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "e2_c",
+     "x": 139.0,
+     "y": 4.0,
+     "l": 68.25,
+     "h": 12.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.0
+    },
+    {
+     "id": "e2_l",
+     "x": 139.5,
+     "y": 4.5,
+     "l": 67.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.0,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Entrées\""
+    },
+    {
+     "id": "e2_v",
+     "x": 139.5,
+     "y": 9.0,
+     "l": 67.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "nb_entrees",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "e3_c",
+     "x": 208.25,
+     "y": 4.0,
+     "l": 68.25,
+     "h": 12.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.0
+    },
+    {
+     "id": "e3_l",
+     "x": 208.75,
+     "y": 4.5,
+     "l": 67.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.0,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Sorties\""
+    },
+    {
+     "id": "e3_v",
+     "x": 208.75,
+     "y": 9.0,
+     "l": 67.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "nb_sorties",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "n",
+     "x": 0.0,
+     "y": 19.0,
+     "l": 277.0,
+     "h": 14.0,
+     "style": {
+      "taille": 7.0,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE_RICHE",
+     "contenu": "Réf. : période de comparaison (le mois précédent, ou celle choisie au lancement). Sal. : salariés pour lesquels la rubrique est renseignée. + / − / ≠ : salariés où la rubrique apparaît, disparaît, ou change. Les sorties (bulletin de référence seulement) sont comptées. Ligne surlignée : rubrique nouvelle, supprimée, ou écart au-delà du seuil. Le groupe « Totaux du bulletin » rapproche les totaux d'en-tête."
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 110.80000000000001,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Contrôle de paie — sans données nominatives\""
+    },
+    {
+     "id": "p_page",
+     "x": 221.60000000000002,
+     "y": 2.0,
+     "l": 55.400000000000006,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Comparatif_rubriques_\" + @periode.code"
+ }
+}

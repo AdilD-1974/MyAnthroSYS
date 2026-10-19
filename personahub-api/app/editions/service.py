@@ -83,6 +83,11 @@ MODELES_SYSTEME = {
     "controle_ir.json": ("CONTROLE_IR", "Contrôle de l'IR retenu", "AUTRE"),
     "masse_salariale.json": ("MASSE_SALARIALE", "Masse salariale par direction et catégorie", "AUTRE"),
     "emargement.json": ("ETAT_EMARGEMENT", "État d'émargement (nets par mode de paiement)", "LISTE"),
+    # comparaisons entre périodes et récapitulatif de l'exercice
+    "ecarts_rubriques.json": ("ECARTS_RUBRIQUES", "Écarts par salarié et par rubrique", "AUTRE"),
+    "controle_deux_periodes.json": ("CONTROLE_DEUX_PERIODES", "Contrôle entre deux périodes de paie (rapprochement)", "AUTRE"),
+    "comparatif_rubriques.json": ("COMPARATIF_RUBRIQUES", "Comparatif des rubriques entre deux périodes", "AUTRE"),
+    "bulletin_recapitulatif.json": ("BULLETIN_RECAP_EXERCICE", "Bulletin récapitulatif de l'exercice (12 mois)", "AUTRE"),
 }
 CATEGORIES = ("BULLETIN", "JOURNAL", "ATTESTATION", "COURRIER", "LISTE", "DECLARATION", "AUTRE")
 TYPES_DEPENDANCE = {"SOURCE", "CHAMP", "RUBRIQUE", "CONSTANTE", "MASQUE", "ASSET", "SOUS_MODELE", "TABLE"}

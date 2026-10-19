@@ -15,7 +15,7 @@ import { toast } from "@/hooks/use-toast";
 import { editionsApi, type ApercuDonnees, type ErreurValidation, type Version } from "@/lib/editionsApi";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
 import {
-  ATTRIBUTS_AFFECTABLES, RUBRIQUES_EN_TETE, VARIABLES_BULLETIN,
+  ATTRIBUTS_AFFECTABLES, LIBELLES_NATURE, PERIODES_AFFECTATION, RUBRIQUES_EN_TETE, VARIABLES_BULLETIN, colonnesExercice,
   type Affectation, type AttributAffecte, type Corps, type Definition, type TypeColonneCorps, type Usages, type Variable,
 } from "@/pages/editions/types";
 import FormuleInput from "./FormuleInput";
@@ -171,6 +171,8 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
             { code: "base", libelle: "Base", type: "MONTANT" }, { code: "taux", libelle: "Taux", type: "TAUX" },
             { code: "gains", libelle: "Gains", type: "MONTANT", total: true }, { code: "retenues", libelle: "Retenues", type: "MONTANT", total: true }],
             affectations: [] }
+        : nouveau.nature === "EXERCICE"
+        ? { code, libelle: nouveau.libelle, nature: "EXERCICE", colonnes: colonnesExercice(), affectations: [] }
         : { code, libelle: nouveau.libelle, nature: "CASES", lignes: [{ code: "mois", libelle: "Mois" }, { code: "cumul", libelle: "Cumul" }],
             colonnes: [{ code: "valeur", libelle: "Valeur", type: "MONTANT" }], affectations: [] };
       x.corps = [...(x.corps ?? []), c];
@@ -188,7 +190,7 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
           <div className="col-span-2"><div className="text-[11px] text-muted-foreground">Description</div><div>{version.modele.description || "—"}</div></div>
         </div>
       </Cadre>
-      <Cadre titre="Corps de l'état" aide="Un corps = un bloc de données. « Lignes » : une ligne par rubrique affectée (détail du bulletin). « Cases » : un tableau fixe lignes × colonnes (cumuls, mois / cumul).">
+      <Cadre titre="Corps de l'état" aide="Un corps = un bloc de données. « Lignes » : une ligne par rubrique affectée (détail du bulletin). « Cases » : un tableau fixe lignes × colonnes (cumuls, mois / cumul). « Exercice » : une ligne par rubrique, les douze mois en colonnes (bulletin récapitulatif).">
         <table className="w-full max-w-4xl border text-sm">
           <thead><tr>{["#", "Code", "Libellé", "Nature", "Impression", "Colonnes", "Lignes", "Rubriques", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
@@ -198,7 +200,7 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
                 <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dndCorps.poignee(i)} {ligneErreur(erreurs, `corps[${i}]`).icone}{i + 1}</td>
                 <td className={`${td} font-mono text-xs`}>{c.code}</td>
                 <td className={td}>{c.libelle}</td>
-                <td className={td}>{c.nature === "LIGNES" ? "Lignes de rubriques" : "Cases"}</td>
+                <td className={td}>{LIBELLES_NATURE[c.nature]}</td>
                 <td className={td}><EmplacementCorps d={d} c={c} editeur={editeur} ro={ro} compact /></td>
                 <td className={`${td} text-center`}>{c.colonnes.length}</td>
                 <td className={`${td} text-center`}>{c.nature === "CASES" ? (c.lignes ?? []).length : "variable"}</td>
@@ -225,7 +227,7 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
             </label>
             <label className="w-56 text-xs">Nature
               <select className={`${classeChamp} mt-1`} value={nouveau.nature} onChange={(e) => setNouveau({ ...nouveau, nature: e.target.value as Corps["nature"] })}>
-                <option value="LIGNES">Lignes de rubriques</option><option value="CASES">Cases (lignes × colonnes)</option>
+                {(Object.keys(LIBELLES_NATURE) as Corps["nature"][]).map((n) => <option key={n} value={n}>{LIBELLES_NATURE[n]}</option>)}
               </select>
             </label>
             <Button size="sm" disabled={!nouveau.libelle.trim()} onClick={ajouter}><Plus className="mr-1 h-4 w-4" />Ajouter le corps</Button>
@@ -243,7 +245,7 @@ function renommerDansCorps(x: Definition, corps: string, genre: "colonne" | "lig
   for (const a of c.affectations ?? []) {
     for (const k of Object.keys(a.cibles) as AttributAffecte[]) {
       const v = a.cibles[k]!;
-      if (c.nature === "LIGNES" && genre === "colonne" && v === ancien) a.cibles[k] = nouveau;
+      if (c.nature !== "CASES" && genre === "colonne" && v === ancien) a.cibles[k] = nouveau;
       if (c.nature === "CASES") {
         const [l, col] = v.split(".");
         if (genre === "ligne" && l === ancien) a.cibles[k] = `${nouveau}.${col}`;
@@ -262,6 +264,9 @@ function renommerDansCorps(x: Definition, corps: string, genre: "colonne" | "lig
 }
 
 type SousCorps = "rubriques" | "colonnes" | "lignes";
+const LIBELLES_ATTRIBUT: Record<string, string> = {
+  MT: "Montant", NB: "Nombre", BASE: "Base", TX: "Taux (dernier du mois)", PAT: "Part patronale", TXP: "Taux patronal",
+};
 /** Une affectation « formule » (même encore vide) ou « rubrique ». */
 const estFormule = (a?: Affectation) => !!a && !a.rubrique && a.formule !== undefined && a.formule !== null;
 
@@ -274,7 +279,7 @@ function EmplacementCorps({ d, c, editeur, ro, compact }: { d: Definition; c: Co
     let compte = "";
     editeur.modifier((x) => {
       const z = x.corps!.find((y) => y.code === c.code)!;
-      if (nouveau) poser(z, "emplacement", nouveau === (z.nature === "LIGNES" ? "DETAIL" : "BAS_DE_PAGE") ? null : nouveau);
+      if (nouveau) poser(z, "emplacement", nouveau === (z.nature === "CASES" ? "BAS_DE_PAGE" : "DETAIL") ? null : nouveau);
       compte = placerCorps(x, c.code);
     }, `emp:${c.code}`);
     if (compte) toast({ title: "Mise en forme mise à jour", description: compte });
@@ -318,8 +323,8 @@ function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
           <label className="text-xs">Libellé<input className={`${classeChamp} mt-1 w-64 text-sm`} disabled={ro} value={c.libelle}
             onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majC((z) => { z.libelle = e.target.value; }, "lib")} /></label>
           <div className="text-xs"><div className="text-muted-foreground">Code · nature</div>
-            <div className="mt-1 py-1 text-sm"><span className="font-mono">{c.code}</span> · {c.nature === "LIGNES" ? "lignes de rubriques" : "cases"}</div></div>
-          {c.nature === "LIGNES" && (
+            <div className="mt-1 py-1 text-sm"><span className="font-mono">{c.code}</span> · {LIBELLES_NATURE[c.nature].toLowerCase()}</div></div>
+          {c.nature !== "CASES" && (
             <label className="flex items-center gap-1.5 self-center pt-4 text-xs" title="Titre imprimé au-dessus des lignes du corps qui n'ont pas de groupe">
               <input type="checkbox" disabled={ro} checked={c.afficher_titre ?? true}
                 onChange={(e) => majC((z) => poser(z, "afficher_titre", e.target.checked ? null : false), "titre")} />
@@ -327,7 +332,7 @@ function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
             </label>
           )}
           <EmplacementCorps d={d} c={c} editeur={editeur} ro={ro} />
-          {c.nature === "LIGNES" && (
+          {c.nature !== "CASES" && (
             <label className="text-xs">Tri des lignes
               <select className={`${classeChamp} mt-1 w-56`} disabled={ro} value={c.tri ?? "AFFECTATION"}
                 onChange={(e) => majC((z) => poser(z, "tri", e.target.value === "AFFECTATION" ? null : e.target.value), "tri")}>
@@ -373,6 +378,7 @@ function GrilleColonnes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro
   const erreurs = useContext(CtxErreurs);
   const { masques } = useReferentiels();
   const [codes, setCodes] = useState<Record<number, string>>({});
+  const fixes = c.nature === "EXERCICE";             // RG-EDT-EXERCICE-01 : m01…m12 et total
   const renommer = (i: number) => {
     const nouveau = CODE(codes[i] ?? "");
     setCodes((s) => { const n = { ...s }; delete n[i]; return n; });
@@ -383,14 +389,16 @@ function GrilleColonnes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro
   };
   return (
     <>
-      <p className="mb-2 text-xs text-muted-foreground">Les colonnes reçoivent les valeurs des rubriques (onglet Rubriques). La mise en forme en reprendra le libellé, le type et le masque.</p>
+      <p className="mb-2 text-xs text-muted-foreground">{fixes
+        ? "Corps « exercice » : une colonne par mois et le total, fixes. Vous pouvez en changer l'intitulé, le type et le masque."
+        : "Les colonnes reçoivent les valeurs des rubriques (onglet Rubriques). La mise en forme en reprendra le libellé, le type et le masque."}</p>
       <table className="w-full max-w-4xl border text-sm">
         <thead><tr>{["#", "Code", "Intitulé colonne", "Sigle", "Type", "Masque", "Total", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
         <tbody>
           {c.colonnes.map((col, i) => { const er = ligneErreur(erreurs, `corps[${ci}].colonnes[${i}]`); return (
             <tr key={i} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title} className={`${er.rouge} ${dnd.ligne(i).className}`}>
               <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{i + 1}</td>
-              <td className={`${td} w-32`}><input className={`${classeChamp} font-mono`} disabled={ro} value={codes[i] ?? col.code}
+              <td className={`${td} w-32`}><input className={`${classeChamp} font-mono`} disabled={ro || fixes} value={codes[i] ?? col.code}
                 onChange={(e) => setCodes({ ...codes, [i]: e.target.value })} onBlur={() => codes[i] !== undefined && renommer(i)}
                 onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") renommer(i); }} /></td>
               <td className={td}><input className={classeChamp} disabled={ro} value={col.libelle} onKeyDown={(e) => e.stopPropagation()}
@@ -403,7 +411,7 @@ function GrilleColonnes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro
                 onChange={(v) => majC((z) => poser(z.colonnes[i], "masque", v), `cm${i}`)} /></td>
               <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro} checked={!!col.total}
                 onChange={(e) => majC((z) => poser(z.colonnes[i], "total", e.target.checked || null), `cto${i}`)} /></td>
-              <td className={`${td} w-20 text-right`}>{!ro && <>
+              <td className={`${td} w-20 text-right`}>{!ro && !fixes && <>
                 <button type="button" onClick={() => majC((z) => { if (i > 0) [z.colonnes[i - 1], z.colonnes[i]] = [z.colonnes[i], z.colonnes[i - 1]]; }, "co")}><ArrowUp className="inline h-3 w-3" /></button>
                 <button type="button" onClick={() => majC((z) => { if (i < z.colonnes.length - 1) [z.colonnes[i + 1], z.colonnes[i]] = [z.colonnes[i], z.colonnes[i + 1]]; }, "co")}><ArrowDown className="inline h-3 w-3" /></button>
                 <button type="button" disabled={c.colonnes.length === 1} onClick={() => {
@@ -420,7 +428,7 @@ function GrilleColonnes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro
           ); })}
         </tbody>
       </table>
-      {!ro && <Button size="sm" variant="outline" className="mt-2" onClick={() => majC((z) => {
+      {!ro && !fixes && <Button size="sm" variant="outline" className="mt-2" onClick={() => majC((z) => {
         let n = z.colonnes.length + 1; while (z.colonnes.some((x) => x.code === `colonne_${n}`)) n++;
         z.colonnes.push({ code: `colonne_${n}`, libelle: `Colonne ${n}` });
       }, "cadd")}><Plus className="mr-1 h-4 w-4" />Colonne</Button>}
@@ -476,7 +484,8 @@ function GrilleLignes({ c, ci, ro, majC, editeur }: { c: Corps; ci: number; ro: 
 
 /** Cibles possibles : colonnes (corps LIGNES) ou cases ligne.colonne (corps CASES). */
 function ciblesDuCorps(c: Corps): { v: string; l: string }[] {
-  return c.nature === "LIGNES"
+  if (c.nature === "EXERCICE") return [{ v: "mois", l: "Mois (ventilé)" }];
+  return c.nature !== "CASES"
     ? c.colonnes.map((col) => ({ v: col.code, l: col.libelle }))
     : (c.lignes ?? []).flatMap((l) => c.colonnes.map((col) => ({ v: `${l.code}.${col.code}`, l: `${l.libelle} · ${col.libelle}` })));
 }
@@ -507,6 +516,7 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
     y.forEach((a, k) => { if (a.fusion && (k === 0 || estFormule(a) !== estFormule(y[k - 1]))) delete a.fusion; });
   }, "ao-dnd"), !ro);
 
+  const exo = c.nature === "EXERCICE";              // RG-EDT-EXERCICE-01 : un attribut ventilé sur les mois
   const selCible = (a: Affectation, i: number, attr: AttributAffecte) => {
     const interdit = a.periode === "CUMUL" && (attr === "TX" || attr === "TXP");
     return (
@@ -526,17 +536,19 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
           <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
           <input className={`${classeChamp} pl-7`} placeholder="Filtrer les affectations…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
         </div>
-        <span className="text-xs text-muted-foreground">Nb, Mt, Tx, Base, Patronal : colonne qui reçoit la valeur. Une rubrique sans aucune valeur n'est jamais imprimée ; à zéro, seulement si « Nulls ».</span>
+        <span className="text-xs text-muted-foreground">{exo
+          ? "Chaque rubrique : l'attribut (montant, nombre, base…) imprimé mois par mois, total en fin de ligne. Une rubrique sans aucune valeur n'est jamais imprimée."
+          : "Nb, Mt, Tx, Base, Patronal : colonne qui reçoit la valeur. Comparaison / Écart : période de comparaison (mois précédent ou choisie). Une rubrique sans aucune valeur n'est jamais imprimée ; à zéro, seulement si « Nulls »."}</span>
         {!ro && <div className="ml-auto flex gap-2">
           <Button size="sm" onClick={() => setAjout(true)}><Plus className="mr-1 h-4 w-4" />Ajouter des rubriques</Button>
-          <Button size="sm" variant="outline" onClick={() => majC((z) => { z.affectations = [...(z.affectations ?? []), { formule: "", cibles: {} }]; }, "fadd")}>Ajouter une formule</Button>
+          <Button size="sm" variant="outline" onClick={() => majC((z) => { z.affectations = [...(z.affectations ?? []), { formule: "", cibles: exo ? { VAL: "mois" } : {} }]; }, "fadd")}>Ajouter une formule</Button>
         </div>}
       </div>
       <div className="overflow-auto rounded border">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10"><tr>
-            {["#", "Rubrique", "Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`), ...(c.nature === "LIGNES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls",
-              ...(c.nature === "LIGNES" ? ["Fusion ↑", "Gras"] : []), ""].map((h) => <th key={h} className={th}
+            {["#", "Rubrique", ...(exo ? ["Valeur imprimée chaque mois"] : ["Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`)]), ...(c.nature !== "CASES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls",
+              ...(c.nature !== "CASES" ? ["Fusion ↑", "Gras"] : []), ""].map((h) => <th key={h} className={th}
                 title={h === "Nulls" ? "Imprimée même quand ses valeurs sont à zéro. Une rubrique sans aucune valeur n'est jamais imprimée." : h === "Fusion ↑" ? "Même ligne que celle du dessus. Rubriques : valeurs additionnées (« en – » soustrait). Formules : plusieurs formules sur une ligne, chacune dans sa colonne" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
           </tr></thead>
           <tbody>
@@ -546,17 +558,17 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                 <td className={`${td} w-12 whitespace-nowrap text-center text-xs text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{a.fusion ? "↳" : i + 1}</td>
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
-                    <td className={`${td} min-w-[240px]`} colSpan={2}>
-                      <FormuleInput value={a.formule ?? ""} disabled={ro} placeholder="Formule (ex. cumul.total_brut)" corpsCourant={c.code}
-                        onChange={(v) => majA(i, (z) => { z.formule = v; }, "f")} />
+                    <td className={`${td} min-w-[240px]`} colSpan={exo ? 1 : 2}>
+                      <FormuleInput value={a.formule ?? ""} disabled={ro} placeholder={exo ? "Formule du mois (ex. [SALBASE].MT + [PRIM_ANC].MT)" : "Formule (ex. cumul.total_brut)"} corpsCourant={c.code}
+                        onChange={(v) => majA(i, (z) => { z.formule = v; if (exo) z.cibles = { VAL: "mois" }; }, "f")} />
                     </td>
-                    <td className={td} colSpan={ATTRIBUTS_AFFECTABLES.length}>
+                    {exo ? <td className={`${td} text-xs text-muted-foreground`}>Évaluée mois par mois</td> : <td className={td} colSpan={ATTRIBUTS_AFFECTABLES.length}>
                       <span className="mr-2 text-xs text-muted-foreground">Valeur →</span>
                       <select className={`${classeChamp} inline-block w-48`} disabled={ro} value={a.cibles.VAL ?? ""}
                         onChange={(e) => majA(i, (z) => { z.cibles = e.target.value ? { VAL: e.target.value } : {}; }, "fv")}>
                         <option value="">—</option>{cibles.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
                       </select>
-                    </td>
+                    </td>}
                   </>
                 ) : (
                   <>
@@ -564,25 +576,37 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                       <div className="font-mono text-xs">{a.rubrique}</div>
                       <div className="truncate text-[11px] text-muted-foreground" title={nomRub(a.rubrique)}>{nomRub(a.rubrique)}</div>
                     </td>
-                    <td className={`${td} w-24`}>
+                    {exo ? (
+                      <td className={`${td} w-56`}>
+                        <select className={`${classeChamp} ${Object.keys(a.cibles).length ? "bg-primary/5 font-medium" : ""}`} disabled={ro}
+                          value={Object.keys(a.cibles)[0] ?? ""}
+                          onChange={(e) => majA(i, (z) => { z.cibles = e.target.value ? { [e.target.value]: "mois" } : {}; }, "ex")}>
+                          <option value="">—</option>
+                          {ATTRIBUTS_AFFECTABLES.map((x) => <option key={x.code} value={x.code}>{LIBELLES_ATTRIBUT[x.code]}</option>)}
+                        </select>
+                      </td>
+                    ) : <>
+                    <td className={`${td} w-28`}>
                       <select className={classeChamp} disabled={ro} value={a.periode ?? "MOIS"}
+                        title={PERIODES_AFFECTATION.find((p) => p.v === (a.periode ?? "MOIS"))?.aide}
                         onChange={(e) => majA(i, (z) => {
                           poser(z, "periode", e.target.value === "MOIS" ? null : e.target.value);
                           if (e.target.value === "CUMUL") { delete z.cibles.TX; delete z.cibles.TXP; }
                         }, "p")}>
-                        <option value="MOIS">Mois</option><option value="CUMUL">Cumul</option>
+                        {PERIODES_AFFECTATION.map((p) => <option key={p.v} value={p.v} title={p.aide}>{p.l}</option>)}
                       </select>
                     </td>
                     {ATTRIBUTS_AFFECTABLES.map((x) => <td key={x.code} className={td}>{selCible(a, i, x.code)}</td>)}
+                    </>}
                   </>
                 )}
-                {c.nature === "LIGNES" && <td className={`${td} w-32`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.groupe ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : "ex. Gains"}
+                {c.nature !== "CASES" && <td className={`${td} w-32`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.groupe ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : "ex. Gains"}
                   list={`groupes-${c.code}`} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "groupe", e.target.value), "g")} /></td>}
                 <td className={`${td} min-w-[150px]`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.libelle ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : nomRub(a.rubrique) || "—"}
                   onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "libelle", e.target.value), "l")} /></td>
                 <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.negatif} onChange={(e) => majA(i, (z) => poser(z, "negatif", e.target.checked || null), "n")} /></td>
                 <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro} checked={!!a.nulle} onChange={(e) => majA(i, (z) => poser(z, "nulle", e.target.checked || null), "z")} /></td>
-                {c.nature === "LIGNES" && <>
+                {c.nature !== "CASES" && <>
                   <td className={`${td} w-14 text-center`}><input type="checkbox" disabled={ro || i === 0 || estFormule(a) !== estFormule(affs[i - 1])}
                     title={estFormule(a) ? "Même ligne que la formule au-dessus (chaque formule dans sa colonne)" : "S'ajoute à la ligne au-dessus"} checked={!!a.fusion} onChange={(e) => majA(i, (z) => poser(z, "fusion", e.target.checked || null), "fu")} /></td>
                   <td className={`${td} w-12 text-center`}><input type="checkbox" disabled={ro || !!a.fusion}
@@ -623,7 +647,8 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
   const { rubriques } = useReferentiels();
   const [q, setQ] = useState("");
   const [choisies, setChoisies] = useState<string[]>([]);
-  const [modele, setModele] = useState<Affectation>({ periode: "MOIS", cibles: {} });
+  const [modele, setModele] = useState<Affectation>({ periode: "MOIS", cibles: c.nature === "EXERCICE" ? { MT: "mois" } : {} });
+  const exo = c.nature === "EXERCICE";
   const [uneLigne, setUneLigne] = useState<{ actif: boolean; libelle: string }>({ actif: false, libelle: "" });
   const cibles = ciblesDuCorps(c);
   const deja = new Set((c.affectations ?? []).map((a) => `${a.rubrique}|${a.periode ?? "MOIS"}`));
@@ -664,9 +689,15 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
           </div>
           <div>
             <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Répartition commune</div>
+            {exo ? (
+              <Ligne libelle="Imprimé chaque mois">
+                <Choix value={Object.keys(modele.cibles)[0]} options={ATTRIBUTS_AFFECTABLES.map((x) => ({ v: x.code, l: LIBELLES_ATTRIBUT[x.code] }))}
+                  onChange={(v) => setModele((m) => ({ ...m, cibles: v ? { [v]: "mois" } : {} }))} />
+              </Ligne>
+            ) : <>
             <Ligne libelle="Période">
-              <Choix value={modele.periode ?? "MOIS"} options={[{ v: "MOIS", l: "Mois" }, { v: "CUMUL", l: "Cumul annuel" }]}
-                onChange={(v) => setModele((m) => { const n = { ...m, periode: v ?? "MOIS", cibles: { ...m.cibles } }; if (v === "CUMUL") { delete n.cibles.TX; delete n.cibles.TXP; } return n; })} />
+              <Choix value={modele.periode ?? "MOIS"} options={PERIODES_AFFECTATION.map((p) => ({ v: p.v, l: p.l }))}
+                onChange={(v) => setModele((m) => { const n = { ...m, periode: (v ?? "MOIS") as Affectation["periode"], cibles: { ...m.cibles } }; if (v === "CUMUL") { delete n.cibles.TX; delete n.cibles.TXP; } return n; })} />
             </Ligne>
             {ATTRIBUTS_AFFECTABLES.map((x) => (
               <Ligne key={x.code} libelle={`${x.libelle} →`}>
@@ -674,10 +705,11 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
                   onChange={(v) => setModele((m) => { const cb = { ...m.cibles }; if (v) cb[x.code] = v; else delete cb[x.code]; return { ...m, cibles: cb }; })} />
               </Ligne>
             ))}
-            {c.nature === "LIGNES" && <Ligne libelle="Groupe"><Texte value={modele.groupe} placeholder="ex. Retenues" onChange={(v) => setModele((m) => ({ ...m, groupe: v || null }))} /></Ligne>}
+            </>}
+            {c.nature !== "CASES" && <Ligne libelle="Groupe"><Texte value={modele.groupe} placeholder="ex. Retenues" onChange={(v) => setModele((m) => ({ ...m, groupe: v || null }))} /></Ligne>}
             <Case libelle="en –" value={modele.negatif} onChange={(v) => setModele((m) => ({ ...m, negatif: v || undefined }))} />
             <Case libelle="Nulls" value={modele.nulle} onChange={(v) => setModele((m) => ({ ...m, nulle: v || undefined }))} />
-            {c.nature === "LIGNES" && (
+            {c.nature !== "CASES" && (
               <div className="mt-2 rounded border p-1.5">
                 <Case libelle="Toutes sur UNE seule ligne (additionnées)" value={uneLigne.actif} onChange={(v) => setUneLigne((u) => ({ ...u, actif: v }))} />
                 {uneLigne.actif && <div className="mt-1"><Texte value={uneLigne.libelle} placeholder="Libellé de la ligne" onChange={(v) => setUneLigne((u) => ({ ...u, libelle: v }))} /></div>}
@@ -691,7 +723,7 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
             const a: Affectation = { rubrique: code, cibles: { ...modele.cibles } };
             if (uneLigne.actif && k > 0) a.fusion = true;
             if (uneLigne.actif && k === 0 && uneLigne.libelle) a.libelle = uneLigne.libelle;
-            if (modele.periode === "CUMUL") a.periode = "CUMUL";
+            if (modele.periode && modele.periode !== "MOIS" && !exo) a.periode = modele.periode;
             if (modele.groupe) a.groupe = modele.groupe;
             if (modele.negatif) a.negatif = true;
             if (modele.nulle) a.nulle = true;
@@ -834,8 +866,8 @@ function OngletApercu({ d, version, ro, enregistrer }: { d: Definition; version:
                 const v = l.corps[c.code];
                 return (
                   <div key={c.code}>
-                    <div className="mb-1 text-sm font-semibold">{c.libelle} <span className="font-normal text-muted-foreground">· {c.nature === "LIGNES" ? "lignes" : "cases"}</span></div>
-                    {c.nature === "LIGNES" ? (
+                    <div className="mb-1 text-sm font-semibold">{c.libelle} <span className="font-normal text-muted-foreground">· {LIBELLES_NATURE[c.nature].toLowerCase()}</span></div>
+                    {c.nature !== "CASES" ? (
                       <table className="border text-xs">
                         <thead><tr>{["Groupe", "Rubrique", "Libellé", ...c.colonnes.map((col) => col.libelle)].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
                         <tbody>

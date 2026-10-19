@@ -38,6 +38,11 @@ function recettes(corps: { code: string; nature: string; colonnes: { code: strin
     { groupe: "Totaux", titre: "Total du bulletin", insert: "[NET_IMPOSABLE].MT", detail: "Totaux : TOTAL_BRUT, BRUT_IMPOSABLE, NET_IMPOSABLE, NET_A_PAYER, COT_SALARIALES, COT_PATRONALES…" },
     { groupe: "Cumuls", titre: "Cumul annuel d'une rubrique", insert: "[SALBASE].CMT", detail: "CMT montant, CNB nombre, CBASE base ; de janvier au mois édité inclus." },
     { groupe: "Cumuls", titre: "Cumul annuel d'un total", insert: "cumul.total_brut", detail: "Aussi : cumul.net_imposable, cumul.total_cot_salariale, cumul.nb_bulletins…" },
+    { groupe: "Comparaison", titre: "Rubrique dans la période de comparaison", insert: "[SALBASE].PMT", detail: "Mois précédent, ou paramètre « periode_comparaison » ; PNB, PBASE, PTX, PPAT." },
+    { groupe: "Comparaison", titre: "Écart d'une rubrique", insert: "[SALBASE].EMT", detail: "Mois − comparaison ; ENB, EBASE, ETX, EPAT." },
+    { groupe: "Comparaison", titre: "Total du bulletin de comparaison", insert: "precedent.net_a_payer", detail: "precedent.existe vaut 0 pour une entrée ; mouvement : ENTREE, SORTIE, PRESENT." },
+    { groupe: "Comparaison", titre: "Rubriques en écart du bulletin", insert: "comparaison.nb_ecarts", detail: "Aussi : comparaison.nb_nouvelles, nb_supprimees, nb_modifiees, effet_net." },
+    { groupe: "Exercice", titre: "Rubrique d'un mois de l'exercice", insert: "[SALBASE].MT01", detail: "Récapitulatif annuel (source EXERCICE_SALARIE) : MT01 à MT12, NB01…, BASE01… ; .MT = l'année." },
     ...(cases ? [{ groupe: "Cumuls", titre: "Case d'un corps « cases »", insert: `corps.${cases.code}.${"mois"}.${cases.colonnes[0]?.code ?? "brut"}`, detail: "corps.<corps>.<ligne>.<colonne>" }] : []),
     { groupe: "Conditions", titre: "Si … alors … sinon", insert: 'SI([NET_A_PAYER].MT > 0, "Virement", "Néant")' },
     { groupe: "Conditions", titre: "Seulement si la rubrique existe", insert: "SI([PRIM_ANC].MT <> VIDE, [PRIM_ANC].BASE)" },
@@ -197,7 +202,7 @@ export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider,
                     </button>
                     {rubChoisie === r.code && (
                       <div className="mt-1 flex flex-wrap gap-1 pb-1">
-                        {ATTRIBUTS_RUBRIQUE.filter((a) => !r.total || a.code === "MT" || a.code === "CMT").map((a) => (
+                        {ATTRIBUTS_RUBRIQUE.filter((a) => !r.total || ["MT", "CMT", "PMT", "EMT", "MT01"].includes(a.code)).map((a) => (
                           <button key={a.code} type="button" onClick={() => inserer(`[${r.code}].${a.code}`)}
                             className="rounded border bg-background px-2 py-0.5 text-xs hover:bg-primary hover:text-primary-foreground" title={a.libelle}>
                             <span className="font-mono">.{a.code}</span> <span className="text-muted-foreground">{a.libelle}</span>
@@ -224,7 +229,7 @@ export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider,
               ))}
               {onglet === "rubriques" && !listeRubriques.length && <p className="p-3 text-sm text-muted-foreground">Aucune rubrique.</p>}
             </div>
-            {onglet === "rubriques" && <p className="mt-1 text-[11px] text-muted-foreground">Cliquez une rubrique puis l'attribut : .MT montant, .NB nombre, .TX taux, .BASE base, .PAT patronal ; .CMT/.CNB/.CBASE cumuls annuels.</p>}
+            {onglet === "rubriques" && <p className="mt-1 text-[11px] text-muted-foreground">Cliquez une rubrique puis l'attribut : .MT montant, .NB nombre, .TX taux, .BASE base, .PAT patronal ; .CMT/.CNB/.CBASE cumuls annuels ; .PMT comparaison, .EMT écart ; .MT01…MT12 mois de l'exercice.</p>}
           </div>
 
           <div className="flex min-h-0 flex-col rounded border p-2">

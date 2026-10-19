@@ -12,6 +12,9 @@ Chaque modèle est un exemple complet, prêt à l'emploi et à copier pour perso
     COURRIER      Notification de rémunération (adresse pour enveloppe à fenêtre, repères de pliage)
     DECLARATION   État des cotisations CNSS / AMO / TFP (taux en variables modifiables)
     AUTRE         Fiche de synthèse annuelle du salarié (cumuls, moyennes, ratios)
+    BULLETIN      Bulletins détaillé, moderne, formulaire ; bulletin récapitulatif de l'exercice (12 mois)
+    CONTRÔLE      Écarts M / M-1, anomalies, IR, écarts par rubrique, contrôle entre deux périodes,
+                  comparatif des rubriques ; SYNTHÈSE masse salariale ; LISTE émargement
 Les montants passent par les champs totaux du bulletin : aucun code de rubrique propre à un
 client n'est supposé.
 """
@@ -28,6 +31,12 @@ PARAM_COLLABS = {"code": "collaborateurs", "libelle": "Collaborateurs", "type": 
                  "obligatoire": False, "multiple": True}
 PARAM_PLAN = {"code": "plan_paie", "libelle": "Plan de paie", "type": "PLAN_PAIE", "obligatoire": False}
 MOIS = 'FORMAT(@periode.date_fin, "MOIS_ANNEE")'
+# RG-EDT-COMPARAISON-01 : période de comparaison au choix (vide = mois précédent), sorties incluses
+PARAM_COMPARAISON = {"code": "periode_comparaison", "libelle": "Période de comparaison (vide : mois précédent)",
+                     "type": "PERIODE", "obligatoire": False}
+PARAM_SORTANTS = {"code": "inclure_sortants", "libelle": "Inclure les sorties (payés dans la période de comparaison seulement)",
+                  "type": "BOOLEEN", "obligatoire": False, "defaut": "VRAI"}
+COMPAREE = 'SI(ESTVIDE(@periode_comparaison), "mois précédent", FORMAT(@periode_comparaison.date_fin, "MOIS_ANNEE"))'
 
 
 def lit(t: str) -> str:
@@ -1141,22 +1150,22 @@ def etat_ecarts() -> dict:
     cols = [
         ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
         ("nom", "Nom et prénom", 48, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
-        ("brut_p", "Brut M-1", 22, "precedent.total_brut", "MONTANT_SANS_ZERO", "DROITE"),
-        ("brut", "Brut M", 22, "total_brut", "MONTANT", "DROITE"),
+        ("brut_p", "Brut réf.", 22, "precedent.total_brut", "MONTANT_SANS_ZERO", "DROITE"),
+        ("brut", "Brut", 22, "total_brut", "MONTANT_SANS_ZERO", "DROITE"),
         ("ec_brut", "Écart brut", 21, "ecart_brut", "MONTANT_SANS_ZERO", "DROITE"),
-        ("cot_p", "Retenues M-1", 21, "precedent.total_retenues", "MONTANT_SANS_ZERO", "DROITE"),
-        ("cot", "Retenues M", 21, "total_retenues", "MONTANT", "DROITE"),
-        ("net_p", "Net M-1", 22, "precedent.net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
-        ("net", "Net M", 22, "net_a_payer", "MONTANT", "DROITE"),
+        ("cot_p", "Retenues réf.", 21, "precedent.total_retenues", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cot", "Retenues", 21, "total_retenues", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net_p", "Net réf.", 22, "precedent.net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net", "Net", 22, "net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
         ("ec_net", "Écart net", 21, "ecart_net", "MONTANT_SANS_ZERO", "DROITE"),
-        ("pct", "Var. net", 15, 'SI(precedent.existe = 0, "", pct_net)', "POURCENTAGE", "DROITE"),
-        ("obs", "Observation", 24, 'SI(precedent.existe = 0, "Entrée / 1re paie", SI(ABS(pct_net) >= @seuil, "À vérifier", ""))', None, "GAUCHE"),
+        ("pct", "Var. net", 15, 'SI(OU(precedent.existe = 0, sortant = 1), "", pct_net)', "POURCENTAGE", "DROITE"),
+        ("obs", "Observation", 24, 'SI(sortant = 1, "Sortie", SI(precedent.existe = 0, "Entrée / 1re paie", SI(ABS(pct_net) >= @seuil, "À vérifier", "")))', None, "GAUCHE"),
     ]
     en_tete = entete_societe(L, "Écarts M / M-1",
-                             f'{MOIS} + " comparé au mois précédent   ·   seuil d\'alerte " + FORMAT(@seuil, "MONTANT") + " %"')
+                             f'{MOIS} + " comparé à " + {COMPAREE} + "   ·   seuil d\'alerte " + FORMAT(@seuil, "MONTANT") + " %"')
     en_tete += entete_colonnes("c", cols, 21, L)
     corps = [{**fond("alerte", 0, 0, L, 5, ORANGE_CLAIR),
-              "condition": {"expression": "OU(precedent.existe = 0, ABS(pct_net) >= @seuil)"}}]
+              "condition": {"expression": "OU(precedent.existe = 0, sortant = 1, ABS(pct_net) >= @seuil)"}}]
     corps += ligne_valeurs("v", cols)
     for e in corps:
         if e["id"] in ("v_obs", "v_pct", "v_ec_net"):
@@ -1165,29 +1174,31 @@ def etat_ecarts() -> dict:
     total = totaux_colonnes("t", cols, "ETAT", 1, 7, BLANC, BLEU, '"TOTAL — " + NB(id, ETAT) + " salariés"', l_lib=64)
     synthese = [
         texte("s_titre", 0, 11, 150, 5, "Synthèse", taille=9, gras=True, couleur=BLEU),
-        cadre("s_cadre", 0, 16, 150, 30, couleur=GRIS_CLAIR, arrondi=1.5),
+        cadre("s_cadre", 0, 16, 150, 35, couleur=GRIS_CLAIR, arrondi=1.5),
         *paires("s", 2, 17, 95, 50, [
-            ("Salariés payés ce mois", 'FORMAT(NB(id, ETAT), "ENTIER")'),
-            ("dont entrées ou première paie (sans bulletin M-1)", 'FORMAT(NB(SI(precedent.existe = 0, 1, ""), ETAT), "ENTIER")'),
+            ("Salariés payés ce mois", 'FORMAT(NB(SI(sortant = 0, 1, ""), ETAT), "ENTIER")'),
+            ("dont entrées ou première paie (sans bulletin de référence)", 'FORMAT(NB(SI(precedent.existe = 0, 1, ""), ETAT), "ENTIER")'),
+            ("Sorties (bulletin de référence seulement)", 'FORMAT(NB(SI(sortant = 1, 1, ""), ETAT), "ENTIER")'),
             ("Bulletins au-delà du seuil d'alerte", 'FORMAT(NB(SI(ET(precedent.existe = 1, ABS(pct_net) >= @seuil), 1, ""), ETAT), "ENTIER")'),
             ("Variation de la masse brute", 'FORMAT(TOTAL(total_brut, ETAT) - TOTAL(precedent.total_brut, ETAT), "MONTANT")'),
             ("Variation du net à payer", 'FORMAT(TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT), "MONTANT")'),
             ("Variation du net (en %)", 'SI(TOTAL(precedent.net_a_payer, ETAT) = 0, "—", FORMAT((TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT)) / TOTAL(precedent.net_a_payer, ETAT) * 100, "POURCENTAGE"))'),
         ], pas=4.8, taille=8),
-        cadre("leg_c", 160, 16, 117, 30, couleur=GRIS_CLAIR, arrondi=1.5),
+        cadre("leg_c", 160, 16, 117, 35, couleur=GRIS_CLAIR, arrondi=1.5),
         fond("leg_f", 162, 18, 6, 4, ORANGE_CLAIR),
-        texte("leg_t", 170, 17.5, 105, 5, "Ligne surlignée : écart du net au-delà du seuil, ou pas de bulletin M-1", taille=7.5),
+        texte("leg_t", 170, 17.5, 105, 5, "Ligne surlignée : écart du net au-delà du seuil, entrée ou sortie", taille=7.5),
         texte("leg_t2", 162, 24, 113, 18,
               "Les sorties du mois (bulletin M-1 sans bulletin M) n'apparaissent pas dans cet état : "
               "lancez-le sur le mois précédent pour les repérer. Le seuil se règle au lancement.", taille=7, italique=True,
               couleur=GRIS, extensible=None),
     ]
     synthese[-1] = {**riche("leg_t2", 162, 24, 113, 18,
-                            "Les sorties du mois (bulletin M-1 sans bulletin M) n'apparaissent pas ici : lancez l'état sur "
-                            "le mois précédent pour les repérer. Le seuil d'alerte se règle au lancement.", taille=7,
+                            "Référence : le mois précédent, ou la période de comparaison choisie au lancement. Les sorties "
+                            "(bulletin de référence sans bulletin ce mois) sont listées avec un net à zéro ; décochez « Inclure "
+                            "les sorties » pour les masquer. Le seuil d'alerte se règle au lancement.", taille=7,
                             italique=True, couleur=GRIS), "extensible": False}
     return definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS,
+        [PARAM_PERIODE, PARAM_COMPARAISON, PARAM_PLAN, PARAM_COLLABS, PARAM_SORTANTS,
          {"code": "seuil", "libelle": "Seuil d'alerte (variation du net, en %)", "type": "NOMBRE", "obligatoire": False, "defaut": "10"},
          {"code": "affichage", "libelle": "Salariés affichés", "type": "LISTE", "obligatoire": False,
           "valeurs": ["Tous", "Écarts et entrées seulement"], "defaut": '"Tous"'}],
@@ -1196,11 +1207,11 @@ def etat_ecarts() -> dict:
                       {"code": "ecart_net", "expression": "net_a_payer - SIVIDE(precedent.net_a_payer, 0)"},
                       {"code": "pct_net", "expression": "SI(SIVIDE(precedent.net_a_payer, 0) = 0, 0, (net_a_payer - precedent.net_a_payer) / precedent.net_a_payer * 100)"}],
           "filtres": ["periode_id = @periode.id",
-                      'OU(@affichage <> "Écarts et entrées seulement", precedent.existe = 0, ABS(pct_net) >= @seuil)'],
+                      'OU(@affichage <> "Écarts et entrées seulement", precedent.existe = 0, sortant = 1, ABS(pct_net) >= @seuil)'],
           "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
         [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
          bande("detail", "CORPS", 5, corps),
-         bande("total", "PIED_ETAT", 48, total + synthese, insecable=True),
+         bande("total", "PIED_ETAT", 53, total + synthese, insecable=True),
          bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — document interne"))],
         {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
         {"formats": ["PDF"], "nom_fichier": '"Ecarts_M_M-1_" + @periode.code'},
@@ -1438,6 +1449,367 @@ def emargement() -> dict:
         usages={"confidentialite": 3})
 
 
+# =============================================================================
+# 15 à 18. COMPARAISONS ENTRE PÉRIODES ET RÉCAPITULATIF DE L'EXERCICE
+# =============================================================================
+MOUVEMENT = 'SI(mouvement = "ENTREE", "Entrée", SI(mouvement = "SORTIE", "Sortie", "Présent"))'
+STYLE_ENTETE_TAB = {"fond": BLEU, "couleur": BLANC, "gras": True, "taille": 6.5, "alignement": "CENTRE"}
+
+
+def ecarts_rubriques() -> dict:
+    """RG-EDT-COMPARAISON-04 : pour chaque salarié, ses rubriques comparées une à une à la période de
+    référence (mois précédent ou période choisie) : nouvelles, supprimées, modifiées."""
+    L = 277.0
+    colonnes = [
+        col("lib", "Rubrique", 66, "libelle"),
+        col("code", "Code", 16, "code_rubrique", taille=6, couleur=GRIS),
+        col("nb_p", "Nb réf.", 13, "p_nombre", "QUANTITE", couleur=GRIS),
+        col("base_p", "Base réf.", 21, "p_base", "MONTANT_SANS_ZERO", couleur=GRIS),
+        col("mt_p", "Montant réf.", 23, "p_montant", "MONTANT_SANS_ZERO", True, couleur=GRIS),
+        col("nb", "Nb", 13, "nombre", "QUANTITE"),
+        col("base", "Base", 21, "base", "MONTANT_SANS_ZERO"),
+        col("mt", "Montant", 23, "montant", "MONTANT_SANS_ZERO", True),
+        col("ecart", "Écart", 23, "ecart_montant", "MONTANT_SANS_ZERO", True, gras=True),
+        col("pct", "Écart %", 15, "ecart_pct", "POURCENTAGE"),
+        col("effet", "Effet net", 23, "effet_net", "MONTANT_SANS_ZERO", True),
+        col("statut", "Statut", 20, "statut_libelle", gras=True, alignement="CENTRE"),
+    ]
+    sections = [{"id": "sec_gains", "titre": "Éléments de rémunération", "filtre": 'sens = "GAIN"', "sous_total": True},
+                {"id": "sec_retenues", "titre": "Cotisations et retenues", "filtre": 'sens = "RETENUE"', "sous_total": True}]
+    tab = {"id": "rubriques", "type": "TABLEAU", "x": 0, "y": 13, "l": L, "h": 20, "jeu": "e", "colonnes": colonnes,
+           "sections": sections, "zebre": True, "quadrillage": "COLONNES", "hauteur_ligne": 4.6, "ligne_total": False,
+           "style_entete": STYLE_ENTETE_TAB, "style": {"taille": 7}}
+    corps = [
+        fond("s_fond", 0, 1, L, 6.5, BLEU_CLAIR),
+        champ("s_nom", 2, 1, 120, 6.5, 'identite.matricule + " — " + MAJUSCULE(identite.nom) + " " + identite.prenom',
+              taille=8.5, gras=True, couleur=BLEU),
+        champ("s_uo", 122, 1, 85, 6.5, 'SIVIDE(affectation.uo_niveau1_libelle, SIVIDE(affectation.organisation_libelle, ""))'
+                                       ' + SI(ESTVIDE(affectation.emploi_libelle), "", " · " + affectation.emploi_libelle)',
+              taille=7.5, couleur=GRIS),
+        champ("s_mvt", 207, 1, 68, 6.5, '"Mouvement : " + ' + MOUVEMENT, taille=8, gras=True, couleur=ORANGE, alignement="DROITE"),
+        champ("s_net", 2, 7.3, 273, 5,
+              '"Net de référence " + FORMAT(SIVIDE(precedent.net_a_payer, 0), "MONTANT") + "  →  net " + FORMAT(net_a_payer, "MONTANT")'
+              ' + "   (écart " + FORMAT(net_a_payer - SIVIDE(precedent.net_a_payer, 0), "MONTANT") + ")   ·   "'
+              ' + comparaison.nb_ecarts + " rubrique(s) en écart : " + comparaison.nb_nouvelles + " nouvelle(s), "'
+              ' + comparaison.nb_supprimees + " supprimée(s), " + comparaison.nb_modifiees + " modifiée(s)"',
+              taille=7, couleur=GRIS),
+        tab,
+    ]
+    synthese = [
+        texte("s_titre", 0, 4, 150, 5, "Synthèse", taille=9, gras=True, couleur=BLEU),
+        cadre("s_cadre", 0, 9, 150, 36, couleur=GRIS_CLAIR, arrondi=1.5),
+        *paires("t", 2, 10, 95, 50, [
+            ("Salariés listés", 'FORMAT(NB(id, ETAT), "ENTIER")'),
+            ("dont entrées / sorties", 'FORMAT(NB(SI(mouvement = "ENTREE", 1, ""), ETAT), "ENTIER") + " / " + FORMAT(NB(SI(mouvement = "SORTIE", 1, ""), ETAT), "ENTIER")'),
+            ("Rubriques en écart (toutes catégories)", 'FORMAT(TOTAL(comparaison.nb_ecarts, ETAT), "ENTIER")'),
+            ("Nouvelles / supprimées / modifiées", 'FORMAT(TOTAL(comparaison.nb_nouvelles, ETAT), "ENTIER") + " / " + FORMAT(TOTAL(comparaison.nb_supprimees, ETAT), "ENTIER") + " / " + FORMAT(TOTAL(comparaison.nb_modifiees, ETAT), "ENTIER")'),
+            ("Effet des écarts sur le net", 'FORMAT(TOTAL(comparaison.effet_net, ETAT), "MONTANT")'),
+            ("Variation du net à payer", 'FORMAT(TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT), "MONTANT")'),
+            ("Variation de la masse brute", 'FORMAT(TOTAL(total_brut, ETAT) - TOTAL(precedent.total_brut, ETAT), "MONTANT")'),
+        ], pas=4.8, taille=8),
+        cadre("leg_c", 160, 9, 117, 36, couleur=GRIS_CLAIR, arrondi=1.5),
+        {**riche("leg", 163, 11, 112, 32,
+                 "Réf. : période de comparaison (le mois précédent, ou celle choisie au lancement). Nouvelle : rubrique absente "
+                 "de la référence. Supprimée : présente seulement dans la référence. Modifiée : montant, nombre, base, taux ou "
+                 "part patronale différents. Effet net : écart d'un gain, ou écart d'une retenue changé de signe. "
+                 "Seules les rubriques imprimables (gains et retenues) sont comparées.", taille=7, italique=True, couleur=GRIS),
+         "extensible": False},
+    ]
+    return definition(
+        [PARAM_PERIODE, PARAM_COMPARAISON, PARAM_PLAN, PARAM_COLLABS, PARAM_SORTANTS,
+         {"code": "affichage", "libelle": "Salariés affichés", "type": "LISTE", "obligatoire": False,
+          "valeurs": ["Salariés avec écarts", "Tous les salariés"], "defaut": '"Salariés avec écarts"'},
+         {"code": "detail", "libelle": "Rubriques affichées", "type": "LISTE", "obligatoire": False,
+          "valeurs": ["Rubriques en écart", "Toutes les rubriques"], "defaut": '"Rubriques en écart"'},
+         {"code": "seuil", "libelle": "Écart minimal d'une rubrique modifiée (montant)", "type": "NOMBRE", "obligatoire": False,
+          "defaut": "0"}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL",
+          "filtres": ["periode_id = @periode.id", 'OU(@affichage = "Tous les salariés", comparaison.nb_ecarts > 0)'],
+          "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]},
+         {"code": "e", "source": "BULLETIN_ECART_LIGNE", "role": "SECONDAIRE", "parent": "b", "relation": "ecarts",
+          "filtres": ['OU(@detail = "Toutes les rubriques", en_ecart = 1)',
+                      'OU(@detail = "Toutes les rubriques", statut <> "MODIFIEE", ABS(SIVIDE(ecart_montant, 0)) >= @seuil)']}],
+        [bande("en_tete", "EN_TETE_PAGE", 21, entete_societe(L, "Écarts par rubrique", f'{MOIS} + " comparé à " + {COMPAREE}')),
+         bande("detail", "CORPS", 36, corps),
+         bande("synthese", "PIED_ETAT", 47, synthese, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — document interne"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Ecarts_rubriques_" + @periode.code'},
+        usages={"confidentialite": 3})
+
+
+def controle_deux_periodes() -> dict:
+    """RG-EDT-COMPARAISON-06 : deux périodes de paie au choix ; salariés regroupés par mouvement
+    (entrées, sorties, présents) et rapprochement des masses : référence + entrées − sorties ± variations = période."""
+    L = 277.0
+    cols = [
+        ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
+        ("nom", "Nom et prénom", 50, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
+        ("brut_p", "Brut réf.", 23, "precedent.total_brut", "MONTANT_SANS_ZERO", "DROITE"),
+        ("brut", "Brut", 23, "total_brut", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net_p", "Net réf.", 23, "precedent.net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net", "Net", 23, "net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
+        ("ec_net", "Écart net", 22, "ecart_net", "MONTANT_SANS_ZERO", "DROITE"),
+        ("pct", "Var. %", 15, 'SI(mouvement = "PRESENT", pct_net, "")', "POURCENTAGE", "DROITE"),
+        ("cout_p", "Coût réf.", 24, "precedent.cout_employeur", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cout", "Coût", 24, "cout_employeur", "MONTANT_SANS_ZERO", "DROITE"),
+        ("ec_cout", "Écart coût", 22, "ecart_cout", "MONTANT_SANS_ZERO", "DROITE"),
+        ("rub", "Rub.", 10, 'SI(comparaison.nb_ecarts > 0, comparaison.nb_ecarts, "")', "ENTIER", "CENTRE"),
+    ]
+    sous_titre = 'FORMAT(@periode.date_fin, "MOIS_ANNEE") + " comparé à " + FORMAT(@periode_comparaison.date_fin, "MOIS_ANNEE")'
+    en_tete = entete_societe(L, "Contrôle entre deux périodes", sous_titre) + entete_colonnes("c", cols, 21, L)
+    g_tete = [fond("g_fond", 0, 1, L, 6.5, BLEU_CLAIR),
+              champ("g_titre", 1.5, 1, 220, 6.5, "mvt_lib", taille=8.5, gras=True, couleur=BLEU)]
+    corps = [{**fond("alerte", 0, 0, L, 5, ORANGE_CLAIR),
+              "condition": {"expression": 'ET(mouvement = "PRESENT", ABS(pct_net) >= @seuil)'}}]
+    corps += ligne_valeurs("v", cols)
+    for e in corps:
+        if e["id"] in ("v_ec_net", "v_ec_cout", "v_rub"):
+            e["style"]["gras"] = True
+    g_pied = totaux_colonnes("g", cols, "GROUPE", 0.5, 6, BLEU, None, '"Total — " + NB(id, GROUPE) + " salarié(s)"', l_lib=66)
+    g_pied = [e for e in g_pied if e["id"] != "g_fond"] + [ligne("g_filet", 0, 0.3, L, couleur=BLEU, epaisseur=0.4)]
+    # rapprochement des masses
+    def r(expr):            # même expression pour brut, net, coût
+        return {k: expr.replace("X", f"SIVIDE({x}, 0)").replace("SIVIDE(precedent.SIVIDE(" + x + ", 0), 0)", f"SIVIDE(precedent.{x}, 0)")
+                for k, x in (("brut", "total_brut"), ("net", "net_a_payer"), ("cout", "cout_employeur"))}
+    lignes = [
+        {"id": "ref", "titre": "Période de référence", "valeurs": {
+            "eff": 'NB(SI(precedent.existe = 1, 1, ""), ETAT)', **r("TOTAL(SIVIDE(precedent.X, 0), ETAT)")}},
+        {"id": "ent", "titre": "+ Entrées", "valeurs": {
+            "eff": 'NB(SI(mouvement = "ENTREE", 1, ""), ETAT)', **r('TOTAL(SI(mouvement = "ENTREE", X, 0), ETAT)')}},
+        {"id": "sor", "titre": "− Sorties", "valeurs": {
+            "eff": '0 - NB(SI(mouvement = "SORTIE", 1, ""), ETAT)', **r('0 - TOTAL(SI(mouvement = "SORTIE", SIVIDE(precedent.X, 0), 0), ETAT)')}},
+        {"id": "var", "titre": "± Variations des présents", "valeurs": {
+            **r('TOTAL(SI(mouvement = "PRESENT", X - SIVIDE(precedent.X, 0), 0), ETAT)')}},
+        {"id": "per", "titre": "= Période éditée", "style": {"gras": True, "fond": BLEU_CLAIR}, "valeurs": {
+            "eff": 'NB(SI(mouvement <> "SORTIE", 1, ""), ETAT)', **r("TOTAL(X, ETAT)")}},
+        {"id": "ctl", "titre": "Écart de rapprochement (doit être nul)", "style": {"italique": True}, "valeurs": {
+            **r('TOTAL(SIVIDE(precedent.X, 0), ETAT) + TOTAL(SI(mouvement = "ENTREE", X, 0), ETAT) - TOTAL(SI(mouvement = "SORTIE", SIVIDE(precedent.X, 0), 0), ETAT) + TOTAL(SI(mouvement = "PRESENT", X - SIVIDE(precedent.X, 0), 0), ETAT) - TOTAL(X, ETAT)')}},
+    ]
+    rapprochement = {
+        "id": "rappro", "type": "GRILLE", "x": 0, "y": 10, "l": 190, "h": 36, "largeur_titres": 70, "hauteur_ligne": 5.5,
+        "quadrillage": "COMPLET", "style": {"taille": 7.5, "couleur_bordure": GRIS_CLAIR, "alignement": "DROITE"},
+        "style_entete": {"fond": BLEU, "couleur": BLANC, "gras": True, "taille": 7, "alignement": "CENTRE"},
+        "style_titres": {"gras": True, "couleur": BLEU, "alignement": "GAUCHE"},
+        "colonnes": [{"id": "eff", "titre": "Effectif", "largeur": 24, "affichage": {"masque": "ENTIER", "valeur_si_vide": ""}},
+                     *[{"id": c, "titre": t, "largeur": 32, "affichage": {"masque": "MONTANT", "valeur_si_vide": ""}}
+                       for c, t in (("brut", "Masse brute"), ("net", "Net à payer"), ("cout", "Coût employeur"))]],
+        "lignes": lignes,
+    }
+    synthese = [
+        texte("r_titre", 0, 4, 190, 5, "Rapprochement des masses entre les deux périodes", taille=9, gras=True, couleur=BLEU),
+        rapprochement,
+        {**riche("r_note", 198, 10, 79, 36,
+                 "Référence : la période de comparaison choisie au lancement. Entrée : pas de bulletin dans la référence. "
+                 "Sortie : bulletin dans la référence seulement. Ligne surlignée : variation du net au-delà du seuil. "
+                 "« Rub. » : rubriques du bulletin en écart (détail dans l'état « Écarts par rubrique »).",
+                 taille=7, italique=True, couleur=GRIS), "extensible": False},
+    ]
+    return definition(
+        [PARAM_PERIODE,
+         {"code": "periode_comparaison", "libelle": "Période de référence (comparée)", "type": "PERIODE"},
+         PARAM_PLAN, PARAM_COLLABS, PARAM_SORTANTS,
+         {"code": "seuil", "libelle": "Seuil d'alerte (variation du net, en %)", "type": "NOMBRE", "obligatoire": False, "defaut": "10"},
+         {"code": "affichage", "libelle": "Salariés affichés", "type": "LISTE", "obligatoire": False,
+          "valeurs": ["Tous les salariés", "Mouvements et écarts seulement"], "defaut": '"Tous les salariés"'}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL",
+          "calculs": [{"code": "mvt_rang", "expression": 'SI(mouvement = "ENTREE", 1, SI(mouvement = "SORTIE", 2, 3))'},
+                      {"code": "mvt_lib", "expression": 'SI(mouvement = "ENTREE", "Entrées — pas de bulletin dans la période de référence", '
+                                                         'SI(mouvement = "SORTIE", "Sorties — bulletin dans la période de référence seulement", '
+                                                         '"Salariés payés dans les deux périodes"))'},
+                      {"code": "ecart_brut", "expression": "total_brut - SIVIDE(precedent.total_brut, 0)"},
+                      {"code": "ecart_net", "expression": "net_a_payer - SIVIDE(precedent.net_a_payer, 0)"},
+                      {"code": "ecart_cout", "expression": "SIVIDE(cout_employeur, 0) - SIVIDE(precedent.cout_employeur, 0)"},
+                      {"code": "pct_net", "expression": "SI(SIVIDE(precedent.net_a_payer, 0) = 0, 0, (net_a_payer - precedent.net_a_payer) / precedent.net_a_payer * 100)"}],
+          "filtres": ["periode_id = @periode.id"],
+          "groupes": ["mvt_lib"],
+          "tri": [{"champ": "mvt_rang"}, {"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("g_tete", "EN_TETE_GROUPE", 8, g_tete, niveau_groupe=1),
+         bande("detail", "CORPS", 5, corps,
+               condition='OU(@affichage = "Tous les salariés", mouvement <> "PRESENT", ABS(SIVIDE(ecart_net, 0)) > 0)'),
+         bande("g_pied", "PIED_GROUPE", 8, g_pied, niveau_groupe=1),
+         bande("synthese", "PIED_ETAT", 48, synthese, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — document interne"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Controle_" + @periode.code + "_" + @periode_comparaison.code'},
+        usages={"confidentialite": 3})
+
+
+def comparatif_rubriques() -> dict:
+    """RG-EDT-COMPARAISON-05 : masse de chaque rubrique sur toute la population, période éditée et
+    période de comparaison, salariés concernés et mouvements ; puis les totaux du bulletin."""
+    L = 277.0
+    cols = [
+        ("code", "Code", 20, 'SI(sens = "TOTAL", "", code_rubrique)', None, "GAUCHE"),
+        ("lib", "Rubrique", 62, "libelle", None, "GAUCHE"),
+        ("sal_p", "Sal. réf.", 14, "p_nb_salaries", "ENTIER", "DROITE"),
+        ("mt_p", "Montant réf.", 27, "p_montant", "MONTANT_SANS_ZERO", "DROITE"),
+        ("sal", "Sal.", 14, "nb_salaries", "ENTIER", "DROITE"),
+        ("mt", "Montant", 27, "montant", "MONTANT_SANS_ZERO", "DROITE"),
+        ("ecart", "Écart", 26, "ecart_montant", "MONTANT_SANS_ZERO", "DROITE"),
+        ("pct", "Écart %", 16, "ecart_pct", "POURCENTAGE", "DROITE"),
+        ("pat", "Écart patronal", 21, "ecart_patronal", "MONTANT_SANS_ZERO", "DROITE"),
+        ("mvt", "Salariés + / − / ≠", 30,
+         'SI(sens = "TOTAL", SI(nb_modifies > 0, "≠ " + nb_modifies, ""), "+" + nb_nouveaux + " / −" + nb_disparus + " / ≠" + nb_modifies)',
+         None, "CENTRE"),
+        ("statut", "Statut", 20, 'SI(statut = "IDENTIQUE", "", statut_libelle)', None, "CENTRE"),
+    ]
+    en_tete = entete_societe(L, "Comparatif des rubriques", f'{MOIS} + " comparé à " + {COMPAREE}') + entete_colonnes("c", cols, 21, L)
+    cartes = [("Effectif de référence", "p_effectif"), ("Effectif de la période", "effectif"),
+              ("Entrées", "nb_entrees"), ("Sorties", "nb_sorties")]
+    etat = []
+    for k, (lib, expr) in enumerate(cartes):
+        x = k * 69.25
+        etat += [cadre(f"e{k}_c", x + 0.5, 4, 68.25, 12, couleur=GRIS_CLAIR, arrondi=1),
+                 texte(f"e{k}_l", x + 1, 4.5, 67, 4.5, lib, taille=7, couleur=GRIS, alignement="CENTRE"),
+                 champ(f"e{k}_v", x + 1, 9, 67, 6, expr, masque="ENTIER", taille=11, gras=True, couleur=BLEU, alignement="CENTRE")]
+    g_tete = [fond("g_fond", 0, 1.5, L, 6.5, BLEU_CLAIR),
+              champ("g_titre", 1.5, 1.5, 220, 6.5, "sens_libelle", taille=8.5, gras=True, couleur=BLEU)]
+    corps = [{**fond("alerte", 0, 0, L, 5, ORANGE_CLAIR),
+              "condition": {"expression": 'ET(sens <> "TOTAL", OU(statut = "NOUVELLE", statut = "SUPPRIMEE", ABS(SIVIDE(ecart_pct, 0)) >= @seuil))'}}]
+    corps += ligne_valeurs("v", cols)
+    for e in corps:
+        if e["id"] in ("v_ecart", "v_statut"):
+            e["style"]["gras"] = True
+    g_pied = [champ("g_lib", 1, 0.5, 120, 6, '"Total " + sens_libelle', taille=8, gras=True, couleur=BLEU),
+              champ("g_mt_p", 96.8, 0.5, 25.4, 6, "TOTAL(p_montant, GROUPE)", masque="MONTANT", taille=8, gras=True, couleur=BLEU, alignement="DROITE"),
+              champ("g_mt", 137.8, 0.5, 25.4, 6, "TOTAL(montant, GROUPE)", masque="MONTANT", taille=8, gras=True, couleur=BLEU, alignement="DROITE"),
+              champ("g_ecart", 164.8, 0.5, 24.4, 6, "TOTAL(ecart_montant, GROUPE)", masque="MONTANT", taille=8, gras=True, couleur=BLEU, alignement="DROITE"),
+              ligne("g_filet", 0, 0.3, L, couleur=BLEU, epaisseur=0.4)]
+    note = etat + [{**riche("n", 0, 19, L, 14,
+                     "Réf. : période de comparaison (le mois précédent, ou celle choisie au lancement). Sal. : salariés pour lesquels "
+                     "la rubrique est renseignée. + / − / ≠ : salariés où la rubrique apparaît, disparaît, ou change. Les sorties "
+                     "(bulletin de référence seulement) sont comptées. Ligne surlignée : rubrique nouvelle, supprimée, ou écart "
+                     "au-delà du seuil. Le groupe « Totaux du bulletin » rapproche les totaux d'en-tête.",
+                     taille=7, italique=True, couleur=GRIS), "extensible": False}]
+    return definition(
+        [PARAM_PERIODE, PARAM_COMPARAISON, PARAM_PLAN, PARAM_COLLABS,
+         {"code": "affichage", "libelle": "Rubriques affichées", "type": "LISTE", "obligatoire": False,
+          "valeurs": ["Toutes les rubriques", "Rubriques en écart seulement"], "defaut": '"Toutes les rubriques"'},
+         {"code": "seuil", "libelle": "Seuil d'alerte (écart en %)", "type": "NOMBRE", "obligatoire": False, "defaut": "10"}],
+        [{"code": "r", "source": "COMPARAISON_RUBRIQUES", "role": "PRINCIPAL",
+          "filtres": ['OU(@affichage = "Toutes les rubriques", en_ecart = 1, sens = "TOTAL")'],
+          "groupes": ["sens_libelle"],
+          "tri": [{"champ": "rang_sens"}, {"champ": "ordre_affichage"}, {"champ": "code_rubrique"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("g_tete", "EN_TETE_GROUPE", 9, g_tete, niveau_groupe=1),
+         bande("detail", "CORPS", 5, corps),
+         bande("g_pied", "PIED_GROUPE", 8, g_pied, niveau_groupe=1, condition='sens <> "TOTAL"'),
+         bande("note", "PIED_ETAT", 34, note, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — sans données nominatives"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Comparatif_rubriques_" + @periode.code'},
+        usages={"confidentialite": 2})
+
+
+# Récapitulatif de l'exercice : les rubriques sont affectées comme au bulletin, un seul attribut chacune
+RECAP_AFFECTATIONS = [
+    ("Éléments de rémunération", [("SALBASE", "MT", None), ("SALCONGE", "MT", None), ("PRIM_ANC", "MT", None),
+                                  ("INDTRSP", "MT", None), ("INDREPR", "MT", None), ("TOTAL_BRUT", "MT", "Salaire brut")]),
+    ("Cotisations et retenues", [("CNSS_SAL", "MT", None), ("CNSS_AMO_SAL", "MT", None), ("RET_IR", "MT", "Impôt sur le revenu"),
+                                 ("TOTAL_RETENUES", "MT", "Total des retenues")]),
+    ("Net", [("NET_A_PAYER", "MT", "Net à payer")]),
+    ("Éléments fiscaux", [("BRUT_IMPOSABLE", "MT", "Brut imposable"), ("FRAIS_PROF", "MT", None),
+                          ("NET_IMPOSABLE", "MT", "Net imposable")]),
+    ("Charges patronales", [("CNSS_SAL", "PAT", "CNSS — part patronale"), ("CNSS_AMO_SAL", "PAT", "AMO — part patronale"),
+                            ("COT_PATRONALES", "MT", "Total des charges patronales"), ("COUT_EMPLOYEUR", "MT", "Coût employeur")]),
+]
+TOTAUX_RECAP = {"TOTAL_BRUT", "TOTAL_RETENUES", "NET_A_PAYER", "NET_IMPOSABLE", "COT_PATRONALES", "COUT_EMPLOYEUR"}
+MOIS_COURTS = ("Janv.", "Févr.", "Mars", "Avril", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc.")
+
+
+def _corps_exercice(code, libelle, type_, masque, affectations):
+    return {"code": code, "libelle": libelle, "nature": "EXERCICE", "afficher_titre": False,
+            "colonnes": [{"code": f"m{m:02d}", "libelle": MOIS_COURTS[m - 1], "type": type_, "masque": masque, "total": True}
+                         for m in range(1, 13)] + [{"code": "total", "libelle": "Total", "type": type_, "masque": masque, "total": True}],
+            "affectations": affectations}
+
+
+def _tableau_exercice(id_, corps, y, masque, largeur_lib, L, **opts):
+    largeur_mois = round((L - largeur_lib - 26) / 12, 2)
+    colonnes = [col("lib", "Rubrique", largeur_lib, "libelle")]
+    colonnes += [col(f"m{m:02d}", MOIS_COURTS[m - 1], largeur_mois, f"m{m:02d}", masque, alignement="DROITE") for m in range(1, 13)]
+    colonnes.append(col("total", "Total", round(L - largeur_lib - 12 * largeur_mois, 2), "total", masque, gras=True, alignement="DROITE",
+                        fond=BLEU_CLAIR))
+    return {"id": id_, "type": "TABLEAU", "x": 0, "y": y, "l": L, "h": 12, "jeu": "", "corps": corps, "colonnes": colonnes,
+            "quadrillage": "COLONNES", "hauteur_ligne": 4.6, "ligne_total": False, "style_entete": STYLE_ENTETE_TAB,
+            "style": {"taille": 6.5}, **opts}
+
+
+def bulletin_recapitulatif() -> dict:
+    """RG-EDT-EXERCICE-01/02 : un document par salarié, les douze mois de l'exercice en colonnes.
+    Le paramétrage reprend celui du bulletin : des rubriques affectées dans des corps, chacune avec
+    UN attribut (montant, nombre, base, part patronale…) ventilé sur les mois."""
+    L = 277.0
+    affectations = []
+    for groupe, liste in RECAP_AFFECTATIONS:
+        for code, attr, lib in liste:
+            a = {"rubrique": code, "cibles": {attr: "mois"}, "groupe": groupe}
+            if lib:
+                a["libelle"] = lib
+            if code in TOTAUX_RECAP:
+                a["gras"] = True
+            affectations.append(a)
+    corps_donnees = [
+        _corps_exercice("activite", "Activité", "NOMBRE", "QUANTITE",
+                        [{"rubrique": "NBJTRV", "cibles": {"NB": "mois"}, "libelle": "Jours travaillés"},
+                         {"rubrique": "NBJCNG", "cibles": {"NB": "mois"}, "libelle": "Jours de congé payé"}]),
+        _corps_exercice("recap", "Récapitulatif", "MONTANT", "MONTANT_SANS_ZERO", affectations),
+    ]
+    en_tete = entete_societe(L, "Bulletin récapitulatif", '"Exercice " + exercice.annee + " — du 1er janvier au 31 décembre"') + [
+        cadre("sal_c", 0, 21, L, 19, couleur=BLEU, arrondi=1.5, epaisseur=0.5),
+        fond("sal_b", 0.3, 21.3, L - 0.6, 5.5, BLEU),
+        champ("sal_t", 2, 21.3, 160, 5.5, 'SIVIDE(identite.civilite, "") + " " + MAJUSCULE(identite.nom) + " " + identite.prenom',
+              taille=8.5, gras=True, couleur=BLANC),
+        champ("sal_mat", 180, 21.3, 95, 5.5, '"Matricule " + identite.matricule', taille=8, gras=True, couleur=BLANC, alignement="DROITE"),
+        *paires("sa", 2, 27.5, 22, 66, [
+            ("Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
+            ("Affectation", 'SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, "—"))')], pas=4.5, taille=7.5),
+        *paires("sb", 94, 27.5, 24, 64, [
+            ("Catégorie", 'SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, "—"))'),
+            ("Entrée le", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))')], pas=4.5, taille=7.5),
+        *paires("sc", 186, 27.5, 26, 63, [
+            ("CIN / CNSS", 'SIVIDE(identite.cin, "—") + " / " + SIVIDE(identite.num_cnss, "—")'),
+            ("Mois payés", 'exercice.mois_payes + " (" + exercice.nb_bulletins + " bulletin(s))"')], pas=4.5, taille=7.5),
+    ]
+    activite = [_tableau_exercice("t_activite", "activite", 1, "QUANTITE", 60, L, grouper=False)]
+    recap = [_tableau_exercice("t_recap", "recap", 1, "MONTANT_SANS_ZERO", 60, L)]
+    cartes = [("Salaire brut", "total_brut"), ("Net imposable", "net_imposable"), ("IR retenu", "SIVIDE([RET_IR].MT, 0)"),
+              ("Net payé", "net_a_payer"), ("Coût employeur", "cout_employeur")]
+    pied_etat = []
+    largeur = (L - 30) / 5
+    for k, (lib, expr) in enumerate(cartes):
+        x = k * largeur
+        pied_etat += [cadre(f"k{k}_c", x + 0.5, 3, largeur - 1, 13, couleur=GRIS_CLAIR, arrondi=1),
+                      texte(f"k{k}_l", x + 1, 3.5, largeur - 2, 4.5, f"{lib} de l'exercice", taille=6.5, couleur=GRIS, alignement="CENTRE"),
+                      champ(f"k{k}_v", x + 1, 8.5, largeur - 2, 6.5, expr, masque="MONTANT", taille=10, gras=True, couleur=BLEU,
+                            alignement="CENTRE")]
+    pied_etat += [
+        {"id": "qr", "type": "CODE_BARRE", "x": L - 22, "y": 1.5, "l": 17, "h": 17, "symbologie": "QR",
+         "valeur": '"REC|" + SIVIDE(societe.ice, "") + "|" + identite.matricule + "|" + exercice.annee + "|" + FORMAT(net_a_payer, "MONTANT")'},
+        {**riche("note", 0, 18, L - 30, 9,
+                 "Récapitulatif établi à partir des bulletins définitifs de l'exercice (périodes clôturées comprises). "
+                 "Chaque colonne reprend le mois de paie ; le total est la somme des mois (vide pour un taux).",
+                 taille=6.5, italique=True, couleur=GRIS), "extensible": False},
+    ]
+    d = definition(
+        [{"code": "annee", "libelle": "Exercice (année)", "type": "ANNEE"}, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "s", "source": "EXERCICE_SALARIE", "role": "PRINCIPAL",
+          "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 42, en_tete),
+         bande("activite", "CORPS", 14, activite, condition="SIVIDE([NBJTRV].NB, 0) + SIVIDE([NBJCNG].NB, 0) > 0"),
+         bande("detail", "CORPS", 14, recap),
+         bande("totaux", "PIED_ETAT", 28, pied_etat, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Bulletin récapitulatif — à conserver sans limitation de durée"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Recapitulatif_" + identite.matricule + "_" + exercice.annee',
+         "eclatement": "collaborateur_id"},
+        usages={"confidentialite": 4})
+    d["corps"] = corps_donnees
+    return d
+
+
 MODELES = {
     "journal_paie.json": journal_paie,
     "ordre_virement.json": ordre_virement,
@@ -1453,6 +1825,10 @@ MODELES = {
     "controle_ir.json": controle_ir,
     "masse_salariale.json": masse_salariale,
     "emargement.json": emargement,
+    "ecarts_rubriques.json": ecarts_rubriques,
+    "controle_deux_periodes.json": controle_deux_periodes,
+    "comparatif_rubriques.json": comparatif_rubriques,
+    "bulletin_recapitulatif.json": bulletin_recapitulatif,
 }
 
 if __name__ == "__main__":

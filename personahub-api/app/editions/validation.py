@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from app.editions import expressions as ex
 from app.editions import format as fmt
-from app.editions.definition import ATTRIBUTS_AFFECTABLES, Definition, Grille, Jeu, Tableau, mettre_a_niveau
+from app.editions.definition import ATTRIBUTS_AFFECTABLES, COLONNES_EXERCICE, Definition, Grille, Jeu, Tableau, mettre_a_niveau
 
 SOURCE_SOCIETE = "SOCIETE"
 # totaux d'en-tête du bulletin, utilisables comme rubriques (cf. sources/paie.RUBRIQUES_EN_TETE)
@@ -263,6 +263,8 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
         cols = {col.code for col in c.colonnes}
         if c.nature == "CASES" and not c.lignes:
             rapport.ajouter(f"{base}.lignes", "Un corps « cases » a au moins une ligne")
+        if c.nature == "EXERCICE" and not set(COLONNES_EXERCICE) <= cols:          # RG-EDT-EXERCICE-01
+            rapport.ajouter(f"{base}.colonnes", "Un corps « exercice » a les colonnes m01 à m12 et total")
         cases = {f"{l.code}.{col}" for l in c.lignes for col in cols}
         for k, a in enumerate(c.affectations):
             ch = f"{base}.affectations[{k}]"
@@ -276,6 +278,20 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
             if not a.cibles:
                 rapport.ajouter(f"{ch}.cibles", "Aucune colonne ne reçoit de valeur")
             permis = {"VAL"} if a.formule else set(ATTRIBUTS_AFFECTABLES)
+            if c.nature == "EXERCICE":                                                # RG-EDT-EXERCICE-01
+                if len(a.cibles) > 1:
+                    rapport.ajouter(f"{ch}.cibles", "Corps « exercice » : un seul attribut par ligne, ventilé sur les douze mois")
+                if a.periode != "MOIS":
+                    rapport.ajouter(f"{ch}.periode", "Corps « exercice » : la valeur est celle de chaque mois (période « Mois »)")
+                for attribut in a.cibles:
+                    if attribut not in permis:
+                        rapport.ajouter(f"{ch}.cibles", f"Attribut {attribut} impossible ici (attendu : {', '.join(sorted(permis))})")
+                if a.rubrique:
+                    code = a.rubrique.strip().upper()
+                    if cat.rubriques is not None and code not in cat.rubriques and code not in RUBRIQUES_EN_TETE:
+                        rapport.ajouter(f"{ch}.rubrique", f"Rubrique inconnue ou archivée : {code}")
+                    rapport.dependances.add(("RUBRIQUE", code))
+                continue
             for attribut, cible in a.cibles.items():
                 if attribut not in permis:
                     rapport.ajouter(f"{ch}.cibles", f"Attribut {attribut} impossible ici (attendu : {', '.join(sorted(permis))})")
@@ -308,8 +324,8 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
             if isinstance(el, Tableau) and el.corps:
                 for code in [el.corps, *el.corps_suivants]:
                     cp = d.corps_par_code(code)
-                    if cp is None or cp.nature != "LIGNES":
-                        rapport.ajouter(f"{eb}.corps", f"Un tableau affiche un corps « lignes » existant (« {code} »)")
+                    if cp is None or cp.nature not in ("LIGNES", "EXERCICE"):
+                        rapport.ajouter(f"{eb}.corps", f"Un tableau affiche un corps « lignes » existant, ou « exercice » (« {code} »)")
             elif isinstance(el, Tableau):
                 jt = d.jeu(el.jeu)
                 if jt is None or jt.role != "SECONDAIRE":

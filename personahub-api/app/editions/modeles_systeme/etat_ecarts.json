@@ -6,6 +6,12 @@
    "type": "PERIODE"
   },
   {
+   "code": "periode_comparaison",
+   "libelle": "Période de comparaison (vide : mois précédent)",
+   "type": "PERIODE",
+   "obligatoire": false
+  },
+  {
    "code": "plan_paie",
    "libelle": "Plan de paie",
    "type": "PLAN_PAIE",
@@ -17,6 +23,13 @@
    "type": "COLLABORATEUR",
    "obligatoire": false,
    "multiple": true
+  },
+  {
+   "code": "inclure_sortants",
+   "libelle": "Inclure les sorties (payés dans la période de comparaison seulement)",
+   "type": "BOOLEEN",
+   "obligatoire": false,
+   "defaut": "VRAI"
   },
   {
    "code": "seuil",
@@ -44,7 +57,7 @@
    "role": "PRINCIPAL",
    "filtres": [
     "periode_id = @periode.id",
-    "OU(@affichage <> \"Écarts et entrées seulement\", precedent.existe = 0, ABS(pct_net) >= @seuil)"
+    "OU(@affichage <> \"Écarts et entrées seulement\", precedent.existe = 0, sortant = 1, ABS(pct_net) >= @seuil)"
    ],
    "calculs": [
     {
@@ -174,7 +187,7 @@
       "alignement": "DROITE"
      },
      "type": "CHAMP",
-     "valeur": "FORMAT(@periode.date_fin, \"MOIS_ANNEE\") + \" comparé au mois précédent   ·   seuil d'alerte \" + FORMAT(@seuil, \"MONTANT\") + \" %\"",
+     "valeur": "FORMAT(@periode.date_fin, \"MOIS_ANNEE\") + \" comparé à \" + SI(ESTVIDE(@periode_comparaison), \"mois précédent\", FORMAT(@periode_comparaison.date_fin, \"MOIS_ANNEE\")) + \"   ·   seuil d'alerte \" + FORMAT(@seuil, \"MONTANT\") + \" %\"",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -246,7 +259,7 @@
       "alignement": "DROITE"
      },
      "type": "TEXTE",
-     "valeur": "\"Brut M-1\""
+     "valeur": "\"Brut réf.\""
     },
     {
      "id": "c_brut",
@@ -261,7 +274,7 @@
       "alignement": "DROITE"
      },
      "type": "TEXTE",
-     "valeur": "\"Brut M\""
+     "valeur": "\"Brut\""
     },
     {
      "id": "c_ec_brut",
@@ -291,7 +304,7 @@
       "alignement": "DROITE"
      },
      "type": "TEXTE",
-     "valeur": "\"Retenues M-1\""
+     "valeur": "\"Retenues réf.\""
     },
     {
      "id": "c_cot",
@@ -306,7 +319,7 @@
       "alignement": "DROITE"
      },
      "type": "TEXTE",
-     "valeur": "\"Retenues M\""
+     "valeur": "\"Retenues\""
     },
     {
      "id": "c_net_p",
@@ -321,7 +334,7 @@
       "alignement": "DROITE"
      },
      "type": "TEXTE",
-     "valeur": "\"Net M-1\""
+     "valeur": "\"Net réf.\""
     },
     {
      "id": "c_net",
@@ -336,7 +349,7 @@
       "alignement": "DROITE"
      },
      "type": "TEXTE",
-     "valeur": "\"Net M\""
+     "valeur": "\"Net\""
     },
     {
      "id": "c_ec_net",
@@ -400,7 +413,7 @@
       "fond": "#FEF3C7"
      },
      "condition": {
-      "expression": "OU(precedent.existe = 0, ABS(pct_net) >= @seuil)"
+      "expression": "OU(precedent.existe = 0, sortant = 1, ABS(pct_net) >= @seuil)"
      },
      "type": "TEXTE",
      "valeur": "\"\""
@@ -466,7 +479,7 @@
      "type": "CHAMP",
      "valeur": "total_brut",
      "affichage": {
-      "masque": "MONTANT"
+      "masque": "MONTANT_SANS_ZERO"
      }
     },
     {
@@ -514,7 +527,7 @@
      "type": "CHAMP",
      "valeur": "total_retenues",
      "affichage": {
-      "masque": "MONTANT"
+      "masque": "MONTANT_SANS_ZERO"
      }
     },
     {
@@ -546,7 +559,7 @@
      "type": "CHAMP",
      "valeur": "net_a_payer",
      "affichage": {
-      "masque": "MONTANT"
+      "masque": "MONTANT_SANS_ZERO"
      }
     },
     {
@@ -578,7 +591,7 @@
       "alignement": "DROITE"
      },
      "type": "CHAMP",
-     "valeur": "SI(precedent.existe = 0, \"\", pct_net)",
+     "valeur": "SI(OU(precedent.existe = 0, sortant = 1), \"\", pct_net)",
      "affichage": {
       "masque": "POURCENTAGE"
      }
@@ -596,7 +609,7 @@
       "alignement": "GAUCHE"
      },
      "type": "CHAMP",
-     "valeur": "SI(precedent.existe = 0, \"Entrée / 1re paie\", SI(ABS(pct_net) >= @seuil, \"À vérifier\", \"\"))",
+     "valeur": "SI(sortant = 1, \"Sortie\", SI(precedent.existe = 0, \"Entrée / 1re paie\", SI(ABS(pct_net) >= @seuil, \"À vérifier\", \"\")))",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -619,7 +632,7 @@
   {
    "id": "total",
    "type": "PIED_ETAT",
-   "hauteur": 48.0,
+   "hauteur": 53.0,
    "insecable": true,
    "elements": [
     {
@@ -814,7 +827,7 @@
      "x": 0.0,
      "y": 16.0,
      "l": 150.0,
-     "h": 30.0,
+     "h": 35.0,
      "style": {
       "couleur_bordure": "#D5DEE3",
       "epaisseur_bordure": 0.4
@@ -846,7 +859,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "FORMAT(NB(id, ETAT), \"ENTIER\")",
+     "valeur": "FORMAT(NB(SI(sortant = 0, 1, \"\"), ETAT), \"ENTIER\")",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -862,7 +875,7 @@
       "couleur": "#6B7C88"
      },
      "type": "TEXTE",
-     "valeur": "\"dont entrées ou première paie (sans bulletin M-1)\""
+     "valeur": "\"dont entrées ou première paie (sans bulletin de référence)\""
     },
     {
      "id": "s_v1",
@@ -891,7 +904,7 @@
       "couleur": "#6B7C88"
      },
      "type": "TEXTE",
-     "valeur": "\"Bulletins au-delà du seuil d'alerte\""
+     "valeur": "\"Sorties (bulletin de référence seulement)\""
     },
     {
      "id": "s_v2",
@@ -904,7 +917,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "FORMAT(NB(SI(ET(precedent.existe = 1, ABS(pct_net) >= @seuil), 1, \"\"), ETAT), \"ENTIER\")",
+     "valeur": "FORMAT(NB(SI(sortant = 1, 1, \"\"), ETAT), \"ENTIER\")",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -920,7 +933,7 @@
       "couleur": "#6B7C88"
      },
      "type": "TEXTE",
-     "valeur": "\"Variation de la masse brute\""
+     "valeur": "\"Bulletins au-delà du seuil d'alerte\""
     },
     {
      "id": "s_v3",
@@ -933,7 +946,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "FORMAT(TOTAL(total_brut, ETAT) - TOTAL(precedent.total_brut, ETAT), \"MONTANT\")",
+     "valeur": "FORMAT(NB(SI(ET(precedent.existe = 1, ABS(pct_net) >= @seuil), 1, \"\"), ETAT), \"ENTIER\")",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -949,7 +962,7 @@
       "couleur": "#6B7C88"
      },
      "type": "TEXTE",
-     "valeur": "\"Variation du net à payer\""
+     "valeur": "\"Variation de la masse brute\""
     },
     {
      "id": "s_v4",
@@ -962,7 +975,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "FORMAT(TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT), \"MONTANT\")",
+     "valeur": "FORMAT(TOTAL(total_brut, ETAT) - TOTAL(precedent.total_brut, ETAT), \"MONTANT\")",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -978,12 +991,41 @@
       "couleur": "#6B7C88"
      },
      "type": "TEXTE",
-     "valeur": "\"Variation du net (en %)\""
+     "valeur": "\"Variation du net à payer\""
     },
     {
      "id": "s_v5",
      "x": 97.0,
      "y": 41.0,
+     "l": 50.0,
+     "h": 4.8,
+     "style": {
+      "taille": 8.0,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "FORMAT(TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT), \"MONTANT\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "s_l6",
+     "x": 2.0,
+     "y": 45.8,
+     "l": 95.0,
+     "h": 4.8,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Variation du net (en %)\""
+    },
+    {
+     "id": "s_v6",
+     "x": 97.0,
+     "y": 45.8,
      "l": 50.0,
      "h": 4.8,
      "style": {
@@ -1001,7 +1043,7 @@
      "x": 160.0,
      "y": 16.0,
      "l": 117.0,
-     "h": 30.0,
+     "h": 35.0,
      "style": {
       "couleur_bordure": "#D5DEE3",
       "epaisseur_bordure": 0.4
@@ -1031,7 +1073,7 @@
       "taille": 7.5
      },
      "type": "TEXTE",
-     "valeur": "\"Ligne surlignée : écart du net au-delà du seuil, ou pas de bulletin M-1\""
+     "valeur": "\"Ligne surlignée : écart du net au-delà du seuil, entrée ou sortie\""
     },
     {
      "id": "leg_t2",
@@ -1045,7 +1087,7 @@
       "couleur": "#6B7C88"
      },
      "type": "TEXTE_RICHE",
-     "contenu": "Les sorties du mois (bulletin M-1 sans bulletin M) n'apparaissent pas ici : lancez l'état sur le mois précédent pour les repérer. Le seuil d'alerte se règle au lancement."
+     "contenu": "Référence : le mois précédent, ou la période de comparaison choisie au lancement. Les sorties (bulletin de référence sans bulletin ce mois) sont listées avec un net à zéro ; décochez « Inclure les sorties » pour les masquer. Le seuil d'alerte se règle au lancement."
     }
    ]
   },

@@ -203,8 +203,8 @@ export type AttributAffecte = "NB" | "MT" | "TX" | "BASE" | "PAT" | "TXP" | "VAL
 export interface Affectation {
   rubrique?: string | null;
   formule?: Expr | null;
-  periode?: "MOIS" | "CUMUL";
-  cibles: Partial<Record<AttributAffecte, string>>;   // colonne (LIGNES) ou « ligne.colonne » (CASES)
+  periode?: "MOIS" | "CUMUL" | "COMPARAISON" | "ECART";   // COMPARAISON : période de comparaison (M-1 ou choisie) ; ECART : mois − comparaison
+  cibles: Partial<Record<AttributAffecte, string>>;   // colonne (LIGNES), « ligne.colonne » (CASES), « mois » (EXERCICE : un seul attribut)
   groupe?: string | null;
   libelle?: string | null;
   negatif?: boolean;                // « en – » : soustraite (seule ou dans une ligne fusionnée)
@@ -215,7 +215,7 @@ export interface Affectation {
 export interface Corps {
   code: string;
   libelle: string;
-  nature: "LIGNES" | "CASES";
+  nature: "LIGNES" | "CASES" | "EXERCICE";   // EXERCICE : une colonne par mois (m01…m12) et un total
   colonnes: ColonneCorps[];
   lignes?: LigneCorps[];
   affectations?: Affectation[];
@@ -260,6 +260,23 @@ export const ATTRIBUTS_AFFECTABLES: { code: Exclude<AttributAffecte, "VAL">; lib
   { code: "TXP", libelle: "Tx pat.", cumul: false },
 ];
 
+/** Périodes d'une affectation (RG-EDT-COMPARAISON-01). */
+export const PERIODES_AFFECTATION: { v: NonNullable<Affectation["periode"]>; l: string; aide: string }[] = [
+  { v: "MOIS", l: "Mois", aide: "Valeur du bulletin édité" },
+  { v: "CUMUL", l: "Cumul", aide: "Cumul de l'année à date" },
+  { v: "COMPARAISON", l: "Comparaison", aide: "Bulletin de la période de comparaison (mois précédent, ou paramètre « periode_comparaison »)" },
+  { v: "ECART", l: "Écart", aide: "Mois − période de comparaison" },
+];
+export const MOIS_COURTS = ["Janv.", "Févr.", "Mars", "Avril", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."];
+/** Colonnes d'un corps « exercice » : m01…m12 et total (RG-EDT-EXERCICE-01). */
+export function colonnesExercice(type: TypeColonneCorps = "MONTANT"): ColonneCorps[] {
+  return [...MOIS_COURTS.map((l, i) => ({ code: `m${String(i + 1).padStart(2, "0")}`, libelle: l, type, total: true })),
+    { code: "total", libelle: "Total", type, total: true }];
+}
+export const LIBELLES_NATURE: Record<Corps["nature"], string> = {
+  LIGNES: "Lignes de rubriques", CASES: "Cases (lignes × colonnes)", EXERCICE: "Exercice (12 mois en colonnes)",
+};
+
 /** Masque par défaut d'une colonne de corps placée dans un tableau. */
 export function masqueColonne(c: ColonneCorps): string | null {
   if (c.masque) return c.masque;
@@ -276,7 +293,7 @@ export function tableauDepuisCorps(d: Definition, corpsOuListe: Corps | Corps[],
   const gen = generateurIds(d);
   const l = largeur ?? largeurUtile(d.page);
   const nb = corps.colonnes.length;
-  const lib = Math.max(40, Math.round(l * 0.32));
+  const lib = Math.max(40, Math.round(l * (corps.nature === "EXERCICE" ? 0.2 : 0.32)));
   const reste = Math.round(((l - lib) / Math.max(nb, 1)) * 10) / 10;
   return {
     id: id ?? gen(`tableau_${corps.code}`), type: "TABLEAU", x, y, l, h: 20, jeu: "", corps: corps.code,
@@ -384,6 +401,9 @@ export const ATTRIBUTS_RUBRIQUE: { code: string; libelle: string }[] = [
   { code: "PAT", libelle: "part patronale du mois" }, { code: "CMT", libelle: "cumul annuel du montant" },
   { code: "CNB", libelle: "cumul annuel du nombre" }, { code: "CBASE", libelle: "cumul annuel de la base" },
   { code: "TXP", libelle: "taux patronal" }, { code: "CPAT", libelle: "cumul annuel de la part patronale" },
+  { code: "PMT", libelle: "montant de la période de comparaison (PNB, PBASE, PTX, PPAT…)" },
+  { code: "EMT", libelle: "écart avec la période de comparaison (ENB, EBASE, ETX, EPAT…)" },
+  { code: "MT01", libelle: "montant de janvier, récapitulatif de l'exercice (MT01 à MT12, NB01…)" },
 ];
 
 export const LIBELLES_PARAMETRE: Record<TypeParametre, string> = {

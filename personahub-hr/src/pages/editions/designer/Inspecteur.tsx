@@ -442,7 +442,7 @@ function TableauEditeur({ t, d, ro, maj, colonne }: { t: ElTableau; d: Definitio
     maj((e: ElTableau) => { const s = (e.sections ?? []).find((x) => x.id === id); if (s) fn(s, e); }, `${cle}:${id}`);
   const somme = t.colonnes.filter((c) => !c.masquee).reduce((s, c) => s + c.largeur, 0);
 
-  const corpsLignes = (d.corps ?? []).filter((c) => c.nature === "LIGNES");
+  const corpsLignes = (d.corps ?? []).filter((c) => c.nature !== "CASES");
   const affiches = t.corps ? [t.corps, ...(t.corps_suivants ?? [])] : [];
   /** Corps affichés, dans l'ordre de la définition ; [] = retour au jeu de lignes (mode expert). */
   const lier = (codes: string[]) => {

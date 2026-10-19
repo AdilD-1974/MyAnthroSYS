@@ -149,6 +149,8 @@ def specs_agregats(d: Definition) -> list[tuple[str, str, str, Any]]:
                 formules.append(el.valeur)
             if el.type == "TEXTE_RICHE":
                 formules += [s for _, _, s in ex.extraire_variables(el.contenu)]
+            if isinstance(el, Grille):              # RG-EDT-GRILLE-03 : TOTAL(…, ETAT) dans une case de grille
+                formules += [v for lg in el.lignes for v in lg.valeurs.values() if v]
         for f in formules:
             try:
                 arbre = ex.compiler(f)
@@ -413,7 +415,10 @@ class Composeur:
         return resultat
 
     _ATTRIBUTS = {"MOIS": {"NB": "NB", "MT": "MT", "TX": "TX", "BASE": "BASE", "PAT": "PAT", "TXP": "TXP"},
-                  "CUMUL": {"NB": "CNB", "MT": "CMT", "BASE": "CBASE", "PAT": "CPAT"}}   # RG-PAIE-PATRONAL-02
+                  "CUMUL": {"NB": "CNB", "MT": "CMT", "BASE": "CBASE", "PAT": "CPAT"},    # RG-PAIE-PATRONAL-02
+                  # RG-EDT-COMPARAISON-01 : période de comparaison et écart (index des rubriques)
+                  "COMPARAISON": {a: "P" + a for a in ("NB", "MT", "TX", "BASE", "PAT", "TXP")},
+                  "ECART": {a: "E" + a for a in ("NB", "MT", "TX", "BASE", "PAT", "TXP")}}
 
     def _valeur_affectee(self, c: Corps, a, attribut: str, rub: dict, r) -> Any:
         if a.formule:
@@ -450,7 +455,85 @@ class Composeur:
         except Exception:
             return v
 
+    # ---------------------------------------------------------------- corps « exercice » (RG-EDT-EXERCICE-01)
+    def _rubriques_du_mois(self, rub: dict, m: int) -> dict:
+        """Index des rubriques d'un mois de l'exercice : {code: {MT, NB…}} lu dans MT01…MT12."""
+        suffixe = f"{m:02d}"
+        res = {}
+        for code, v in rub.items():
+            mois = {a: v[a + suffixe] for a in ("MT", "NB", "TX", "BASE", "PAT", "TXP") if v.get(a + suffixe) is not None}
+            if mois:
+                res[code] = mois
+        return res
+
+    def _compiler_exercice(self, c: Corps, rub: dict, r) -> list[dict]:
+        """Une ligne par affectation : la valeur de l'attribut choisi pour chaque mois (m01…m12)
+        et le total de l'exercice (somme ; vide pour un taux). Les formules sont évaluées mois
+        par mois, avec les rubriques du mois ; leur total est la somme des mois."""
+        par_mois = None
+        blocs: list[list[tuple[int, Any]]] = []
+        for i, a in enumerate(c.affectations):
+            if a.fusion and blocs and bool(a.formule) == bool(blocs[-1][0][1].formule):
+                blocs[-1].append((i, a))
+            else:
+                blocs.append([(i, a)])
+        lignes = []
+        for bloc in blocs:
+            i0, a0 = bloc[0]
+            code0 = (a0.rubrique or "").strip().upper()
+            ligne = {"code_rubrique": "+".join((a.rubrique or "").strip().upper() for _, a in bloc if a.rubrique),
+                     "groupe": a0.groupe, "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
+                     "libelle": a0.libelle or (self.ctx.libelles_rubriques.get(code0) or code0 if code0 else "")}
+            valeurs: dict[int, Any] = {}
+            sans_total = False
+            for _, a in bloc:
+                attribut = next(iter(a.cibles), None)
+                if attribut is None:
+                    continue
+                sans_total = sans_total or attribut in ("TX", "TXP")
+                for m in range(1, 13):
+                    if a.formule:
+                        if par_mois is None:
+                            par_mois = {k: self._rubriques_du_mois(rub, k) for k in range(1, 13)}
+                        rm = ex.ResolverEdition(ligne=r.ligne, parametres=r.parametres, rubriques=par_mois[m],
+                                                constantes=r.constantes, agregats=r.agregats, contexte=r.contexte_valeurs)
+                        rm.ligne = {**r.ligne, "mois_exercice": Decimal(m)}
+                        v = self._evaluer(a.formule, rm, f"corps.{c.code}")
+                        v = None if v == ERREUR else v
+                    else:
+                        v = (rub.get(a.rubrique.strip().upper()) or {}).get(f"{attribut}{m:02d}") if a.rubrique else None
+                    if v is None or v == "":
+                        continue
+                    if a.negatif:
+                        try:
+                            v = -Decimal(str(v))
+                        except Exception:
+                            pass
+                    valeurs[m] = self._ajouter(valeurs.get(m), v)
+            if not valeurs:                                      # RG-EDT-DONNEES-05 : aucune valeur → jamais imprimée
+                continue
+            if not any(a.nulle for _, a in bloc) and not any(self._non_nul(v) for v in valeurs.values()):
+                continue
+            for m in range(1, 13):
+                ligne[f"m{m:02d}"] = valeurs.get(m)
+            if sans_total:
+                ligne["total"] = None
+            else:
+                total = None
+                for v in valeurs.values():
+                    total = self._ajouter(total, v)
+                ligne["total"] = total
+            lignes.append(ligne)
+        if c.tri == "CODE":
+            lignes.sort(key=lambda l: (l["code_rubrique"], l["_rang"]))
+        elif c.tri == "PAIE":
+            lignes.sort(key=lambda l: ((rub.get(l["code_rubrique"]) or {}).get("ORDRE") is None,
+                                       (rub.get(l["code_rubrique"]) or {}).get("ORDRE") or 0, l["_rang"]))
+        return lignes
+
     def _compiler_corps(self, c: Corps, rub: dict, r) -> Any:
+        if c.nature == "EXERCICE":
+            return self._compiler_exercice(c, rub, r)
         if c.nature == "CASES":
             cases: dict[str, dict[str, Any]] = {l.code: {col.code: None for col in c.colonnes} for l in c.lignes}
             for a in c.affectations:

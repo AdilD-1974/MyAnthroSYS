@@ -313,6 +313,10 @@ class Sortie(Strict):
 # ---------------------------------------------------------------------------
 CodeDonnee = Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_]*$", max_length=40)]
 ATTRIBUTS_AFFECTABLES = ("NB", "MT", "TX", "BASE", "PAT", "TXP")   # TXP : taux patronal
+# RG-EDT-EXERCICE-01 (Adil DAIA) : un corps « exercice » a une colonne par mois (m01…m12) et un total ;
+# chaque affectation choisit UN attribut (Mt, Nb, Base…) ventilé sur les douze mois.
+COLONNES_EXERCICE = tuple(f"m{m:02d}" for m in range(1, 13)) + ("total",)
+LIBELLES_MOIS_COURTS = ("Janv.", "Févr.", "Mars", "Avril", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc.")
 
 
 class ColonneCorps(Strict):
@@ -334,8 +338,11 @@ class Affectation(Strict):
     (onglet « Rubriques » du Report Manager). RG-EDT-DONNEES-02 à 05."""
     rubrique: Optional[str] = Field(default=None, max_length=40)
     formule: Optional[Expr] = None            # à la place d'une rubrique : cible « VAL »
-    periode: Literal["MOIS", "CUMUL"] = "MOIS"
+    # RG-EDT-COMPARAISON-01 : COMPARAISON = valeur de la période de comparaison (M-1 ou période choisie),
+    # ECART = mois − comparaison
+    periode: Literal["MOIS", "CUMUL", "COMPARAISON", "ECART"] = "MOIS"
     cibles: dict[str, str] = {}               # NB|MT|TX|BASE|PAT|VAL → colonne (LIGNES) ou « ligne.colonne » (CASES)
+                                              # EXERCICE : un seul attribut → « mois » (ventilé sur m01…m12)
     groupe: Optional[str] = None              # titre d'impression (corps LIGNES)
     libelle: Optional[str] = None
     negatif: bool = False                     # « en – » : soustraite (seule ou dans une ligne fusionnée)
@@ -347,7 +354,7 @@ class Affectation(Strict):
 class Corps(Strict):
     code: CodeDonnee
     libelle: str
-    nature: Literal["LIGNES", "CASES"]
+    nature: Literal["LIGNES", "CASES", "EXERCICE"]
     colonnes: list[ColonneCorps] = Field(min_length=1)
     lignes: list[LigneCorps] = []             # CASES
     affectations: list[Affectation] = []

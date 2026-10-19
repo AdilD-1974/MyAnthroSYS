@@ -22,7 +22,7 @@ export const EMPLACEMENTS: { v: Emplacement; l: string; aide: string }[] = [
   { v: "MASQUE", l: "Non imprimé", aide: "Calculé et utilisable dans les formules, mais pas imprimé" },
 ];
 
-export const emplacementDe = (c: Corps): Emplacement => c.emplacement ?? (c.nature === "LIGNES" ? "DETAIL" : "BAS_DE_PAGE");
+export const emplacementDe = (c: Corps): Emplacement => c.emplacement ?? (c.nature === "CASES" ? "BAS_DE_PAGE" : "DETAIL");
 
 const PIEDS: TypeBande[] = ["PIED_ETAT", "PIED_PAGE"];
 

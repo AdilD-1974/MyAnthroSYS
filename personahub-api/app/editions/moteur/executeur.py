@@ -32,7 +32,7 @@ from app.editions.images import chemins_assets
 from app.editions.moteur.mise_en_page import Anomalie, Composeur, Contexte, composer
 from app.editions.moteur.rendu_pdf import RenduPDF
 from app.editions.sources import REGISTRE, ContexteSecurite, ErreurSource
-from app.editions.sources.paie import _rubriques_paie, constantes_a_date, index_rubriques
+from app.editions.sources.paie import _rubriques_paie, constantes_a_date, index_exercice, index_rubriques
 
 log = logging.getLogger(__name__)
 PARAMETRES_RESERVES = ("bulletin",)
@@ -172,6 +172,8 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
     except ValueError as e:
         raise ErreurSource(str(e))
     parametres = resoudre_parametres(db, d, parametres_bruts, sec)
+    if comparaison_detaillee(d):                     # RG-EDT-COMPARAISON-04 : écarts lus seulement si l'état s'en sert
+        parametres["_comparaison_detaillee"] = True
     principal = d.jeu_principal()
     if principal is None or principal.source not in REGISTRE:
         raise ErreurSource("Jeu principal absent ou source inconnue")
@@ -187,7 +189,10 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
         if jeu.role != "SECONDAIRE" or jeu.source not in REGISTRE:
             continue
         fe = REGISTRE[jeu.source]
-        groupes = fe.lire_enfants(db, [l["id"] for l in lignes], sec, parametres)
+        if getattr(fe, "avec_parents", False):
+            groupes = fe.lire_enfants(db, [l["id"] for l in lignes], sec, parametres, parents=lignes)
+        else:
+            groupes = fe.lire_enfants(db, [l["id"] for l in lignes], sec, parametres)
         par_parent = {}
         for l in lignes:
             lot = groupes.get(l["id"], [])
@@ -195,9 +200,19 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
             par_parent[l["id"]] = _appliquer_jeu(jeu, lot, parametres, societe, parent=l)
         enfants[jeu.code] = par_parent
 
-    rubriques = index_rubriques(db, lignes) if principal.source == "BULLETIN" and lignes else {}
+    if principal.source == "BULLETIN" and lignes:
+        rubriques = index_rubriques(db, lignes, comparer=bool(parametres.get("_comparaison_detaillee")))
+    elif principal.source == "EXERCICE_SALARIE" and lignes:                   # RG-EDT-EXERCICE-02
+        rubriques = index_exercice(db, lignes)
+    else:
+        rubriques = {}
     periode = parametres.get("periode")
-    a_date = periode["date_fin"] if isinstance(periode, dict) else date.today()
+    if isinstance(periode, dict):
+        a_date = periode["date_fin"]
+    elif parametres.get("annee"):
+        a_date = min(date(int(parametres["annee"]), 12, 31), date.today())
+    else:
+        a_date = date.today()
     constantes = constantes_a_date(db, sec.societe_id, a_date)
 
     # paramétrage des rubriques citées dans les plans de lignes et les corps (libellés, ne_editer_si_*)
@@ -215,6 +230,16 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
         enfants=enfants, parametres=parametres, societe=societe, constantes=constantes, rubriques=rubriques,
         contexte_fixe=fixe, registre_masques=registre_masques, racine_fichiers=racine_fichiers,
         libelles_rubriques=libelles, parametrage_rubriques=parametrage))
+
+
+_MOTIF_COMPARAISON = re.compile(r'\]\.[PE](?:MT|NB|TXP|TX|BASE|PAT)\b|"periode":\s*"(?:COMPARAISON|ECART)"|"BULLETIN_ECART_LIGNE"'
+                                r'|\bcomparaison\.')
+
+
+def comparaison_detaillee(d: Definition) -> bool:
+    """L'état lit-il les rubriques de la période de comparaison ? (attributs P… / E…, affectations
+    Comparaison / Écart, jeu BULLETIN_ECART_LIGNE, champs comparaison.*)"""
+    return bool(_MOTIF_COMPARAISON.search(d.json_canonique()))
 
 
 def executer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteSecurite, *,

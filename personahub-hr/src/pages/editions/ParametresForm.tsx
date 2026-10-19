@@ -33,18 +33,27 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
 }) {
   const [periodes, setPeriodes] = useState<Periode[]>([]);
   const [plans, setPlans] = useState<{ id: string; code: string; libelle: string }[]>([]);
-  const aPeriode = parametres.some((p) => p.type === "PERIODE");
+  const aPeriode = parametres.some((p) => p.type === "PERIODE" || p.type === "ANNEE");
   const aPlan = parametres.some((p) => p.type === "PLAN_PAIE");
 
   useEffect(() => {
     if (aPeriode) editionsApi.periodes().then((ps) => {
       setPeriodes(ps);
-      // par défaut : la période la plus récente qui a des bulletins
-      const defaut = ps.find((p) => p.nb_bulletins > 0) ?? ps[0];
+      // par défaut : la période la plus récente qui a des bulletins ; une 2e période obligatoire
+      // (période de référence d'une comparaison) prend la précédente. Une période facultative reste vide.
+      const payees = ps.filter((p) => p.nb_bulletins > 0);
       const nouv = { ...valeurs };
-      let change = false;
+      let change = false, rang = 0;
       for (const p of parametres) {
-        if (p.type === "PERIODE" && !valeurs[p.code] && defaut) { nouv[p.code] = defaut.id; change = true; }
+        if (p.type === "PERIODE" && (p.obligatoire ?? true)) {
+          const defaut = payees[rang] ?? payees[0] ?? ps[0];
+          rang++;
+          if (!valeurs[p.code] && defaut) { nouv[p.code] = defaut.id; change = true; }
+        }
+        if (p.type === "ANNEE" && valeurs[p.code] === undefined && !p.defaut) {
+          const an = (payees[0] ?? ps[0])?.annee;
+          if (an) { nouv[p.code] = an; change = true; }
+        }
       }
       if (change) onChange(nouv);
     }).catch(() => setPeriodes([]));
@@ -66,7 +75,7 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
           case "PERIODE":
             champ = (
               <select className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)}>
-                {!obligatoire && <option value="">— toutes —</option>}
+                {!obligatoire && <option value="">{p.code === "periode_comparaison" ? "— mois précédent —" : "—"}</option>}
                 {periodes.map((x) => <option key={x.id} value={x.id}>{libellePeriode(x)}</option>)}
               </select>
             );
@@ -104,17 +113,31 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
           case "DATE":
             champ = <input type="date" className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)} />;
             break;
-          case "ANNEE":
+          case "ANNEE": {
+            const annees = [...new Set(periodes.map((x) => x.annee))].sort((a, b) => b - a);
+            champ = annees.length ? (
+              <select className={classe} value={(v as number) ?? ""} onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))}>
+                {!obligatoire && <option value="">—</option>}
+                {annees.map((a) => {
+                  const n = periodes.filter((x) => x.annee === a).reduce((t, x) => t + x.nb_bulletins, 0);
+                  return <option key={a} value={a}>{a} — {n} bulletin(s)</option>;
+                })}
+              </select>
+            ) : <input type="number" className={classe} value={(v as number) ?? ""} onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))} />;
+            break;
+          }
           case "NOMBRE":
-            champ = <input type="number" className={classe} value={(v as number) ?? ""} onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))} />;
+            champ = <input type="number" className={classe} value={(v as number) ?? ""} placeholder={p.defaut && /^[\d.]+$/.test(p.defaut) ? `${p.defaut} par défaut` : undefined}
+              onChange={(e) => set(p.code, e.target.value === "" ? undefined : Number(e.target.value))} />;
             break;
           case "BOOLEEN":
-            champ = <input type="checkbox" checked={!!v} onChange={(e) => set(p.code, e.target.checked)} />;
+            // non touchée : la valeur par défaut du modèle (VRAI / FAUX) est affichée
+            champ = <input type="checkbox" checked={v === undefined ? /^\s*VRAI\s*$/i.test(p.defaut ?? "") : !!v} onChange={(e) => set(p.code, e.target.checked)} />;
             break;
           case "LISTE":
             champ = (
               <select className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)}>
-                <option value="">—</option>
+                <option value="">{p.defaut && /^".*"$/.test(p.defaut) ? `${p.defaut.slice(1, -1)} (par défaut)` : "—"}</option>
                 {(p.valeurs ?? []).map((x) => <option key={x} value={x}>{x}</option>)}
               </select>
             );

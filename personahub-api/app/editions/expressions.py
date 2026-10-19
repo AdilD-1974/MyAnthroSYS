@@ -19,6 +19,9 @@ Ajouts des éditions :
     @periode · @periode.date_fin    paramètre de lancement et son attribut
     [CODE].PAT                 part patronale d'une rubrique
     [CODE].CMT / CNB / CBASE   cumul annuel à date (montant, nombre, base) — table cumul
+    [CODE].PMT / PNB / PBASE…  période de comparaison (mois précédent ou période choisie)
+    [CODE].EMT / ENB / EBASE…  écart avec la période de comparaison (mois − comparaison)
+    [CODE].MT01 … MT12         valeur de chaque mois de l'exercice (récapitulatif annuel)
     VIDE                       valeur vide (≠ 0)
     « "" » dans une chaîne     guillemet doublé = un guillemet
 
@@ -50,7 +53,11 @@ from app.editions import format as fmt
 
 VIDE = None
 BUDGET_PAR_DEFAUT = 10_000
-ATTRIBUTS_RUBRIQUE = ("MT", "NB", "TX", "BASE", "PAT", "TXP", "CMT", "CNB", "CBASE", "CPAT")   # TXP / CPAT : migration 076
+ATTRIBUTS_BASE = ("MT", "NB", "TX", "BASE", "PAT", "TXP")
+# RG-EDT-COMPARAISON-02 (Adil DAIA) : P… = période de comparaison, E… = écart ; MT01…MT12 = mois de l'exercice
+ATTRIBUTS_COMPARAISON = tuple("P" + a for a in ATTRIBUTS_BASE) + tuple("E" + a for a in ATTRIBUTS_BASE)
+ATTRIBUTS_MENSUELS = tuple(f"{a}{m:02d}" for a in ATTRIBUTS_BASE for m in range(1, 13))
+ATTRIBUTS_RUBRIQUE = ATTRIBUTS_BASE + ("CMT", "CNB", "CBASE", "CPAT") + ATTRIBUTS_COMPARAISON + ATTRIBUTS_MENSUELS   # TXP / CPAT : migration 076
 PORTEES = ("GROUPE", "PAGE", "REPORT", "ETAT")
 
 
@@ -143,7 +150,8 @@ class _ParserEdition(dsl._Parser):
                 attr = self.next()[1].upper()
                 if attr not in ATTRIBUTS_RUBRIQUE:
                     raise dsl.DslError(
-                        f"Attribut de rubrique inconnu « {attr} » (attendu : {', '.join(ATTRIBUTS_RUBRIQUE)})"
+                        f"Attribut de rubrique inconnu « {attr} » (attendu : MT, NB, TX, BASE, PAT, TXP ; "
+                        "cumuls CMT, CNB, CBASE, CPAT ; comparaison PMT…, écart EMT… ; mois MT01…MT12)"
                     )
             return ("rub", code, attr)
         if genre == "ident" and self.toks[self.i + 1][1] != "(":

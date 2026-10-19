@@ -20,6 +20,16 @@ RG-EDT-SOURCE-06 (Adil DAIA) : les lignes NEUTRE (intermédiaires de calcul) ne
     zéro dont la rubrique porte ne_editer_si_mt_zero (resp. nb, taux) n'est pas
     imprimée.
 
+RG-EDT-COMPARAISON-01 (Adil DAIA) : chaque bulletin est comparé au bulletin du même salarié
+    dans la période de comparaison : le paramètre « periode_comparaison » s'il est renseigné,
+    sinon le mois précédent (même plan de paie de préférence). « precedent.* » porte ses totaux.
+RG-EDT-COMPARAISON-03 (Adil DAIA) : avec le paramètre « inclure_sortants », les salariés payés
+    dans la période de comparaison et pas dans la période éditée sont ajoutés (mouvement SORTIE,
+    totaux du mois à zéro, identifiant « SORTANT:<bulletin de comparaison> »).
+RG-EDT-COMPARAISON-04 (Adil DAIA) : écarts rubrique par rubrique (lignes imprimables GAIN et
+    RETENUE) : statut NOUVELLE, SUPPRIMEE, MODIFIEE ou IDENTIQUE ; lus seulement quand l'état
+    les utilise (source BULLETIN_ECART_LIGNE, attributs P… / E…, affectations Comparaison / Écart).
+
 SQL standard uniquement (pas d'ANY(CAST…), d'ILIKE ni de LATERAL) : listes
 d'identifiants par bindparam(expanding=True), choix société/générique en Python.
 """
@@ -29,7 +39,7 @@ import json
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
@@ -184,6 +194,15 @@ CHAMPS_BULLETIN = [
     _m("precedent.net_imposable", "Mois précédent : net imposable", "Mois précédent"),
     _m("precedent.net_a_payer", "Mois précédent : net à payer", "Mois précédent"),
     _m("precedent.cout_employeur", "Mois précédent : coût employeur", "Mois précédent"),
+    _t("precedent.mode", "Comparaison : mois précédent ou période choisie", "Mois précédent"),
+    _t("mouvement", "Mouvement (ENTREE, SORTIE, PRESENT)", "Comparaison"),
+    _n("sortant", "Sortie : payé dans la période de comparaison seulement (1/0)", "Comparaison"),
+    _n("comparaison.nb_rubriques", "Rubriques comparées", "Comparaison"),
+    _n("comparaison.nb_ecarts", "Rubriques en écart (nouvelles, supprimées, modifiées)", "Comparaison"),
+    _n("comparaison.nb_modifiees", "Rubriques modifiées", "Comparaison"),
+    _n("comparaison.nb_nouvelles", "Rubriques nouvelles", "Comparaison"),
+    _n("comparaison.nb_supprimees", "Rubriques supprimées", "Comparaison"),
+    _m("comparaison.effet_net", "Effet des écarts sur le net (gains − retenues)", "Comparaison"),
     # régimes : regimes.CNSS.matricule_organisme, regimes.CIMR.date_affiliation…
     _t("regimes.*.regime_libelle", "Régime : libellé", "Régimes"),
     _t("regimes.*.matricule_organisme", "Régime : matricule à l'organisme", "Régimes"),
@@ -203,7 +222,8 @@ class FournisseurBulletin(Fournisseur):
         return CHAMPS_BULLETIN
 
     def relations(self) -> list[RelationDecl]:
-        return [RelationDecl("lignes", "BULLETIN_LIGNE", "PLUSIEURS", "id", "bulletin_id")]
+        return [RelationDecl("lignes", "BULLETIN_LIGNE", "PLUSIEURS", "id", "bulletin_id"),
+                RelationDecl("ecarts", "BULLETIN_ECART_LIGNE", "PLUSIEURS", "id", "bulletin_id")]
 
     # ---- périmètre ----
     def _perimetre(self, p: dict) -> tuple[str, dict, list[str]]:
@@ -211,8 +231,13 @@ class FournisseurBulletin(Fournisseur):
         bulletin = _id(p.get("bulletin"))
         periode = _id(p.get("periode"))
         annee = p.get("annee")
-        if not (bulletin or periode or annee):
+        periodes = _ids(p.get("_periodes_ids"))                 # lecture interne (sortants)
+        if not (bulletin or periode or annee or periodes):
             raise ErreurSource("Paramètre requis : une période, une année ou un bulletin")
+        if periodes and not periode:
+            conds.append("b.periode_id IN :periodes")
+            binds["periodes"] = periodes
+            expanding.append("periodes")
         if bulletin:
             conds.append("b.id = :bulletin")
             binds["bulletin"] = bulletin
@@ -286,8 +311,54 @@ class FournisseurBulletin(Fournisseur):
         resultat = population.filtrer(db, resultat, parametres.get("_filtres"), sec.societe_id)
         population.enrichir(db, resultat, sec.societe_id)
         _ajouter_cumuls(db, resultat, sec)
-        _ajouter_precedent(db, resultat, sec)
+        if parametres.get("_sans_comparaison"):
+            return resultat
+        _ajouter_comparaison(db, resultat, sec, parametres)
+        if _oui(parametres.get("inclure_sortants")):                      # RG-EDT-COMPARAISON-03
+            resultat += self._sortants(db, resultat, parametres, sec)
+        if parametres.get("_comparaison_detaillee"):                      # RG-EDT-COMPARAISON-04
+            ajouter_ecarts(db, resultat, sec)
         return resultat
+
+    def _sortants(self, db: Session, presents: list[Ligne], parametres: dict, sec: ContexteSecurite) -> list[Ligne]:
+        comp = _periode_comparaison(parametres)
+        per = parametres.get("periode") if isinstance(parametres.get("periode"), dict) else None
+        if comp:
+            pids = [str(comp["id"])]
+        elif per and per.get("annee") and per.get("mois"):
+            rang = int(per["annee"]) * 12 + int(per["mois"]) - 2
+            pids = [str(x) for x in db.execute(text(
+                "SELECT id FROM calendrier_paie WHERE societe_id = :s AND annee = :a AND mois = :m"),
+                {"s": sec.societe_id, "a": rang // 12, "m": rang % 12 + 1}).scalars()]
+        else:
+            return []
+        if not pids:
+            return []
+        p2 = {k: v for k, v in parametres.items()
+              if k not in ("periode", "periode_comparaison", "bulletin", "inclure_sortants", "_comparaison_detaillee")}
+        p2.update({"_periodes_ids": pids, "_sans_comparaison": True})
+        deja = {str(b.get("collaborateur_id")) for b in presents}
+        libelle = (comp or {}).get("intitule") or None
+        res: list[Ligne] = []
+        for rb in sorted(self.lire(db, p2, sec), key=lambda x: str((x.get("plan") or {}).get("code") or "")):
+            collab = str(rb.get("collaborateur_id"))
+            if collab in deja:
+                continue
+            deja.add(collab)
+            ph = dict(rb)
+            per_b = rb.get("periode") or {}
+            ph["precedent"] = {**{c: rb.get(c) for c in TOTAUX_CUMULES}, "existe": 1,
+                               "periode": libelle or per_b.get("intitule") or (f"{int(per_b['mois']):02d}/{per_b['annee']}" if per_b.get("mois") else None),
+                               "mode": "Période choisie" if comp else "Mois précédent"}
+            for c in TOTAUX_CUMULES:
+                ph[c] = Decimal(0)
+            ph.update({"id": f"{SORTANT}{rb['id']}", "_comparaison_id": str(rb["id"]), "mouvement": "SORTIE",
+                       "sortant": 1, "origine": "SORTANT", "statut": "SORTANT"})
+            if per:
+                ph["periode_id"] = str(per["id"])
+                ph["periode"] = {k: per.get(k) for k in ("id", "intitule", "annee", "mois", "date_debut", "date_fin")}
+            res.append(ph)
+        return res
 
     def _snapshots(self, db: Session, ids: list[str]) -> dict[str, dict]:
         res: dict[str, dict] = {}
@@ -340,39 +411,176 @@ def _ajouter_cumuls(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) 
         b["cumul"] = cumul
 
 
-def _ajouter_precedent(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) -> None:
-    """RG-EDT-PRECEDENT-01 (Adil DAIA) : totaux du bulletin du MOIS PRÉCÉDENT du même collaborateur
-    (même plan de paie de préférence), pour les états de contrôle M / M-1. `precedent.existe` vaut 0
-    quand il n'y en a pas (entrée dans le mois, ou premier mois de paie)."""
+SORTANT = "SORTANT:"
+
+
+def _oui(v: Any) -> bool:
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "oui", "true", "vrai", "o")
+    return bool(v)
+
+
+def _periode_comparaison(parametres: dict) -> Optional[dict]:
+    p = parametres.get("periode_comparaison")
+    return p if isinstance(p, dict) and p.get("id") else None
+
+
+def _ajouter_comparaison(db: Session, bulletins: list[Ligne], sec: ContexteSecurite, parametres: Optional[dict] = None) -> None:
+    """RG-EDT-PRECEDENT-01 / RG-EDT-COMPARAISON-01 (Adil DAIA) : totaux du bulletin de comparaison du
+    même collaborateur — celui de la période « periode_comparaison » si elle est choisie, sinon celui du
+    MOIS PRÉCÉDENT (même plan de paie de préférence). `precedent.existe` vaut 0 quand il n'y en a pas
+    (entrée, ou premier mois de paie) : le mouvement est alors ENTREE."""
     if not bulletins:
         return
+    comp = _periode_comparaison(parametres or {})
     collabs = sorted({str(b["collaborateur_id"]) for b in bulletins if b.get("collaborateur_id")})
-    rangs = sorted({int(b["periode"]["annee"]) * 12 + int(b["periode"]["mois"]) - 2
-                    for b in bulletins if (b.get("periode") or {}).get("annee") and (b.get("periode") or {}).get("mois")})
-    if not collabs or not rangs:
+    if not collabs:
         return
     cols = ", ".join(f"b.{c}" for c in TOTAUX_CUMULES)
     corps = f"""
-        SELECT b.collaborateur_id, b.plan_paie_id, cal.annee, cal.mois, cal.intitule, {cols} FROM {{table}} b
+        SELECT b.id, b.collaborateur_id, b.plan_paie_id, cal.annee, cal.mois, cal.intitule, {cols} FROM {{table}} b
         JOIN calendrier_paie cal ON cal.id = b.periode_id
-        WHERE cal.societe_id = :societe AND b.collaborateur_id IN :collabs AND (cal.annee * 12 + cal.mois - 1) IN :rangs"""
-    q = text(corps.format(table="bulletin") + " UNION ALL " + corps.format(table="bulletin_historique")
-             + " AND NOT EXISTS (SELECT 1 FROM bulletin live WHERE live.id = b.id)") \
-        .bindparams(bindparam("collabs", expanding=True), bindparam("rangs", expanding=True))
+        WHERE cal.societe_id = :societe AND b.collaborateur_id IN :collabs AND {{cond}}"""
+    if comp:
+        cond, binds, expanding = "b.periode_id = :pc", {"pc": str(comp["id"])}, ["collabs"]
+    else:
+        rangs = sorted({int(b["periode"]["annee"]) * 12 + int(b["periode"]["mois"]) - 2
+                        for b in bulletins if (b.get("periode") or {}).get("annee") and (b.get("periode") or {}).get("mois")})
+        if not rangs:
+            return
+        cond, binds, expanding = "(cal.annee * 12 + cal.mois - 1) IN :rangs", {"rangs": rangs}, ["collabs", "rangs"]
+    sql = (corps.format(table="bulletin", cond=cond) + " UNION ALL " + corps.format(table="bulletin_historique", cond=cond)
+           + " AND NOT EXISTS (SELECT 1 FROM bulletin live WHERE live.id = b.id)")
+    q = text(sql)
+    for nom in expanding:
+        q = q.bindparams(bindparam(nom, expanding=True))
     par_cle: dict[tuple[str, int], list[dict]] = defaultdict(list)
     for paquet in _paquets(collabs):
-        for r in db.execute(q, {"societe": sec.societe_id, "collabs": paquet, "rangs": rangs}).mappings():
-            par_cle[(str(r["collaborateur_id"]), int(r["annee"]) * 12 + int(r["mois"]) - 1)].append(dict(r))
+        for r in db.execute(q, {**binds, "societe": sec.societe_id, "collabs": paquet}).mappings():
+            rang = 0 if comp else int(r["annee"]) * 12 + int(r["mois"]) - 1
+            par_cle[(str(r["collaborateur_id"]), rang)].append(dict(r))
     for b in bulletins:
         per = b.get("periode") or {}
-        if not per.get("annee") or not per.get("mois"):
+        if comp:
+            rang = 0
+        elif per.get("annee") and per.get("mois"):
+            rang = int(per["annee"]) * 12 + int(per["mois"]) - 2
+        else:
             continue
-        candidats = par_cle.get((str(b["collaborateur_id"]), int(per["annee"]) * 12 + int(per["mois"]) - 2), [])
+        candidats = par_cle.get((str(b["collaborateur_id"]), rang), [])
         r = next((c for c in candidats if str(c["plan_paie_id"]) == str(b.get("plan_paie_id"))), candidats[0] if candidats else None)
         prec: dict[str, Any] = {c: (r[c] if r else None) for c in TOTAUX_CUMULES}
         prec["existe"] = 1 if r else 0
-        prec["periode"] = (r["intitule"] or f"{int(r['mois']):02d}/{r['annee']}") if r else None
+        prec["periode"] = (r["intitule"] or f"{int(r['mois']):02d}/{r['annee']}") if r else (comp or {}).get("intitule")
+        prec["mode"] = "Période choisie" if comp else "Mois précédent"
         b["precedent"] = prec
+        b["_comparaison_id"] = str(r["id"]) if r else None
+        b["mouvement"] = "PRESENT" if r else "ENTREE"
+        b["sortant"] = 0
+
+
+# compatibilité (appel historique)
+def _ajouter_precedent(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) -> None:
+    _ajouter_comparaison(db, bulletins, sec, None)
+
+
+# =============================================================================
+# Écarts rubrique par rubrique — RG-EDT-COMPARAISON-04 (Adil DAIA)
+# =============================================================================
+STATUTS_ECART = {"NOUVELLE": "Nouvelle", "SUPPRIMEE": "Supprimée", "MODIFIEE": "Modifiée", "IDENTIQUE": "Identique"}
+_SOMMES = ("montant", "nombre", "montant_patronal")
+_DERNIERS = ("base", "taux", "taux_patronal")
+
+
+def _dec(v: Any) -> Optional[Decimal]:
+    return None if v is None or v == "" else Decimal(str(v))
+
+
+def _diff(a: Any, b: Any) -> Optional[Decimal]:
+    if a is None and b is None:
+        return None
+    return (_dec(a) or Decimal(0)) - (_dec(b) or Decimal(0))
+
+
+def _lignes_par_rubrique(db: Session, ids: list[str], societe_id: str) -> dict[str, dict[str, dict]]:
+    """{bulletin_id: {code: valeurs cumulées des lignes imprimables de la rubrique}}."""
+    res: dict[str, dict[str, dict]] = defaultdict(dict)
+    lignes = _lignes_brutes(db, ids, SENS_IMPRIMES)
+    params = _rubriques_paie(db, {l["code_rubrique"] for l in lignes}, societe_id)
+    for l in lignes:
+        code = str(l["code_rubrique"]).strip()
+        rub = params.get(code, {})
+        e = res[str(l["bulletin_id"])].setdefault(code, {
+            **{k: None for k in _SOMMES + _DERNIERS}, "sens": l["sens"], "ordre_affichage": l["ordre_affichage"],
+            "libelle": rub.get("libelle_edition") or l.get("libelle") or rub.get("libelle") or code})
+        for k in _SOMMES:
+            if l.get(k) is not None:
+                e[k] = (e[k] or Decimal(0)) + Decimal(str(l[k]))
+        for k in _DERNIERS:
+            if l.get(k) is not None:
+                e[k] = Decimal(str(l[k]))
+        if l["ordre_affichage"] is not None and (e["ordre_affichage"] is None or l["ordre_affichage"] < e["ordre_affichage"]):
+            e["ordre_affichage"] = l["ordre_affichage"]
+    return res
+
+
+def _renseignee(e: Optional[dict]) -> bool:
+    """Une rubrique compte dans une période si son montant, son nombre ou sa part patronale est non nul."""
+    return bool(e) and any(e.get(k) not in (None, 0) and Decimal(str(e[k])) != 0 for k in _SOMMES)
+
+
+def ajouter_ecarts(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) -> None:
+    """`_ecarts` (lignes comparées) et `comparaison.*` (décomptes) sur chaque bulletin."""
+    ids = set()
+    for b in bulletins:
+        if not str(b["id"]).startswith(SORTANT):
+            ids.add(str(b["id"]))
+        if b.get("_comparaison_id"):
+            ids.add(str(b["_comparaison_id"]))
+    agg = _lignes_par_rubrique(db, sorted(ids), sec.societe_id) if ids else {}
+    for b in bulletins:
+        cur = {} if str(b["id"]).startswith(SORTANT) else agg.get(str(b["id"]), {})
+        prev = agg.get(str(b["_comparaison_id"]), {}) if b.get("_comparaison_id") else {}
+        ecarts = []
+        for code in set(cur) | set(prev):
+            c = cur.get(code) if _renseignee(cur.get(code)) else None
+            p = prev.get(code) if _renseignee(prev.get(code)) else None
+            if c is None and p is None:
+                continue
+            ref = c or p
+            ligne = {"bulletin_id": b["id"], "code_rubrique": code, "libelle": ref["libelle"], "sens": ref["sens"],
+                     "ordre_affichage": min(x for x in ((c or {}).get("ordre_affichage"), (p or {}).get("ordre_affichage"), 10 ** 6) if x is not None)}
+            for k in _SOMMES + _DERNIERS:
+                ligne[k] = (c or {}).get(k)
+                ligne[f"p_{k}"] = (p or {}).get(k)
+            ligne["ecart_montant"] = _diff(ligne["montant"], ligne["p_montant"])
+            ligne["ecart_nombre"] = _diff(ligne["nombre"], ligne["p_nombre"])
+            ligne["ecart_base"] = _diff(ligne["base"], ligne["p_base"])
+            ligne["ecart_taux"] = _diff(ligne["taux"], ligne["p_taux"])
+            ligne["ecart_patronal"] = _diff(ligne["montant_patronal"], ligne["p_montant_patronal"])
+            pm = _dec(ligne["p_montant"])
+            ligne["ecart_pct"] = (ligne["ecart_montant"] / abs(pm) * 100).quantize(Decimal("0.01")) if pm else None
+            em = ligne["ecart_montant"] or Decimal(0)
+            ligne["effet_net"] = em if ref["sens"] == "GAIN" else -em
+            if p is None:
+                statut = "NOUVELLE"
+            elif c is None:
+                statut = "SUPPRIMEE"
+            elif any((ligne[f"ecart_{k}"] or 0) != 0 for k in ("montant", "nombre", "base", "taux", "patronal")):
+                statut = "MODIFIEE"
+            else:
+                statut = "IDENTIQUE"
+            ligne["statut"] = statut
+            ligne["statut_libelle"] = STATUTS_ECART[statut]
+            ligne["en_ecart"] = 0 if statut == "IDENTIQUE" else 1
+            ecarts.append(ligne)
+        ecarts.sort(key=lambda x: (x["ordre_affichage"], x["code_rubrique"]))
+        b["_ecarts"] = ecarts
+        n = {k: sum(1 for e in ecarts if e["statut"] == k) for k in STATUTS_ECART}
+        b["comparaison"] = {"nb_rubriques": len(ecarts), "nb_modifiees": n["MODIFIEE"], "nb_nouvelles": n["NOUVELLE"],
+                            "nb_supprimees": n["SUPPRIMEE"], "nb_identiques": n["IDENTIQUE"],
+                            "nb_ecarts": n["MODIFIEE"] + n["NOUVELLE"] + n["SUPPRIMEE"],
+                            "effet_net": sum((e["effet_net"] for e in ecarts), Decimal(0))}
 
 
 def _cumuls_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, dict[str, Decimal]]]:
@@ -468,7 +676,8 @@ def _lignes_brutes(db: Session, bulletin_ids: list[str], sens: Optional[tuple] =
         q = q.bindparams(bindparam("sens", expanding=True))
         binds["sens"] = list(sens)
     lignes: list[Ligne] = []
-    for paquet in _paquets(bulletin_ids):
+    reels = [str(i) for i in bulletin_ids if i is not None and not str(i).startswith(SORTANT)]   # RG-EDT-COMPARAISON-03
+    for paquet in _paquets(reels):
         lignes += [ligne_propre(r) for r in db.execute(q, {**binds, "ids": paquet}).mappings()]
     return lignes
 
@@ -529,28 +738,251 @@ class FournisseurBulletinLigne(Fournisseur):
 
 
 # =============================================================================
+# BULLETIN_ECART_LIGNE — rubriques comparées d'un bulletin (jeu secondaire)
+# =============================================================================
+def _champs_ecart() -> list[ChampDecl]:
+    g, gp, ge = "Rubrique", "Période de comparaison", "Écart"
+    return [
+        _t("bulletin_id", "Bulletin", g), _t("code_rubrique", "Code rubrique", g), _t("libelle", "Libellé", g),
+        _t("sens", "Sens (GAIN, RETENUE)", g), _n("ordre_affichage", "Ordre d'affichage", g),
+        _n("nombre", "Nombre", g), _n("base", "Base", g, masque_defaut="MONTANT"), _n("taux", "Taux", g),
+        _m("montant", "Montant", g), _m("montant_patronal", "Montant patronal", g), _n("taux_patronal", "Taux patronal", g),
+        _n("p_nombre", "Nombre (comparaison)", gp), _n("p_base", "Base (comparaison)", gp, masque_defaut="MONTANT"),
+        _n("p_taux", "Taux (comparaison)", gp), _m("p_montant", "Montant (comparaison)", gp),
+        _m("p_montant_patronal", "Montant patronal (comparaison)", gp), _n("p_taux_patronal", "Taux patronal (comparaison)", gp),
+        _m("ecart_montant", "Écart de montant", ge), _n("ecart_nombre", "Écart de nombre", ge),
+        _n("ecart_base", "Écart de base", ge, masque_defaut="MONTANT"), _n("ecart_taux", "Écart de taux", ge),
+        _m("ecart_patronal", "Écart de part patronale", ge),
+        _n("ecart_pct", "Écart de montant (%)", ge, masque_defaut="POURCENTAGE"),
+        _m("effet_net", "Effet sur le net (gain +, retenue −)", ge),
+        _t("statut", "Statut (NOUVELLE, SUPPRIMEE, MODIFIEE, IDENTIQUE)", ge), _t("statut_libelle", "Statut (libellé)", ge),
+        _n("en_ecart", "En écart (1/0)", ge),
+    ]
+
+
+class FournisseurBulletinEcart(Fournisseur):
+    code = "BULLETIN_ECART_LIGNE"
+    libelle = "Rubriques comparées (période / période de comparaison)"
+    nature = "PAIE_SNAPSHOT"
+    avec_parents = True                        # l'exécuteur transmet les bulletins parents
+
+    def champs(self) -> list[ChampDecl]:
+        return _champs_ecart()
+
+    def lire(self, db: Session, parametres: dict, sec: ContexteSecurite) -> list[Ligne]:
+        raise ErreurSource("BULLETIN_ECART_LIGNE se lit comme jeu secondaire d'un jeu BULLETIN")
+
+    def lire_enfants(self, db: Session, cles: list[Any], sec: ContexteSecurite,
+                     parametres: Optional[dict] = None, parents: Optional[list[Ligne]] = None) -> dict[Any, list[Ligne]]:
+        parents = parents or []
+        if any("_ecarts" not in p for p in parents):
+            ajouter_ecarts(db, parents, sec)
+        return {p["id"]: [dict(e) for e in p.get("_ecarts") or []] for p in parents}
+
+
+# =============================================================================
+# COMPARAISON_RUBRIQUES — une ligne par rubrique, toute la population (jeu principal)
+# =============================================================================
+TOTAUX_COMPARES = (("TOTAL_BRUT", "Salaire brut", "total_brut"), ("BRUT_IMPOSABLE", "Brut imposable", "total_brut_imposable"),
+                   ("COT_SALARIALES", "Cotisations salariales", "total_cot_salariale"),
+                   ("NET_IMPOSABLE", "Net imposable", "net_imposable"), ("NET_A_PAYER", "Net à payer", "net_a_payer"),
+                   ("COT_PATRONALES", "Cotisations patronales", "total_cot_patronale"),
+                   ("COUT_EMPLOYEUR", "Coût employeur", "cout_employeur"))
+SENS_COMPARES = {"GAIN": (1, "Éléments de rémunération"), "RETENUE": (2, "Cotisations et retenues"), "TOTAL": (3, "Totaux du bulletin")}
+
+
+class FournisseurComparaisonRubriques(Fournisseur):
+    """RG-EDT-COMPARAISON-05 (Adil DAIA) : masse de chaque rubrique sur la population, dans la période
+    et dans la période de comparaison (choisie, ou mois précédent), salariés concernés et mouvements,
+    suivie des totaux du bulletin (sens TOTAL). Les sorties sont comptées."""
+    code = "COMPARAISON_RUBRIQUES"
+    libelle = "Rubriques comparées entre deux périodes (toute la population)"
+    nature = "PAIE_SNAPSHOT"
+    contexte_requis = ("periode",)
+
+    def champs(self) -> list[ChampDecl]:
+        g, gp, ge, gs = "Rubrique", "Période de comparaison", "Écart", "Salariés"
+        return [
+            _t("id", "Identifiant (code rubrique)", g), _t("code_rubrique", "Code rubrique", g), _t("libelle", "Libellé", g),
+            _t("sens", "Sens (GAIN, RETENUE, TOTAL)", g), _t("sens_libelle", "Sens (libellé)", g), _n("rang_sens", "Rang du sens", g),
+            _n("ordre_affichage", "Ordre d'affichage", g),
+            _m("montant", "Montant", g), _n("nombre", "Nombre", g), _m("montant_patronal", "Montant patronal", g),
+            _m("p_montant", "Montant (comparaison)", gp), _n("p_nombre", "Nombre (comparaison)", gp),
+            _m("p_montant_patronal", "Montant patronal (comparaison)", gp),
+            _m("ecart_montant", "Écart de montant", ge), _n("ecart_nombre", "Écart de nombre", ge),
+            _m("ecart_patronal", "Écart de part patronale", ge),
+            _n("ecart_pct", "Écart de montant (%)", ge, masque_defaut="POURCENTAGE"),
+            _t("statut", "Statut (NOUVELLE, SUPPRIMEE, MODIFIEE, IDENTIQUE)", ge), _t("statut_libelle", "Statut (libellé)", ge),
+            _n("en_ecart", "En écart (1/0)", ge),
+            _n("nb_salaries", "Salariés concernés", gs), _n("p_nb_salaries", "Salariés concernés (comparaison)", gs),
+            _n("nb_modifies", "Salariés dont la rubrique a changé", gs), _n("nb_nouveaux", "Salariés où elle apparaît", gs),
+            _n("nb_disparus", "Salariés où elle disparaît", gs),
+            _t("periode_libelle", "Période éditée", "Périodes"), _t("p_periode_libelle", "Période de comparaison", "Périodes"),
+            _n("effectif", "Effectif payé (période)", "Périodes"), _n("p_effectif", "Effectif payé (comparaison)", "Périodes"),
+            _n("nb_entrees", "Entrées (sans bulletin de comparaison)", "Périodes"), _n("nb_sorties", "Sorties", "Périodes"),
+        ]
+
+    def lire(self, db: Session, parametres: dict, sec: ContexteSecurite) -> list[Ligne]:
+        per = parametres.get("periode")
+        if not isinstance(per, dict):
+            raise ErreurSource("Paramètre requis : la période")
+        bulletins = FournisseurBulletin().lire(db, {**parametres, "inclure_sortants": True, "_comparaison_detaillee": True}, sec)
+        comp = _periode_comparaison(parametres)
+        p_lib = (comp or {}).get("intitule") or next(((b.get("precedent") or {}).get("periode") for b in bulletins
+                                                      if (b.get("precedent") or {}).get("periode")), None) or "Mois précédent"
+        commun = {"periode_libelle": per.get("intitule") or f"{int(per['mois']):02d}/{per['annee']}", "p_periode_libelle": p_lib,
+                  "effectif": sum(1 for b in bulletins if not b.get("sortant")),
+                  "p_effectif": sum(1 for b in bulletins if (b.get("precedent") or {}).get("existe")),
+                  "nb_entrees": sum(1 for b in bulletins if b.get("mouvement") == "ENTREE"),
+                  "nb_sorties": sum(1 for b in bulletins if b.get("sortant"))}
+        par_code: dict[str, dict] = {}
+        zero = Decimal(0)
+        for b in bulletins:
+            for e in b.get("_ecarts") or []:
+                r = par_code.setdefault(e["code_rubrique"], {
+                    "id": e["code_rubrique"], "code_rubrique": e["code_rubrique"], "libelle": e["libelle"], "sens": e["sens"],
+                    "ordre_affichage": e["ordre_affichage"], "montant": zero, "nombre": zero, "montant_patronal": zero,
+                    "p_montant": zero, "p_nombre": zero, "p_montant_patronal": zero,
+                    "nb_salaries": 0, "p_nb_salaries": 0, "nb_modifies": 0, "nb_nouveaux": 0, "nb_disparus": 0})
+                for k in ("montant", "nombre", "montant_patronal"):
+                    r[k] += _dec(e[k]) or zero
+                    r["p_" + k] += _dec(e["p_" + k]) or zero
+                r["nb_salaries"] += e["statut"] != "SUPPRIMEE"
+                r["p_nb_salaries"] += e["statut"] != "NOUVELLE"
+                r["nb_modifies"] += e["statut"] == "MODIFIEE"
+                r["nb_nouveaux"] += e["statut"] == "NOUVELLE"
+                r["nb_disparus"] += e["statut"] == "SUPPRIMEE"
+        lignes = sorted(par_code.values(), key=lambda r: (SENS_COMPARES.get(r["sens"], (9,))[0], r["ordre_affichage"], r["code_rubrique"]))
+        for k, (code, libelle, col) in enumerate(TOTAUX_COMPARES):
+            lignes.append({"id": code, "code_rubrique": code, "libelle": libelle, "sens": "TOTAL", "ordre_affichage": 10 ** 6 + k,
+                           "montant": sum((_dec(b.get(col)) or zero for b in bulletins), zero),
+                           "p_montant": sum((_dec((b.get("precedent") or {}).get(col)) or zero for b in bulletins), zero),
+                           "nombre": None, "p_nombre": None, "montant_patronal": None, "p_montant_patronal": None,
+                           "nb_salaries": sum(1 for b in bulletins if _dec(b.get(col))),
+                           "p_nb_salaries": sum(1 for b in bulletins if _dec((b.get("precedent") or {}).get(col))),
+                           "nb_modifies": sum(1 for b in bulletins if (_dec(b.get(col)) or zero) != (_dec((b.get("precedent") or {}).get(col)) or zero)),
+                           "nb_nouveaux": None, "nb_disparus": None})
+        for r in lignes:
+            r.update(commun)
+            r["rang_sens"], r["sens_libelle"] = SENS_COMPARES.get(r["sens"], (9, r["sens"] or ""))
+            r["ecart_montant"] = _diff(r["montant"], r["p_montant"])
+            r["ecart_nombre"] = _diff(r["nombre"], r["p_nombre"])
+            r["ecart_patronal"] = _diff(r["montant_patronal"], r["p_montant_patronal"])
+            r["ecart_pct"] = (r["ecart_montant"] / abs(r["p_montant"]) * 100).quantize(Decimal("0.01")) if r["p_montant"] else None
+            if not r["p_montant"] and r["montant"] and r["sens"] != "TOTAL":
+                r["statut"] = "NOUVELLE"
+            elif not r["montant"] and r["p_montant"] and r["sens"] != "TOTAL":
+                r["statut"] = "SUPPRIMEE"
+            elif (r["ecart_montant"] or 0) != 0 or (r["ecart_nombre"] or 0) != 0 or (r["ecart_patronal"] or 0) != 0 or (r["nb_modifies"] or 0):
+                r["statut"] = "MODIFIEE"
+            else:
+                r["statut"] = "IDENTIQUE"
+            r["statut_libelle"] = STATUTS_ECART[r["statut"]]
+            r["en_ecart"] = 0 if r["statut"] == "IDENTIQUE" else 1
+        return lignes
+
+
+# =============================================================================
+# EXERCICE_SALARIE — un salarié sur l'année (bulletin récapitulatif de l'exercice)
+# =============================================================================
+_HORS_EXERCICE = {"id", "periode_id", "periode", "plan_paie_id", "statut", "origine", "cumul", "precedent", "comparaison",
+                  "_ecarts", "_comparaison_id", "mouvement", "sortant", *TOTAUX_CUMULES}
+NOMS_MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre")
+
+
+class FournisseurExercice(Fournisseur):
+    """RG-EDT-EXERCICE-02 (Adil DAIA) : une ligne par salarié payé dans l'exercice (année civile) :
+    situation du dernier bulletin de l'année, totaux de l'année, mois payés. Les rubriques se lisent
+    mois par mois ([CODE].MT01…MT12) ou sur l'année ([CODE].MT) ; un corps « exercice » les ventile."""
+    code = "EXERCICE_SALARIE"
+    libelle = "Salariés de l'exercice (récapitulatif annuel)"
+    nature = "PAIE_SNAPSHOT"
+    contexte_requis = ("annee",)
+
+    def champs(self) -> list[ChampDecl]:
+        exclus = {"id", "periode_id", "statut", "origine"} | {c.code for c in CHAMPS_BULLETIN
+                                                            if c.code.startswith(("precedent.", "comparaison.", "periode.", "cumul."))}
+        g = "Exercice"
+        return [_t("id", "Identifiant (collaborateur)", "Bulletin")] + [
+            c for c in CHAMPS_BULLETIN if c.code not in exclus and c.code not in ("mouvement", "sortant")] + [
+            _n("exercice.annee", "Exercice (année)", g), _n("exercice.nb_bulletins", "Bulletins de l'exercice", g),
+            _n("exercice.nb_mois", "Mois payés", g), _n("exercice.premier_mois", "Premier mois payé (1-12)", g),
+            _n("exercice.dernier_mois", "Dernier mois payé (1-12)", g), _t("exercice.mois_payes", "Mois payés (texte)", g),
+            _d("exercice.date_debut", "Début de l'exercice", g), _d("exercice.date_fin", "Fin de l'exercice", g),
+        ]
+
+    def lire(self, db: Session, parametres: dict, sec: ContexteSecurite) -> list[Ligne]:
+        annee = parametres.get("annee")
+        if not annee and isinstance(parametres.get("periode"), dict):
+            annee = parametres["periode"].get("annee")
+        if not annee:
+            raise ErreurSource("Paramètre requis : l'année de l'exercice")
+        annee = int(annee)
+        p = {k: parametres[k] for k in ("plan_paie", "collaborateurs", "collaborateur", "organisations", "_filtres") if k in parametres}
+        p.update({"annee": annee, "_sans_comparaison": True})
+        bulletins = FournisseurBulletin().lire(db, p, sec)
+        par_collab: dict[str, list[Ligne]] = defaultdict(list)
+        for b in bulletins:
+            par_collab[str(b["collaborateur_id"])].append(b)
+        res: list[Ligne] = []
+        for collab, liste in par_collab.items():
+            liste.sort(key=lambda b: (int((b.get("periode") or {}).get("mois") or 0), str((b.get("plan") or {}).get("code") or "")))
+            dernier = liste[-1]
+            l = {k: v for k, v in dernier.items() if k not in _HORS_EXERCICE}
+            l["id"] = collab
+            for c in TOTAUX_CUMULES:
+                l[c] = sum((_dec(b.get(c)) or Decimal(0) for b in liste), Decimal(0))
+            mois = sorted({int(b["periode"]["mois"]) for b in liste if (b.get("periode") or {}).get("mois")})
+            l["cumul"] = {**{c: l[c] for c in TOTAUX_CUMULES}, "nb_bulletins": len(liste)}
+            l["_bulletins"] = [{"id": str(b["id"]), "mois": int((b.get("periode") or {}).get("mois") or 0),
+                                **{c: b.get(c) for c in TOTAUX_CUMULES}} for b in liste]
+            l["exercice"] = {
+                "annee": annee, "nb_bulletins": len(liste), "nb_mois": len(mois),
+                "premier_mois": mois[0] if mois else None, "dernier_mois": mois[-1] if mois else None,
+                "mois_payes": (f"{NOMS_MOIS[mois[0] - 1]} à {NOMS_MOIS[mois[-1] - 1]}" if len(mois) > 1
+                               else NOMS_MOIS[mois[0] - 1]) if mois else "",
+                "date_debut": date(annee, 1, 1), "date_fin": date(annee, 12, 31)}
+            res.append(l)
+        return res
+
+
+# =============================================================================
 # Index des rubriques : [CODE].MT / NB / TX / BASE / PAT de chaque bulletin
 # =============================================================================
-def index_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, dict[str, Decimal]]]:
+def _index_lignes(lignes: list[Ligne], cle: Callable[[Ligne], Optional[str]], suffixe: Callable[[Ligne], str] = lambda l: "") \
+        -> dict[str, dict[str, dict[str, Any]]]:
+    """{clé: {code: {MT, NB, PAT, BASE, TX, TXP, ORDRE}}} : MT, NB et PAT cumulés ; BASE et TX gardent la
+    dernière valeur. `suffixe` range les valeurs sous MT01…MT12 (récapitulatif de l'exercice)."""
+    idx: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for l in lignes:
+        k = cle(l)
+        if k is None:
+            continue
+        sfx = suffixe(l)
+        r = idx[k].setdefault(l["code_rubrique"], {})
+        for attr, col in (("MT", "montant"), ("NB", "nombre"), ("PAT", "montant_patronal")):
+            r.setdefault(attr + sfx, Decimal(0))
+            if l[col] is not None:
+                r[attr + sfx] += Decimal(str(l[col]))
+        if l["base"] is not None:
+            r["BASE" + sfx] = Decimal(str(l["base"]))
+        if l["taux"] is not None:
+            r["TX" + sfx] = Decimal(str(l["taux"]))
+        if l.get("taux_patronal") is not None:
+            r["TXP" + sfx] = Decimal(str(l["taux_patronal"]))
+        if l.get("ordre_affichage") is not None:
+            r["ORDRE"] = min(r.get("ORDRE", l["ordre_affichage"]), l["ordre_affichage"])
+    return idx
+
+
+def index_rubriques(db: Session, bulletins: list[Ligne], comparer: bool = False) -> dict[str, dict[str, dict[str, Decimal]]]:
     """{bulletin_id: {code: {MT, NB, TX, BASE, PAT}}}, toutes lignes confondues
     (NEUTRE compris : un calcul intermédiaire reste lisible). Une rubrique
     présente sur plusieurs lignes cumule MT, NB et PAT ; BASE et TX gardent la
     dernière valeur. Les totaux d'en-tête sont exposés comme des rubriques.
-    CMT / CNB / CBASE : cumuls annuels à date (RG-EDT-CUMUL-01)."""
-    idx: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-    for l in _lignes_brutes(db, [b["id"] for b in bulletins]):
-        r = idx[l["bulletin_id"]].setdefault(l["code_rubrique"], {"MT": Decimal(0), "NB": Decimal(0), "PAT": Decimal(0)})
-        for attr, col in (("MT", "montant"), ("NB", "nombre"), ("PAT", "montant_patronal")):
-            if l[col] is not None:
-                r[attr] += Decimal(str(l[col]))
-        if l["base"] is not None:
-            r["BASE"] = Decimal(str(l["base"]))
-        if l["taux"] is not None:
-            r["TX"] = Decimal(str(l["taux"]))
-        if l.get("taux_patronal") is not None:
-            r["TXP"] = Decimal(str(l["taux_patronal"]))
-        if l.get("ordre_affichage") is not None:
-            r["ORDRE"] = min(r.get("ORDRE", l["ordre_affichage"]), l["ordre_affichage"])
+    CMT / CNB / CBASE : cumuls annuels à date (RG-EDT-CUMUL-01).
+    `comparer` : P… (période de comparaison) et E… (écart), RG-EDT-COMPARAISON-02."""
+    idx = _index_lignes(_lignes_brutes(db, [b["id"] for b in bulletins]), lambda l: l["bulletin_id"])
     for b in bulletins:
         for code, col in RUBRIQUES_EN_TETE.items():
             if b.get(col) is not None:
@@ -559,10 +991,70 @@ def index_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, 
                 if cumul is not None:
                     e.setdefault("CMT", cumul)
     # RG-EDT-CUMUL-01 : cumuls par rubrique, y compris d'une rubrique absente du mois
-    for bid, codes in _cumuls_rubriques(db, bulletins).items():
+    for bid, codes in _cumuls_rubriques(db, [b for b in bulletins if not str(b["id"]).startswith(SORTANT)]).items():
         for code, valeurs in codes.items():
             idx[bid].setdefault(code, {}).update(valeurs)
+    if comparer:
+        _index_comparaison(db, bulletins, idx)
     return dict(idx)
+
+
+def _index_comparaison(db: Session, bulletins: list[Ligne], idx: dict) -> None:
+    """RG-EDT-COMPARAISON-02 (Adil DAIA) : [CODE].PMT… (bulletin de comparaison) et [CODE].EMT… (écart)."""
+    comp = {str(b["id"]): str(b["_comparaison_id"]) for b in bulletins if b.get("_comparaison_id")}
+    autre = _index_lignes(_lignes_brutes(db, sorted(set(comp.values()))), lambda l: l["bulletin_id"]) if comp else {}
+    for b in bulletins:
+        bid = str(b["id"])
+        prec = {code: dict(v) for code, v in autre.get(comp.get(bid), {}).items()}
+        for code, col in RUBRIQUES_EN_TETE.items():
+            if (b.get("precedent") or {}).get(col) is not None:
+                prec.setdefault(code, {})["MT"] = Decimal(str(b["precedent"][col]))
+        cible = idx.setdefault(b["id"], {})
+        for code in set(cible) | set(prec):
+            e = cible.setdefault(code, {})
+            p = prec.get(code, {})
+            for a in ATTRIBUTS_BASE:
+                if p.get(a) is not None:
+                    e["P" + a] = p[a]
+                if e.get(a) is not None or p.get(a) is not None:
+                    e["E" + a] = (e.get(a) or Decimal(0)) - (p.get(a) or Decimal(0))
+
+
+ATTRIBUTS_BASE = ("MT", "NB", "TX", "BASE", "PAT", "TXP")
+_SUFFIXES_MOIS = tuple(f"{m:02d}" for m in range(1, 13))
+
+
+def index_exercice(db: Session, lignes: list[Ligne]) -> dict[str, dict[str, dict[str, Decimal]]]:
+    """RG-EDT-EXERCICE-02 (Adil DAIA) : index des rubriques d'une ligne « exercice » (un salarié sur
+    l'année) : MT01…MT12 (NB, BASE, PAT de même ; TX, TXP : dernière valeur du mois) et l'année
+    entière sous MT, NB, BASE, PAT (sommes) et TX, TXP (dernière valeur). Les totaux d'en-tête du
+    bulletin (NET_A_PAYER…) sont exposés de la même façon. CMT… = valeur de l'année."""
+    vers: dict[str, tuple[str, int]] = {}
+    for l in lignes:
+        for b in l.get("_bulletins") or []:
+            vers[str(b["id"])] = (str(l["id"]), int(b["mois"]))
+    brutes = _lignes_brutes(db, sorted(vers))
+    idx = _index_lignes(brutes, lambda x: vers.get(str(x["bulletin_id"]), (None, 0))[0],
+                        lambda x: f"{vers.get(str(x['bulletin_id']), (None, 0))[1]:02d}")
+    for l in lignes:
+        e_l = idx.setdefault(str(l["id"]), {})
+        for b in l.get("_bulletins") or []:
+            sfx = f"{int(b['mois']):02d}"
+            for code, col in RUBRIQUES_EN_TETE.items():
+                if b.get(col) is not None:
+                    e = e_l.setdefault(code, {})
+                    e["MT" + sfx] = e.get("MT" + sfx, Decimal(0)) + Decimal(str(b[col]))
+        for code, e in e_l.items():
+            for a in ("MT", "NB", "PAT", "BASE"):
+                mois = [e[a + m] for m in _SUFFIXES_MOIS if e.get(a + m) is not None]
+                if mois:
+                    e[a] = sum(mois, Decimal(0))
+                    e["C" + a] = e[a]
+            for a in ("TX", "TXP"):
+                mois = [e[a + m] for m in _SUFFIXES_MOIS if e.get(a + m) is not None]
+                if mois:
+                    e[a] = mois[-1]
+    return idx
 
 
 # =============================================================================
@@ -596,3 +1088,6 @@ def constantes_a_date(db: Session, societe_id: str, a_date: date) -> dict[str, A
 
 enregistrer(FournisseurBulletin())
 enregistrer(FournisseurBulletinLigne())
+enregistrer(FournisseurBulletinEcart())
+enregistrer(FournisseurComparaisonRubriques())
+enregistrer(FournisseurExercice())
