@@ -194,8 +194,18 @@ def periodes(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get
 
 
 @router.get("/parametres/plans-paie")
-def plans_paie(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
-    return sv.plans_paie(db, u)
+def plans_paie(annee: Optional[int] = Query(None), u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return sv.plans_paie(db, u, annee)
+
+
+@router.get("/parametres/collaborateurs")
+def collaborateurs_payes(annee: Optional[int] = Query(None, ge=1900, le=2200), mois: Optional[int] = Query(None, ge=1, le=12),
+                         periodes: Optional[str] = Query(None, description="identifiants séparés par des virgules"),
+                         u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    """RG-EDT-LANCEMENT-01 : salariés payés dans l'année / le mois / les périodes choisis."""
+    import re
+    ids = [x.strip() for x in (periodes or "").split(",") if re.fullmatch(r"[0-9a-fA-F-]{36}", x.strip())][:200]
+    return sv.collaborateurs_payes(db, u, annee, mois, ids)
 
 
 class TestFormule(BaseModel):

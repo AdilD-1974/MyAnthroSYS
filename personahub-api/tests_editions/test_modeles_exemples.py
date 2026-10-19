@@ -236,3 +236,16 @@ def test_mois_de_paie_regroupe_les_periodes_du_mois(s):
     import pytest
     with pytest.raises(Exception, match="Aucune période de paie en mars 2025"):
         executeur.mois_de_paie(s, "2025-03", sec)
+
+
+# ---- écrans de lancement : listes filtrées par l'année (RG-EDT-LANCEMENT-01/02) ----
+def test_listes_du_lancement_filtrees_par_annee(s):
+    ps = sv.periodes(s, PAIE)
+    sep = next(p for p in ps if p["id"] == P_SEP)
+    assert sep["nb_bulletins"] == 2 and next(p for p in ps if p["id"] == P_AOU)["nb_bulletins"] == 1
+    tous = {c["matricule"]: c for c in sv.collaborateurs_payes(s, PAIE, annee=2026)}
+    assert set(tous) == {"M001", "M002"} and tous["M001"]["nb_bulletins"] == 2 and tous["M001"]["nom"] == "ALAMI"
+    assert [c["matricule"] for c in sv.collaborateurs_payes(s, PAIE, annee=2026, mois=8)] == ["M001"]
+    assert [c["matricule"] for c in sv.collaborateurs_payes(s, PAIE, periode_ids=[P_SEP])] == ["M001", "M002"]
+    assert sv.collaborateurs_payes(s, PAIE, annee=2025) == []
+    assert [p["code"] for p in sv.plans_paie(s, PAIE, 2026)] == ["MENS"] and sv.plans_paie(s, PAIE, 2024) == []

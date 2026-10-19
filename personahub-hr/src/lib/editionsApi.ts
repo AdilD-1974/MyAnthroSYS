@@ -204,6 +204,8 @@ export interface ApercuDonnees {
   }[];
 }
 
+export interface CollaborateurPaye { id: string; matricule: string | null; nom: string | null; prenom: string | null; nb_bulletins: number }
+
 export interface Periode {
   id: string;
   intitule: string | null;
@@ -283,7 +285,15 @@ export const editionsApi = {
   analyser: (expression: string, source?: string, parametres: string[] = []) =>
     appel<Analyse>("POST", "/expressions/analyser", { expression, source, parametres }),
   periodes: () => appel<Periode[]>("GET", "/parametres/periodes"),
-  plansPaie: () => appel<{ id: string; code: string; libelle: string }[]>("GET", "/parametres/plans-paie"),
+  plansPaie: (annee?: number) => appel<{ id: string; code: string; libelle: string }[]>("GET", `/parametres/plans-paie${annee ? `?annee=${annee}` : ""}`),
+  /** RG-EDT-LANCEMENT-01 : salariés payés dans l'année / le mois / les périodes choisis (sortis compris). */
+  collaborateursPayes: (f: { annee?: number; mois?: number; periodes?: string[] }) => {
+    const q = new URLSearchParams();
+    if (f.annee) q.set("annee", String(f.annee));
+    if (f.mois) q.set("mois", String(f.mois));
+    if (f.periodes?.length) q.set("periodes", f.periodes.join(","));
+    return appel<CollaborateurPaye[]>("GET", `/parametres/collaborateurs${q.toString() ? `?${q}` : ""}`);
+  },
 
   modeles: (categorie?: string, archives = false) => {
     const q = new URLSearchParams();

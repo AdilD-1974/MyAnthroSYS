@@ -911,25 +911,76 @@ def analyser_expression(db: Session, u: Utilisateur, expression: str, source: Op
 def periodes(db: Session, u: Utilisateur) -> list[dict]:
     """Périodes de paie de la société active, les plus récentes d'abord, avec
     le nombre de bulletins (en cours ∪ historisés, sans doublon)."""
+    # RG-EDT-LANCEMENT-02 : bulletins comptés en une passe (live ∪ historique sans doublon), pas une sous-requête par période
     rows = db.execute(text("""
         SELECT cal.id, cal.intitule, cal.annee, cal.mois, cal.statut, cal.date_debut, cal.date_fin,
                p.id AS plan_paie_id, p.code AS plan_code, p.libelle AS plan_libelle,
-               (SELECT count(*) FROM bulletin b WHERE b.periode_id = cal.id)
-             + (SELECT count(*) FROM bulletin_historique h WHERE h.periode_id = cal.id
-                  AND NOT EXISTS (SELECT 1 FROM bulletin b2 WHERE b2.id = h.id)) AS nb_bulletins
-        FROM calendrier_paie cal LEFT JOIN plan_paie p ON p.id = cal.plan_paie_id
+               COALESCE(n.nb, 0) AS nb_bulletins
+        FROM calendrier_paie cal
+        LEFT JOIN plan_paie p ON p.id = cal.plan_paie_id
+        LEFT JOIN (
+            SELECT periode_id, count(*) AS nb FROM (
+                SELECT b.periode_id FROM bulletin b JOIN calendrier_paie c ON c.id = b.periode_id AND c.societe_id = :s
+                UNION ALL
+                SELECT h.periode_id FROM bulletin_historique h JOIN calendrier_paie c ON c.id = h.periode_id AND c.societe_id = :s
+                WHERE NOT EXISTS (SELECT 1 FROM bulletin b2 WHERE b2.id = h.id)
+            ) t GROUP BY periode_id
+        ) n ON n.periode_id = cal.id
         WHERE cal.societe_id = :s
-        ORDER BY cal.annee DESC, cal.mois DESC, p.code"""), {"s": u.societe_id}).mappings().all()
+        ORDER BY cal.annee DESC, cal.mois DESC, p.code, cal.date_debut"""), {"s": u.societe_id}).mappings().all()
     return [_propre(r) for r in rows]
 
 
-def plans_paie(db: Session, u: Utilisateur) -> list[dict]:
-    rows = db.execute(text("""
+def plans_paie(db: Session, u: Utilisateur, annee: Optional[int] = None) -> list[dict]:
+    """Plans de paie ayant des périodes dans la société (dans l'année, si elle est donnée)."""
+    rows = db.execute(text(f"""
         SELECT DISTINCT p.id, p.code, p.libelle FROM plan_paie p
         JOIN calendrier_paie cal ON cal.plan_paie_id = p.id
-        WHERE cal.societe_id = :s AND COALESCE(p.actif, true) = true
-        ORDER BY p.code"""), {"s": u.societe_id}).mappings().all()
+        WHERE cal.societe_id = :s AND COALESCE(p.actif, true) = true {"AND cal.annee = :a" if annee else ""}
+        ORDER BY p.code"""), {"s": u.societe_id, "a": annee}).mappings().all()
     return [_propre(r) for r in rows]
+
+
+def collaborateurs_payes(db: Session, u: Utilisateur, annee: Optional[int] = None, mois: Optional[int] = None,
+                         periode_ids: Optional[list[str]] = None) -> list[dict]:
+    """RG-EDT-LANCEMENT-01 (Adil DAIA) : salariés ayant un bulletin dans l'année (le mois, ou les périodes)
+    choisis — y compris ceux sortis depuis. Nom et matricule tels qu'au calcul du bulletin (snapshot),
+    le plus récent l'emportant. Société active seulement."""
+    conds, binds = ["c.societe_id = :s"], {"s": u.societe_id}
+    if periode_ids:
+        conds.append("c.id IN :pids")
+        binds["pids"] = [str(x) for x in periode_ids]
+    else:
+        if annee:
+            conds.append("c.annee = :a"); binds["a"] = int(annee)
+        if mois:
+            conds.append("c.mois = :m"); binds["m"] = int(mois)
+    where = " AND ".join(conds)
+    sql = f"""
+        SELECT t.collaborateur_id AS id, t.matricule, t.nom, t.prenom, t.nb_bulletins FROM (
+            SELECT x.collaborateur_id,
+                   (array_agg(x.matricule ORDER BY x.rang DESC))[1] AS matricule,
+                   (array_agg(x.nom ORDER BY x.rang DESC))[1] AS nom,
+                   (array_agg(x.prenom ORDER BY x.rang DESC))[1] AS prenom,
+                   count(*) AS nb_bulletins
+            FROM (
+                SELECT b.collaborateur_id, b.matricule, c.annee * 100 + c.mois AS rang,
+                       s.donnees->'identite'->>'nom' AS nom, s.donnees->'identite'->>'prenom' AS prenom
+                FROM bulletin b JOIN calendrier_paie c ON c.id = b.periode_id
+                LEFT JOIN bulletin_snapshot_collaborateur s ON s.bulletin_id = b.id
+                WHERE {where}
+                UNION ALL
+                SELECT h.collaborateur_id, h.matricule, c.annee * 100 + c.mois,
+                       s.donnees->'identite'->>'nom', s.donnees->'identite'->>'prenom'
+                FROM bulletin_historique h JOIN calendrier_paie c ON c.id = h.periode_id
+                LEFT JOIN bulletin_snapshot_collaborateur s ON s.bulletin_id = h.id
+                WHERE {where} AND NOT EXISTS (SELECT 1 FROM bulletin b2 WHERE b2.id = h.id)
+            ) x GROUP BY x.collaborateur_id
+        ) t ORDER BY upper(COALESCE(t.nom, '')), upper(COALESCE(t.prenom, '')), t.matricule"""
+    q = text(sql)
+    if "pids" in binds:
+        q = q.bindparams(bindparam("pids", expanding=True))
+    return [_propre(r) for r in db.execute(q, binds).mappings().all()]
 
 
 
