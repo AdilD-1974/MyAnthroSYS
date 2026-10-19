@@ -12,7 +12,7 @@ import ReturnTrail from "@/components/navigation/ReturnTrail";
 import { useRetour } from "./retour";
 import "./editions.css";
 import {
-  Archive, ArchiveRestore, Copy, Download, ExternalLink, FileText, Folder, Globe, Building2, LayoutGrid, List, Loader2, Lock,
+  Archive, ArchiveRestore, Copy, Download, ExternalLink, Eye, FileText, Folder, Globe, Building2, LayoutGrid, List, Loader2, Lock,
   Pencil, Play, Plus, Search, ShieldCheck, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
 import type { Parametre } from "./types";
 import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresForm";
 import FiltresPopulation, { filtresUtiles, type Filtres } from "./FiltresPopulation";
+import ActionIcone from "./ActionIcone";
 import { BoutonMenus, libelleEcran, useEcransCategorie } from "./MenusModele";
 import { Switch } from "@/components/ui/switch";
 
@@ -89,20 +90,17 @@ export default function EditionsPage() {
     } catch (e: any) { toast({ title: "Suppression impossible", description: e.message, variant: "destructive" }); }
   };
 
+  // RG-EDT-UI-03 : actions en icônes colorées selon les préférences d'apparence
   const actionsPrincipales = (m: Modele, compact = false) => (
     <>
-      <Button size="sm" disabled={!m.version_publiee_id || m.actif === false || m.archive} onClick={() => ouvrirLancement(m)}
-        title={m.archive ? "Modèle archivé" : m.actif === false ? "État inactif : activez-le pour le lancer" : m.version_publiee_id ? "Lancer" : "Publiez une version pour pouvoir lancer"}>
-        <Play className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} />{!compact && "Lancer"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => concevoir(m.id)} title={m.est_systeme ? "Voir" : "Concevoir"}>
-        {m.est_systeme ? <Lock className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} /> : <Pencil className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} />}
-        {!compact && (m.est_systeme ? "Voir" : "Concevoir")}
-      </Button>
-      <Button size="sm" variant="ghost" title="Créer un modèle à partir de celui-ci"
-        onClick={() => setCreation({ ouvert: true, code: `${m.code}_COPIE`, libelle: `${m.libelle} (copie)`, categorie: m.categorie, visibilite: "SOCIETE", origine: m.id })}>
-        <Copy className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} />{!compact && "Copier"}
-      </Button>
+      <ActionIcone icone={Play} nature="lancer" disabled={!m.version_publiee_id || m.actif === false || m.archive}
+        onClick={() => ouvrirLancement(m)} libelle={compact ? undefined : "Lancer"}
+        titre={m.archive ? "Modèle archivé" : m.actif === false ? "État inactif : activez-le pour le lancer" : m.version_publiee_id ? "Lancer" : "Publiez une version pour pouvoir lancer"} />
+      <ActionIcone icone={m.est_systeme ? Eye : Pencil} nature="voir" onClick={() => concevoir(m.id)}
+        titre={m.est_systeme ? "Voir (modèle système, non modifiable)" : "Concevoir"}
+        libelle={compact ? undefined : m.est_systeme ? "Voir" : "Concevoir"} />
+      <ActionIcone icone={Copy} nature="copier" titre="Créer un modèle à partir de celui-ci" libelle={compact ? undefined : "Copier"}
+        onClick={() => setCreation({ ouvert: true, code: `${m.code}_COPIE`, libelle: `${m.libelle} (copie)`, categorie: m.categorie, visibilite: "SOCIETE", origine: m.id })} />
       <BoutonMenus modele={m} onChange={charger} compact={compact} />
     </>
   );
@@ -112,15 +110,10 @@ export default function EditionsPage() {
     const publie = !!m.version_publiee_id;
     return (
       <>
-        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => archiver(m, !m.archive)}
-          title={m.archive ? "Désarchiver" : "Archiver (réversible, l'historique est conservé)"}>
-          {m.archive ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-        </Button>
-        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive disabled:text-muted-foreground"
-          disabled={publie} onClick={() => supprimer(m)}
-          title={publie ? "Modèle publié : des éditions ont pu en sortir, archivez-le au lieu de le supprimer" : "Supprimer définitivement (jamais publié)"}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <ActionIcone icone={m.archive ? ArchiveRestore : Archive} nature={m.archive ? "desarchiver" : "archiver"}
+          onClick={() => archiver(m, !m.archive)} titre={m.archive ? "Désarchiver" : "Archiver (réversible, l'historique est conservé)"} />
+        <ActionIcone icone={Trash2} nature="supprimer" disabled={publie} onClick={() => supprimer(m)}
+          titre={publie ? "Modèle publié : des éditions ont pu en sortir, archivez-le au lieu de le supprimer" : "Supprimer définitivement (jamais publié)"} />
       </>
     );
   };
@@ -284,7 +277,7 @@ export default function EditionsPage() {
                   <td className="px-3 py-2"><Badges m={m} /></td>
                   <td className="px-3 py-2"><InterrupteurActif m={m} onChange={(v) => basculerActif(m, v)} /></td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-1">{actionsPrincipales(m, true)}{actionsGestion(m)}</div>
+                    <div className="flex items-center justify-end gap-0.5">{actionsPrincipales(m, true)}{actionsGestion(m)}</div>
                   </td>
                 </tr>
               ))}

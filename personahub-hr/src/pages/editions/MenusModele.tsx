@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import Liste from "./Liste";
+import ActionIcone, { COULEURS_ACTIONS } from "./ActionIcone";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { CATEGORIES, editionsApi, type Categorie, type Ecran, type Theme } from "@/lib/editionsApi";
@@ -203,9 +204,12 @@ export function BoutonMenus({ modele, taille = "sm", variante = "ghost", onChang
   const [ouvert, setOuvert] = useState(false);
   return (
     <>
-      <Button size={taille} variant={variante} onClick={() => setOuvert(true)} title="Dossier du menu d'éditions, actif, écrans où le modèle est proposé">
-        <MonitorCheck className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} />{!compact && "Classement"}
-      </Button>
+      {variante === "outline"
+        ? <Button size={taille} variant={variante} onClick={() => setOuvert(true)} title="Dossier du menu d'éditions, actif, écrans où le modèle est proposé">
+            <MonitorCheck className={`h-3.5 w-3.5 ${compact ? "" : "mr-1"}`} style={{ color: COULEURS_ACTIONS.classement }} />{!compact && "Classement"}
+          </Button>
+        : <ActionIcone icone={MonitorCheck} nature="classement" onClick={() => setOuvert(true)} libelle={compact ? undefined : "Classement"}
+            titre="Dossier du menu d'éditions, actif, écrans où le modèle est proposé" />}
       <DialogueMenus modele={modele} ouvert={ouvert} onFermer={() => setOuvert(false)} onChange={onChange} />
     </>
   );
