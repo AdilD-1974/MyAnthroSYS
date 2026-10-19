@@ -20,6 +20,7 @@ import {
 } from "@/lib/editionsApi";
 import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresForm";
 import "./editions.css";
+import FiltresPopulation, { filtresUtiles, type Filtres } from "./FiltresPopulation";
 
 const classe = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring";
 const CLE_CHOIX = (ecran: string) => `editions.ecran.${ecran}.modele`;
@@ -170,7 +171,9 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
     setOccupe(ouvrir ? "ouvrir" : "produire");
     setResultat(null);
     try {
-      const r = await lancer({ modele_id: modele.id, parametres: valeurs, forme: modele.formes.length ? forme : undefined });
+      const { _filtres, ...autres } = valeurs as Valeurs & { _filtres?: Filtres };
+      const parametres = { ...autres, ...(filtresUtiles(_filtres) ? { _filtres: filtresUtiles(_filtres) } : {}) };
+      const r = await lancer({ modele_id: modele.id, parametres, forme: modele.formes.length ? forme : undefined });
       setResultat({ demande_id: r.demande_id, documents: r.documents, modele: r.modele.code });
       toast.success("Édition produite", { description: `${r.documents.length} document(s)` });
       if (ouvrir) await ouvrirPdf(() => editionsApi.pdfDemande(r.demande_id), onglet);
@@ -197,6 +200,11 @@ export function PanneauProduction({ modele, lancer, entete }: { modele: ModeleEc
         </label>
       )}
       <ParametresForm parametres={modele.parametres} valeurs={valeurs} onChange={(v) => { setValeurs(v); setResultat(null); }} />
+      {/* RG-EDT-FILTRE-01 : population (UO et rattachées, catégories, classifications…) */}
+      <div className="mt-3">
+        <FiltresPopulation valeur={(valeurs as { _filtres?: Filtres })._filtres}
+          onChange={(f) => { setValeurs((v) => ({ ...v, _filtres: f })); setResultat(null); }} />
+      </div>
       <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
         <Button disabled={!!occupe} onClick={() => produire(true)}>
           {occupe === "ouvrir" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}

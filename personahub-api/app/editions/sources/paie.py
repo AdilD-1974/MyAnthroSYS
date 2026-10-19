@@ -121,6 +121,17 @@ CHAMPS_BULLETIN = [
     _d("identite.date_naissance", "Date de naissance", "Identité"),
     _t("identite.num_cnss", "N° CNSS", "Identité"), _t("identite.num_amo", "N° AMO", "Identité"),
     _t("affectation.organisation_libelle", "Organisation", "Affectation"),
+    # RG-EDT-GROUPE-01 : axes de tri et de regroupement (app/editions/population.py)
+    _t("affectation.organisation_id", "Identifiant de l'UO", "Affectation"),
+    _t("affectation.uo_code", "Code de l'UO", "Affectation"),
+    _t("affectation.uo_chemin", "UO (chemin complet)", "Affectation"),
+    _t("affectation.uo_niveau1_libelle", "UO de 1er niveau", "Affectation"),
+    _t("affectation.uo_niveau2_libelle", "UO de 2e niveau", "Affectation"),
+    _t("affectation.emploi_code", "Code emploi", "Affectation"),
+    _t("affectation.metier_code", "Code métier", "Affectation"),
+    _t("qualification.code_classification", "Code classification", "Qualification"),
+    _t("qualification.categorie_professionnelle_libelle", "Catégorie professionnelle (libellé)", "Qualification"),
+    _t("contrat.type_contrat_libelle", "Type de contrat (libellé)", "Contrat"),
     _t("affectation.poste_reference_libelle", "Poste", "Affectation"),
     _t("affectation.emploi_libelle", "Emploi", "Affectation"),
     _t("affectation.metier_libelle", "Métier", "Affectation"),
@@ -259,6 +270,10 @@ class FournisseurBulletin(Fournisseur):
                 if cle not in l:
                     l[cle] = valeur
             resultat.append(l)
+        # RG-EDT-FILTRE-01/02 : population choisie au lancement ; RG-EDT-GROUPE-01 : axes de regroupement
+        from app.editions import population
+        resultat = population.filtrer(db, resultat, parametres.get("_filtres"), sec.societe_id)
+        population.enrichir(db, resultat, sec.societe_id)
         _ajouter_cumuls(db, resultat, sec)
         return resultat
 

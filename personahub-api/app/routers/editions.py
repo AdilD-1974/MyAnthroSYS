@@ -471,3 +471,11 @@ def menu_module(module: str, tout: bool = Query(False), u: sv.Utilisateur = Depe
 def lancer_menu(module: str, corps: LancementMenu, u: sv.Utilisateur = Depends(utilisateur_metier),
                 db: Session = Depends(get_db)):
     return _ecriture(db, th.lancer, u, module.upper(), corps.modele_id, corps.parametres, corps.forme)
+
+
+# ---------------------------------------------------------------- filtres de population (RG-EDT-FILTRE-01..03)
+@router.get("/filtres")
+def filtres(u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    """UO de la société (arbre) et valeurs des critères proposés au lancement."""
+    from app.editions import population
+    return population.valeurs(db, u.societe_id)

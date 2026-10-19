@@ -23,6 +23,7 @@ import {
 } from "@/lib/editionsApi";
 import type { Parametre } from "./types";
 import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresForm";
+import FiltresPopulation, { filtresUtiles, type Filtres } from "./FiltresPopulation";
 import { BoutonMenus, libelleEcran, useEcransCategorie } from "./MenusModele";
 import { Switch } from "@/components/ui/switch";
 
@@ -45,7 +46,7 @@ export default function EditionsPage() {
   const [creation, setCreation] = useState<{ ouvert: boolean; code: string; libelle: string; categorie: Categorie; visibilite: Visibilite; origine: string; occupe?: boolean }>(
     { ouvert: false, code: "", libelle: "", categorie: "LISTE", visibilite: "SOCIETE", origine: "" });
   const [lancement, setLancement] = useState<{ modele: Modele; parametres: Parametre[]; valeurs: Valeurs; occupe?: boolean; documents?: DocumentProduit[];
-    formes: { code: string; libelle: string }[]; forme?: string } | null>(null);
+    formes: { code: string; libelle: string }[]; forme?: string; population?: boolean } | null>(null);
 
   const charger = () => {
     editionsApi.modeles(undefined, archives)
@@ -157,7 +158,8 @@ export default function EditionsPage() {
       const formes = d.usages?.formes_au_choix
         ? [{ code: d.forme_code ?? "standard", libelle: d.forme_libelle ?? "Mise en forme standard" }, ...(d.formes ?? []).map((f) => ({ code: f.code, libelle: f.libelle }))]
         : [];
-      setLancement({ modele: m, parametres: d.parametres, valeurs: {}, formes, forme: d.usages?.forme_par_defaut ?? d.forme_code ?? undefined });
+      setLancement({ modele: m, parametres: d.parametres, valeurs: {}, formes, forme: d.usages?.forme_par_defaut ?? d.forme_code ?? undefined,
+        population: d.jeux.some((j) => j.role === "PRINCIPAL" && j.source === "BULLETIN") });
     } catch (e: any) {
       toast({ title: "Lancement impossible", description: e.message, variant: "destructive" });
     }
@@ -169,7 +171,9 @@ export default function EditionsPage() {
     if (manquants.length) { toast({ title: "Paramètres manquants", description: manquants.join(", "), variant: "destructive" }); return; }
     setLancement({ ...lancement, occupe: true, documents: undefined });
     try {
-      const r = await editionsApi.lancer(lancement.modele.id, lancement.valeurs, lancement.formes.length ? lancement.forme : undefined);
+      const { _filtres, ...autres } = lancement.valeurs as Valeurs & { _filtres?: Filtres };
+      const parametres = { ...autres, ...(filtresUtiles(_filtres) ? { _filtres: filtresUtiles(_filtres) } : {}) };
+      const r = await editionsApi.lancer(lancement.modele.id, parametres, lancement.formes.length ? lancement.forme : undefined);
       setLancement((l) => l && { ...l, occupe: false, documents: r.documents });
       toast({ title: "Édition produite", description: `${r.documents.length} document(s).` });
     } catch (e: any) {
@@ -353,6 +357,12 @@ export default function EditionsPage() {
               )}
               <ParametresForm parametres={lancement.parametres} valeurs={lancement.valeurs}
                 onChange={(v) => setLancement((l) => l && { ...l, valeurs: v, documents: undefined })} />
+              {lancement.population && (
+                <div className="mt-3">
+                  <FiltresPopulation valeur={(lancement.valeurs as { _filtres?: Filtres })._filtres}
+                    onChange={(f) => setLancement((l) => l && { ...l, valeurs: { ...l.valeurs, _filtres: f }, documents: undefined })} />
+                </div>
+              )}
               {lancement.documents && (
                 <div className="mt-2 max-h-64 overflow-auto rounded border">
                   {lancement.documents.map((d) => (

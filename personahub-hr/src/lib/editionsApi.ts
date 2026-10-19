@@ -216,6 +216,13 @@ export interface Periode {
   nb_bulletins: number;
 }
 
+// ── Filtres de population (RG-EDT-FILTRE-01..03) ───────────────────────────
+export interface UoFiltre { id: string; parent_id: string | null; code: string | null; libelle: string; niveau: number | null }
+export interface FiltresValeurs {
+  uos: UoFiltre[];
+  criteres: { code: string; libelle: string; options: { code: string; libelle: string }[] }[];
+}
+
 // ── Menus métier (RG-EDT-ECRAN-01..06) ─────────────────────────────────────
 export interface Ecran {
   code_ecran: string;
@@ -360,6 +367,7 @@ export const editionsApi = {
     appel<{ demande_id: string; statut: string; documents: DocumentProduit[]; modele: { id: string; code: string; libelle: string } }>(
       "POST", `/menus/${module}/demandes`, corps),
 
+  filtresPopulation: () => appel<FiltresValeurs>("GET", "/filtres"),
   // ── menus métier ──
   ecrans: () => appel<Ecran[]>("GET", "/ecrans"),
   ecransDuModele: (modeleId: string) => appel<RattachementEcran[]>("GET", `/modeles/${modeleId}/ecrans`),

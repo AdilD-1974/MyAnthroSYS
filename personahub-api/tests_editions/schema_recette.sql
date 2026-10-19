@@ -300,3 +300,26 @@ INSERT INTO nav_menu_item (id, code, label, chemin, section_id, ordre, module_co
    '5e000000-0000-0000-0000-000000000001', 40, 'paie');
 INSERT INTO nav_role_visibilite (item_id, role_code) VALUES
   ('5e000000-0000-0000-0000-000000000002', 'administrateur'), ('5e000000-0000-0000-0000-000000000002', 'gestionnaire_paie');
+
+-- organisation et référentiels (filtres de population)
+CREATE TABLE etablissements (id uuid PRIMARY KEY, societe_id uuid NOT NULL, libelle text NOT NULL);
+CREATE TABLE unites_organisationnelles (id uuid PRIMARY KEY, etablissement_id uuid NOT NULL, parent_id uuid,
+  code text, libelle text NOT NULL, niveau integer DEFAULT 1, actif boolean DEFAULT true);
+CREATE TABLE ref_categorie_professionnelle (code text PRIMARY KEY, libelle text NOT NULL, actif boolean DEFAULT true);
+CREATE TABLE ref_classification (code text PRIMARY KEY, libelle text NOT NULL, actif boolean DEFAULT true);
+CREATE TABLE ref_emploi (code text PRIMARY KEY, libelle text NOT NULL, actif boolean DEFAULT true);
+CREATE TABLE ref_metier (code text PRIMARY KEY, libelle text NOT NULL, actif boolean DEFAULT true);
+CREATE TABLE ref_type_contrat (code text PRIMARY KEY, libelle text NOT NULL, actif boolean DEFAULT true);
+INSERT INTO etablissements VALUES ('e1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Siège'),
+                                  ('e2000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'Autre');
+INSERT INTO unites_organisationnelles (id, etablissement_id, parent_id, code, libelle, niveau) VALUES
+  ('a0000000-0000-0000-0000-0000000000d1', 'e1000000-0000-0000-0000-000000000001', NULL, 'DG', 'Direction générale', 1),
+  ('a0000000-0000-0000-0000-0000000000f1', 'e1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-0000000000d1', 'DAF', 'Direction financière', 2),
+  ('a0000000-0000-0000-0000-0000000000c1', 'e1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-0000000000f1', 'CPT', 'Comptabilité', 3),
+  ('a0000000-0000-0000-0000-0000000000b1', 'e1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-0000000000d1', 'COM', 'Commercial', 2),
+  ('a0000000-0000-0000-0000-0000000000e9', 'e2000000-0000-0000-0000-000000000002', NULL, 'X', 'UO autre société', 1);
+INSERT INTO ref_categorie_professionnelle VALUES ('CAD', 'Cadres', true), ('EMP', 'Employés', true);
+INSERT INTO ref_classification VALUES ('C1', 'Classe 1', true);
+INSERT INTO ref_emploi VALUES ('COMPTA', 'Comptable', true);
+INSERT INTO ref_metier VALUES ('FIN', 'Finance', true);
+INSERT INTO ref_type_contrat VALUES ('CDI', 'Contrat à durée indéterminée', true), ('CDD', 'Contrat à durée déterminée', true);

@@ -22,12 +22,14 @@ import {
 } from "@/lib/editionsApi";
 import { activerForme, cibleErreur, copie, largeurUtile, type Definition, type Element } from "@/pages/editions/types";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
+import FiltresPopulation, { filtresUtiles, type Filtres } from "@/pages/editions/FiltresPopulation";
 import Canevas from "./Canevas";
 import Inspecteur, { renommerSousParties } from "./Inspecteur";
 import Structure from "./Structure";
 import Donnees, { type CibleErreur } from "./Donnees";
 import { changerPlan } from "./plans";
 import { BoutonMiseEnPage } from "./MiseEnPage";
+import { BoutonTriRegroupements } from "./TriRegroupements";
 import { BoutonMenus, libelleEcran } from "@/pages/editions/MenusModele";
 import { useRetour } from "@/pages/editions/retour";
 import "../editions.css";
@@ -393,7 +395,7 @@ export default function DesignerPage() {
               <b>{l}</b> <span className={`text-xs ${etape === k ? "opacity-80" : "text-muted-foreground"}`}>— {aide}</span>
             </button>
           ))}
-          {etape === "forme" && <span className="ml-3"><BoutonMiseEnPage editeur={editeur} ro={lectureSeule} /></span>}
+          {etape === "forme" && <span className="ml-3 inline-flex gap-1.5"><BoutonMiseEnPage editeur={editeur} ro={lectureSeule} /><BoutonTriRegroupements editeur={editeur} ro={lectureSeule} /></span>}
           {etape === "forme" && <SelecteurForme editeur={editeur} lectureSeule={lectureSeule} />}
         </div>
 
@@ -435,6 +437,12 @@ export default function DesignerPage() {
             <div>
               <ParametresForm parametres={editeur.definition.parametres} valeurs={apercu.valeurs}
                 onChange={(v) => setApercu((a) => ({ ...a, valeurs: v }))} />
+              {editeur.definition.jeux.some((j) => j.role === "PRINCIPAL" && j.source === "BULLETIN") && (
+                <div className="mt-3">
+                  <FiltresPopulation valeur={(apercu.valeurs as { _filtres?: Filtres })._filtres}
+                    onChange={(f) => setApercu((a) => ({ ...a, valeurs: { ...a.valeurs, _filtres: filtresUtiles(f) } }))} />
+                </div>
+              )}
               <Button className="mt-4 w-full" disabled={occupe === "apercu"} onClick={lancerApercu}>
                 {occupe === "apercu" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Eye className="mr-1 h-4 w-4" />}
                 {apercu.url ? "Actualiser" : "Afficher l'aperçu"}

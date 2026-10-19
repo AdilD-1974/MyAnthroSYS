@@ -74,6 +74,8 @@ def resoudre_parametres(db: Session, d: Definition, bruts: dict, sec: ContexteSe
     for cle in PARAMETRES_RESERVES:
         if bruts.get(cle):
             res[cle] = str(bruts[cle])
+    if isinstance(bruts.get("_filtres"), dict):              # RG-EDT-FILTRE-01 : population (lancement)
+        res["_filtres"] = bruts["_filtres"]
     return res
 
 
