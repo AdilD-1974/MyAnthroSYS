@@ -60,7 +60,7 @@ const roleLinks: Record<string, Lien[]> = {
   ],
   gestionnaire_paie: [
     { label: "Traitement de la paie", path: "/paie/traitement",        token: "secondary", icon: Banknote },
-    { label: "Éditions / bulletins",  path: "/paie/editions",          token: "info",      icon: ReceiptText },
+    { label: "Éditions / bulletins",  path: "/paie/editions-paie",          token: "info",      icon: ReceiptText },
     { label: "Déclaration CNSS",      path: "/paie/declarations/cnss", token: "warning",   icon: Landmark },
     { label: "Salaires fixes",        path: "/paie/salaires-fixes",    token: "primary",   icon: Wallet },
   ],

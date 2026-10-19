@@ -57,7 +57,6 @@ const HistoriqueCollaborateurPage = lazy(() => import("@/pages/paie/consultation
 const RechercheBulletinsPage  = lazy(() => import("@/pages/paie/consultation/RechercheBulletinsPage"));  // recherche transverse, tous collaborateurs (nouveau)
 const AnomaliesPaiePage       = lazy(() => import("@/pages/paie/consultation/AnomaliesPaiePage"));  // bulletins en erreur/avertissement (nouveau)
 const ConsultationBulletinPage = lazy(() => import("@/pages/paie/consultation/ConsultationBulletinPage"));  // détail d'un bulletin validé/clôturé, lecture seule (Adil DAIA)
-const JournalPaiePage         = lazy(() => import("@/pages/paie/rapports/JournalPaiePage"));  // module Rapports, Phase 1 (nouveau)
 const JournalGrilleConfigPage = lazy(() => import("@/pages/paie/rapports/JournalGrilleConfigPage"));  // config Journal grille officielle (nouveau)
 const RapportTemplatesPage    = lazy(() => import("@/pages/paie/rapports/RapportTemplatesPage"));  // liste des Journaux/Bulletins (nouveau)
 const BulletinConfigPage      = lazy(() => import("@/pages/paie/rapports/BulletinConfigPage"));  // config des 5 modèles de Bulletin (nouveau)
@@ -564,11 +563,8 @@ const App = () => (
                       <VueComptabilitePage />
                     </ProtectedRoute>
                   } />
-                  <Route path="/paie/editions" element={
-                    <ProtectedRoute roles={["administrateur", "gestionnaire_rh", "gestionnaire_paie"]}>
-                      <JournalPaiePage />
-                    </ProtectedRoute>
-                  } />
+                  {/* ancien écran « Journal de paie » (périmètre / aperçu) retiré : remplacé par Paie › Éditions de la paie (Adil DAIA, 19/10/2026) */}
+                  <Route path="/paie/editions" element={<Navigate to="/paie/editions-paie" replace />} />
                   <Route path="/paie/editions/journal-grille" element={
                     <ProtectedRoute roles={["administrateur", "gestionnaire_paie"]}>
                       <JournalGrilleConfigPage />
