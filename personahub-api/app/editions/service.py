@@ -74,6 +74,9 @@ MODELES_SYSTEME = {
     "notification_remuneration.json": ("NOTIFICATION_REMUNERATION", "Notification de rémunération", "COURRIER"),
     "etat_cotisations.json": ("ETAT_COTISATIONS_SOCIALES", "État des cotisations CNSS · AMO · TFP", "DECLARATION"),
     "fiche_synthese_annuelle.json": ("FICHE_SYNTHESE_ANNUELLE", "Fiche de synthèse annuelle du salarié", "AUTRE"),
+    "bulletin_detaille.json": ("BULLETIN_DETAILLE", "Bulletin de paie détaillé (parts salariale et patronale)", "BULLETIN"),
+    "bulletin_moderne.json": ("BULLETIN_MODERNE", "Bulletin de paie moderne (bandeau latéral)", "BULLETIN"),
+    "bulletin_formulaire.json": ("BULLETIN_FORMULAIRE", "Bulletin de paie paysage (formulaire et cumuls)", "BULLETIN"),
 }
 CATEGORIES = ("BULLETIN", "JOURNAL", "ATTESTATION", "COURRIER", "LISTE", "DECLARATION", "AUTRE")
 TYPES_DEPENDANCE = {"SOURCE", "CHAMP", "RUBRIQUE", "CONSTANTE", "MASQUE", "ASSET", "SOUS_MODELE", "TABLE"}

@@ -14,6 +14,7 @@ ATTENDUS = {  # code : (catégorie, nb de documents pour septembre : 1 = un éta
     "BULLETIN_CLASSIQUE": ("BULLETIN", 2), "JOURNAL_PAIE": ("JOURNAL", 1), "ORDRE_VIREMENT": ("LISTE", 1),
     "ATTESTATION_TRAVAIL_SALAIRE": ("ATTESTATION", 2), "NOTIFICATION_REMUNERATION": ("COURRIER", 2),
     "ETAT_COTISATIONS_SOCIALES": ("DECLARATION", 1), "FICHE_SYNTHESE_ANNUELLE": ("AUTRE", 2),
+    "BULLETIN_DETAILLE": ("BULLETIN", 2), "BULLETIN_MODERNE": ("BULLETIN", 2), "BULLETIN_FORMULAIRE": ("BULLETIN", 2),
 }
 
 
@@ -46,3 +47,23 @@ def test_exemples_ranges_dans_le_menu_de_la_paie(s):
     assert a["États standard"] == {"ORDRE_VIREMENT", "FICHE_SYNTHESE_ANNUELLE"}
     rh = {t["libelle"]: {m["code"] for m in t["modeles"]} for t in th.arbre(s, PAIE, "RH")["themes"]}
     assert rh == {"Attestations": {"ATTESTATION_TRAVAIL_SALAIRE"}, "Courriers": {"NOTIFICATION_REMUNERATION"}}
+
+
+def test_quatre_bulletins_au_choix_dans_le_menu(s):
+    a = {t["libelle"]: [m["code"] for m in t["modeles"]] for t in th.arbre(s, PAIE, "PAIE")["themes"]}
+    assert set(a["Bulletins de paie"]) == {"BULLETIN_CLASSIQUE", "BULLETIN_DETAILLE", "BULLETIN_MODERNE", "BULLETIN_FORMULAIRE"}
+
+
+def test_fond_de_page_dans_l_ordre_des_elements(s):
+    """Un aplat du FOND est dessiné avant les textes posés dessus (bandeau du bulletin moderne)."""
+    from app.editions.definition import Definition
+    from app.editions.moteur import executeur
+    m = next(x for x in sv.lister_modeles(s, PAIE) if x["code"] == "BULLETIN_MODERNE")
+    v, _ = sv.lire_version(s, PAIE, m["version_publiee_id"])
+    d = Definition.model_validate(v["definition"])
+    prep = executeur._preparer(s, d, {"periode": P_SEP}, sv.contexte_securite(s, PAIE, m), registre_masques=None,
+                               racine_fichiers="storage", contexte_fixe=None, forme=None)
+    from app.editions.moteur.mise_en_page import Contexte, composer
+    pages, _ = composer(Contexte(definition=prep.definition, lignes=prep.lignes[:1], **prep.contexte))
+    ids = [b.source_id for b in pages[0].boites]
+    assert ids.index("lat_fond") < ids.index("lat_nom") < ids.index("titre")

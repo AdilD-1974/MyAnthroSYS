@@ -765,13 +765,16 @@ class Composeur:
             pages.append(page)
             etat_courant["page"], etat_courant["y"] = page, 0.0
             page_acc.__init__()
+            # FOND sous tout le reste, dans l'ordre de ses éléments (un aplat d'abord, ses textes par-dessus)
+            fond_page = []
             for bande in self.bandes["FOND"]:
                 for t in self._tranches(bande, etat_courant["ligne"], agregats(), page.numero, nb_pages):
                     for b in t.boites:
                         nb = copy.copy(b)
                         nb.x += self.marge_gauche
                         nb.y += self.marge_haut
-                        page.boites.insert(0, nb)
+                        fond_page.append(nb)
+            page.boites[0:0] = fond_page
             if page.numero == 1:
                 for bande in self.bandes["EN_TETE_ETAT"]:
                     for t in self._tranches(bande, etat_courant["ligne"], agregats(), 1, nb_pages):

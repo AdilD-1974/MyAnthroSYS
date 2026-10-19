@@ -478,7 +478,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SI(ESTVIDE(contrat.date_embauche), \"—\", ANNEES(contrat.date_embauche, @periode.date_fin) + \" an(s)\")",
+     "valeur": "SI(ESTVIDE(contrat.date_embauche), \"—\", ANNEES(@periode.date_fin, contrat.date_embauche) + \" an(s)\")",
      "affichage": {
       "valeur_si_vide": ""
      }

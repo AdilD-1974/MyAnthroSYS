@@ -587,7 +587,7 @@ def fiche_synthese() -> dict:
              ("Situation familiale", 'SIVIDE(situation_familiale.libelle, "—") + " · " + SIVIDE(situation_familiale.nb_enfants_a_charge, 0) + " enfant(s)"'),
              ("Catégorie", 'SIVIDE(qualification.classification_libelle, SIVIDE(qualification.code_categorie_professionnelle, "—"))'),
              ("N° CNSS", 'SIVIDE(identite.num_cnss, "—")'),
-             ("Ancienneté", 'SI(ESTVIDE(contrat.date_embauche), "—", ANNEES(contrat.date_embauche, @periode.date_fin) + " an(s)")')]
+             ("Ancienneté", 'SI(ESTVIDE(contrat.date_embauche), "—", ANNEES(@periode.date_fin, contrat.date_embauche) + " an(s)")')]
     for i, (lib, expr) in enumerate(infos):
         col, rang = i % 2, i // 2
         x = 3 + col * 90
@@ -652,6 +652,316 @@ def fiche_synthese() -> dict:
         usages={"confidentialite": 3})
 
 
+# =============================================================================
+# 7 à 9. BULLETINS — trois présentations complètes
+# =============================================================================
+JEU_BULLETIN = {"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+                "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}
+JEU_LIGNES = {"code": "l", "source": "BULLETIN_LIGNE", "role": "SECONDAIRE", "parent": "b", "relation": "lignes",
+              "filtres": ['sens = "GAIN" OU sens = "RETENUE"', "COALESCE(montant, 0) <> 0 OU COALESCE(montant_patronal, 0) <> 0"],
+              "tri": [{"champ": "ordre_affichage"}]}
+SECTIONS = [{"id": "sec_gains", "titre": "Éléments de rémunération", "filtre": 'sens = "GAIN"', "sous_total": True},
+            {"id": "sec_retenues", "titre": "Cotisations et retenues", "filtre": 'sens = "RETENUE"', "sous_total": True}]
+SORTIE_BULLETIN = {"formats": ["PDF"], "nom_fichier": '"Bulletin_" + identite.matricule + "_" + @periode.code',
+                   "eclatement": "collaborateur_id", "qr_verification": True}
+ANCIENNETE = 'SI(ESTVIDE(contrat.date_embauche), "—", ANNEES(@periode.date_fin, contrat.date_embauche) + " an(s)")'
+RIB_MASQUE = 'SI(ESTVIDE(paiement.numero_compte), "—", "•••• •••• " + DROITE(paiement.numero_compte, 6))'
+DU_AU = '"Du " + FORMAT(@periode.date_debut, "DATE_FR") + " au " + FORMAT(@periode.date_fin, "DATE_FR")'
+MENTION = "Pour vous aider à faire valoir vos droits, conservez ce bulletin de paie sans limitation de durée."
+
+
+def col(id, titre, largeur, valeur, masque=None, total=False, **s):
+    c = {"id": id, "titre": titre, "largeur": largeur, "valeur": valeur, "style": st(**s)}
+    if masque:
+        c["affichage"] = {"masque": masque}
+    if total:
+        c["total"] = "SOMME"
+    return c
+
+
+def tableau(id, x, y, l, colonnes, **opts):
+    return {"id": id, "type": "TABLEAU", "x": x, "y": y, "l": l, "h": 20, "jeu": "l", "colonnes": colonnes,
+            "sections": SECTIONS, **opts}
+
+
+def paires(prefixe, x, y, largeur_lib, largeur_val, lignes, pas=4.6, taille=7.5, **s_val):
+    """Libellés gris / valeurs en gras, une par ligne."""
+    el = []
+    for i, (lib, expr) in enumerate(lignes):
+        el += [texte(f"{prefixe}_l{i}", x, y + i * pas, largeur_lib, pas, lib, taille=taille - 0.5, couleur=GRIS),
+               champ(f"{prefixe}_v{i}", x + largeur_lib, y + i * pas, largeur_val, pas, expr, taille=taille, gras=True, **s_val)]
+    return el
+
+
+def bulletin_detaille() -> dict:
+    """Parts salariale et patronale, deux blocs employeur / salarié, totaux en cases, cumuls annuels."""
+    L = 190.0
+    en_tete = entete_societe(L, "Bulletin de paie", f'"Période : " + {MOIS}') + [
+        champ("du_au", L - 110, 13, 110, 4, DU_AU, taille=7.5, couleur=GRIS, alignement="DROITE"),
+        # bloc employeur
+        cadre("emp_c", 0, 21, 76, 35, couleur=GRIS_CLAIR, arrondi=1.5),
+        fond("emp_b", 0.3, 21.3, 75.4, 5.5, BLEU_CLAIR),
+        texte("emp_t", 2, 21.3, 72, 5.5, "Employeur", taille=8, gras=True, couleur=BLEU, casse="MAJUSCULES"),
+        *paires("emp", 2, 27.5, 22, 50, [
+            ("Raison sociale", "societe.raison_sociale"),
+            ("Adresse", 'SIVIDE(societe.adresse, "") + SI(ESTVIDE(societe.ville), "", ", " + societe.ville)'),
+            ("ICE", 'SIVIDE(societe.ice, "—")'), ("N° CNSS", 'SIVIDE(societe.numero_cnss, "—")'),
+            ("IF / RC", 'SIVIDE(societe.identifiant_fiscal, "—") + " / " + SIVIDE(societe.registre_commerce, "—")'),
+            ("N° CIMR", 'SIVIDE(societe.numero_cimr, "—")')], pas=4.5, taille=7.5),
+        # bloc salarié
+        cadre("sal_c", 79, 21, 111, 35, couleur=BLEU, arrondi=1.5, epaisseur=0.6),
+        fond("sal_b", 79.3, 21.3, 110.4, 5.5, BLEU),
+        champ("sal_t", 81, 21.3, 75, 5.5, 'SIVIDE(identite.civilite, "") + " " + MAJUSCULE(identite.nom) + " " + identite.prenom',
+              taille=8.5, gras=True, couleur=BLANC),
+        champ("sal_mat", 150, 21.3, 38, 5.5, '"Mat. " + identite.matricule', taille=8, gras=True, couleur=BLANC, alignement="DROITE"),
+        *paires("sa", 81, 27.5, 21, 34, [
+            ("Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
+            ("Catégorie", 'SIVIDE(qualification.classification_libelle, SIVIDE(qualification.code_categorie_professionnelle, "—"))'),
+            ("Entrée le", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
+            ("Ancienneté", ANCIENNETE),
+            ("Contrat", 'SIVIDE(contrat.code_type_contrat, "—")'),
+            ("Organisation", 'SIVIDE(affectation.organisation_libelle, "—")')], pas=4.5, taille=7.5),
+        *paires("sb", 137, 27.5, 21, 31, [
+            ("CIN", 'SIVIDE(identite.cin, "—")'), ("N° CNSS", 'SIVIDE(identite.num_cnss, "—")'),
+            ("N° AMO", 'SIVIDE(identite.num_amo, "—")'),
+            ("Sit. familiale", 'SIVIDE(situation_familiale.libelle, "—")'),
+            ("Enfants", 'SIVIDE(situation_familiale.nb_enfants_a_charge, 0) + " à charge"'),
+            ("Déductions", 'SIVIDE(situation_familiale.nb_deductions_fiscales, 0) + " personne(s)"')], pas=4.5, taille=7.5),
+    ]
+    colonnes = [
+        col("lib", "Désignation", 54, "libelle"),
+        col("code", "Code", 11, "code_rubrique", taille=6, couleur=GRIS),
+        col("base", "Base", 22, "base", "MONTANT_SANS_ZERO", alignement="DROITE"),
+        col("nb", "Nombre", 13, "nombre", "QUANTITE", alignement="DROITE"),
+        col("tx", "Taux sal.", 13, "taux", "QUANTITE", alignement="DROITE"),
+        col("gain", "Gains", 21, 'SI(sens = "GAIN", montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE"),
+        col("ret", "Retenues", 21, 'SI(sens = "RETENUE", montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE"),
+        col("txp", "Taux pat.", 14, "taux_patronal", "QUANTITE", alignement="DROITE", couleur=GRIS),
+        col("pat", "Part patronale", 21, "montant_patronal", "MONTANT_SANS_ZERO", True, alignement="DROITE", couleur=GRIS),
+    ]
+    cases = [("Salaire brut", "total_brut"), ("Brut imposable", "total_brut_imposable"),
+             ("Cot. salariales", "total_cot_salariale"), ("Net imposable", "net_imposable"),
+             ("Cot. patronales", "total_cot_patronale"), ("Coût employeur", "cout_employeur")]
+    corps = [tableau("lignes", 0, 0, L, colonnes, zebre=True, quadrillage="COLONNES", hauteur_ligne=4.8,
+                     style_entete={"fond": BLEU, "couleur": BLANC, "gras": True, "taille": 7, "alignement": "CENTRE"},
+                     style={"taille": 7.5})]
+    largeur_case = L / 6
+    for i, (lib, expr) in enumerate(cases):
+        x = i * largeur_case
+        corps += [cadre(f"t{i}_c", x + 0.5, 24, largeur_case - 1, 12, couleur=GRIS_CLAIR, arrondi=1),
+                  texte(f"t{i}_l", x + 1, 24.5, largeur_case - 2, 4.5, lib, taille=6.5, couleur=GRIS, alignement="CENTRE"),
+                  champ(f"t{i}_v", x + 1, 29.5, largeur_case - 2, 5.5, expr, masque="MONTANT", taille=9, gras=True,
+                        alignement="CENTRE")]
+    corps += [
+        fond("net_f", 95, 39, 95, 13, BLEU),
+        texte("net_l", 98, 39.5, 40, 12, "Net à payer", taille=11, gras=True, couleur=BLANC, casse="MAJUSCULES"),
+        champ("net_v", 135, 39.5, 52, 12, "net_a_payer", masque="MONTANT", taille=16, gras=True, couleur=BLANC, alignement="DROITE"),
+        champ("net_lettres", 95, 53, 95, 5, "MONTANT_EN_LETTRES(net_a_payer)", taille=7, italique=True, couleur=GRIS,
+              alignement="DROITE"),
+        *paires("pay", 0, 40, 26, 64, [
+            ("Mode de paiement", 'SIVIDE(paiement.mode_libelle, "—")'),
+            ("Banque", 'SIVIDE(paiement.banque_libelle, "—") + SI(ESTVIDE(paiement.nom_agence), "", " — " + paiement.nom_agence)'),
+            ("Compte", RIB_MASQUE)], pas=4.6, taille=8),
+    ]
+    cumuls = {
+        "id": "cumuls", "type": "GRILLE", "x": 0, "y": 6, "l": L, "h": 18, "largeur_titres": 30, "hauteur_ligne": 5.5,
+        "quadrillage": "COMPLET", "style": {"taille": 7.5, "couleur_bordure": GRIS_CLAIR, "alignement": "DROITE"},
+        "style_entete": {"fond": BLEU_CLAIR, "couleur": BLEU, "gras": True, "taille": 7, "alignement": "CENTRE"},
+        "style_titres": {"gras": True, "couleur": BLEU, "alignement": "GAUCHE"},
+        "colonnes": [{"id": c, "titre": t, "largeur": 26.5, "affichage": {"masque": "MONTANT"}} for c, t in
+                     [("brut", "Brut"), ("imp", "Brut imposable"), ("cot", "Cot. salariales"), ("netimp", "Net imposable"),
+                      ("net", "Net payé"), ("pat", "Cot. patronales")]],
+        "lignes": [
+            {"id": "mois", "titre": "Mois", "valeurs": {"brut": "total_brut", "imp": "total_brut_imposable", "cot": "total_cot_salariale",
+                                                     "netimp": "net_imposable", "net": "net_a_payer", "pat": "total_cot_patronale"}},
+            {"id": "annee", "titre": "Cumul année", "style": {"gras": True},
+             "valeurs": {"brut": "cumul.total_brut", "imp": "cumul.total_brut_imposable", "cot": "cumul.total_cot_salariale",
+                         "netimp": "cumul.net_imposable", "net": "cumul.net_a_payer", "pat": "cumul.total_cot_patronale"}},
+        ],
+    }
+    bas = [texte("cumuls_t", 0, 0, 120, 5, "Cumuls de l'année civile", taille=8.5, gras=True, couleur=BLEU), cumuls]
+    pied = [
+        ligne("p_filet", 0, 0.5, L, couleur=BLEU, epaisseur=0.6),
+        texte("p_mention", 0, 2, 150, 4, MENTION, taille=6.5, italique=True, couleur=GRIS),
+        champ("p_cnss", 0, 6, 150, 4, '"Cotisations versées à la CNSS sous le n° d\'affiliation " + SIVIDE(societe.numero_cnss, "—")'
+                                      ' + " — en cas de litige, adressez-vous à l\'inspection du travail."', taille=6.5, couleur=GRIS),
+        champ("p_page", 150, 2, 40, 4, '"Page " + PAGE() + " / " + NB_PAGES()', taille=6.5, couleur=GRIS, alignement="DROITE"),
+    ]
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS], [JEU_BULLETIN, JEU_LIGNES],
+        [bande("en_tete", "EN_TETE_PAGE", 58, en_tete),
+         bande("detail", "CORPS", 60, corps),
+         bande("cumuls", "CORPS", 26, bas, insecable=True),
+         bande("pied", "PIED_PAGE", 11, pied)],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [10, 10, 10, 10]}, SORTIE_BULLETIN,
+        usages={"confidentialite": 4})
+
+
+def bulletin_moderne() -> dict:
+    """Bandeau latéral (salarié, paiement), indicateurs en cartes, montants signés, coût employeur expliqué."""
+    # marges gauche, haute et basse nulles : le bandeau va jusqu'au bord de la feuille
+    L, G = 198.0, 62.0            # largeur utile, largeur du bandeau latéral
+    X, LM = G + 7, 198.0 - G - 7  # zone principale
+    lateral = [
+        fond("lat_fond", 0, 0, G, 297, BLEU),
+        {"id": "lat_logo", "type": "IMAGE", "x": 10, "y": 10, "l": 42, "h": 18, "valeur": 'CHARTE("logo")'},
+        champ("lat_soc", 6, 12 + 20, G - 12, 6, "societe.raison_sociale", taille=9.5, gras=True, couleur=BLANC),
+        champ("lat_adr", 6, 12 + 26, G - 12, 4, 'SIVIDE(societe.ville, "")', taille=7, couleur=GRIS_CLAIR),
+        champ("lat_ice", 6, 12 + 30, G - 12, 4, '"ICE " + SIVIDE(societe.ice, "—")', taille=6.5, couleur=GRIS_CLAIR),
+        champ("lat_cnss", 6, 12 + 34, G - 12, 4, '"CNSS " + SIVIDE(societe.numero_cnss, "—")', taille=6.5, couleur=GRIS_CLAIR),
+        ligne("lat_f1", 6, 12 + 41, G - 14, couleur="#3D6680", epaisseur=0.5),
+        texte("lat_t1", 6, 12 + 44, G - 12, 5, "Salarié", taille=7, gras=True, couleur="#7FB7D4", casse="MAJUSCULES"),
+        champ("lat_nom", 6, 12 + 49, G - 12, 6, "MAJUSCULE(identite.nom)", taille=11, gras=True, couleur=BLANC),
+        champ("lat_prenom", 6, 12 + 55, G - 12, 6, "identite.prenom", taille=10, couleur=BLANC),
+    ]
+    infos = [("Matricule", "identite.matricule"), ("Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
+             ("Entrée le", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
+             ("Ancienneté", ANCIENNETE), ("N° CNSS", 'SIVIDE(identite.num_cnss, "—")'), ("CIN", 'SIVIDE(identite.cin, "—")'),
+             ("Situation", 'SIVIDE(situation_familiale.libelle, "—") + " · " + SIVIDE(situation_familiale.nb_enfants_a_charge, 0) + " enf."')]
+    for i, (lib, expr) in enumerate(infos):
+        y = 64 + i * 9
+        lateral += [texte(f"lat_il{i}", 6, 12 + y, G - 12, 4, lib, taille=6.5, couleur="#7FB7D4"),
+                    champ(f"lat_iv{i}", 6, 12 + y + 4, G - 12, 4.5, expr, taille=8, couleur=BLANC)]
+    y = 64 + len(infos) * 9 + 3
+    lateral += [ligne("lat_f2", 6, 12 + y, G - 14, couleur="#3D6680", epaisseur=0.5),
+                texte("lat_t2", 6, 12 + y + 3, G - 12, 5, "Paiement", taille=7, gras=True, couleur="#7FB7D4", casse="MAJUSCULES"),
+                champ("lat_mode", 6, 12 + y + 8, G - 12, 4.5, 'SIVIDE(paiement.mode_libelle, "—")', taille=8, couleur=BLANC),
+                champ("lat_banque", 6, 12 + y + 12.5, G - 12, 4.5, 'SIVIDE(paiement.banque_libelle, "")', taille=8, couleur=BLANC),
+                champ("lat_rib", 6, 12 + y + 17, G - 12, 4.5, RIB_MASQUE, taille=7.5, couleur=GRIS_CLAIR),
+                champ("lat_ref", 6, 12 + 262, G - 12, 4, '"Réf. " + identite.matricule + "-" + @periode.code', taille=6.5, couleur="#7FB7D4"),
+                {"id": "lat_qr", "type": "CODE_BARRE", "x": 6, "y": 250, "l": 22, "h": 22, "symbologie": "QR",
+                 "valeur": '"BUL|" + SIVIDE(societe.ice, "") + "|" + identite.matricule + "|" + @periode.code + "|" + FORMAT(net_a_payer, "MONTANT")',
+                 "style": {"fond": BLANC}}]
+    tete = [
+        texte("titre", X, 12, LM, 9, "Bulletin de paie", taille=18, gras=True, couleur=BLEU),
+        champ("mois", X, 21, LM, 6, f"MAJUSCULE({MOIS})", taille=10, couleur=GRIS),
+        champ("du_au", X, 27, LM, 5, DU_AU, taille=7.5, couleur=GRIS),
+    ]
+    cartes = [("Salaire brut", "total_brut", BLEU_CLAIR, BLEU), ("Retenues", "total_retenues", BLEU_CLAIR, BLEU),
+              ("Net à payer", "net_a_payer", BLEU, BLANC)]
+    lc = (LM - 6) / 3
+    for i, (lib, expr, f, c) in enumerate(cartes):
+        x = X + i * (lc + 3)
+        tete += [fond(f"k{i}_f", x, 35, lc, 18, f),
+                 texte(f"k{i}_l", x + 3, 36.5, lc - 6, 5, lib, taille=7.5, couleur=c if c == BLANC else GRIS, casse="MAJUSCULES"),
+                 champ(f"k{i}_v", x + 3, 42, lc - 6, 9, expr, masque="MONTANT", taille=14, gras=True, couleur=c)]
+    colonnes = [
+        col("lib", "Rubrique", 52, "libelle"),
+        col("base", "Base", 21, "base", "MONTANT_SANS_ZERO", alignement="DROITE", couleur=GRIS),
+        col("tx", "Taux / Nb", 15, 'SIVIDE(taux, nombre)', "QUANTITE", alignement="DROITE", couleur=GRIS),
+        col("mt", "Montant", 31, 'SI(sens = "RETENUE", 0 - montant, montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE", gras=True),
+    ]
+    corps = tete + [tableau("lignes", X, 58, LM, colonnes, zebre=True, quadrillage="AUCUN", hauteur_ligne=5.2, ligne_total=False,
+                            style_entete={"couleur": GRIS, "gras": True, "taille": 7, "bordures": "B", "couleur_bordure": BLEU},
+                            style={"taille": 8})]
+    net = [fond("net_f", X, 3, LM, 14, BLEU),
+           texte("net_l", X + 4, 3, 50, 14, "Net à payer", taille=12, gras=True, couleur=BLANC, casse="MAJUSCULES"),
+           champ("net_v", X + 50, 3, LM - 54, 14, "net_a_payer", masque="MONTANT", taille=18, gras=True, couleur=BLANC,
+                 alignement="DROITE"),
+           champ("net_lt", X, 18, LM, 5, "MONTANT_EN_LETTRES(net_a_payer)", taille=7, italique=True, couleur=GRIS, alignement="DROITE")]
+    cout = [texte("cout_t", X, 2, LM, 5, "Ce que votre emploi représente pour l'entreprise", taille=8.5, gras=True, couleur=BLEU),
+            cadre("cout_c", X, 8, LM, 30, couleur=GRIS_CLAIR, arrondi=2)]
+    lignes_cout = [("Votre net à payer", "net_a_payer"), ("+ Vos cotisations et retenues", "total_retenues"),
+                   ("+ Cotisations patronales", "total_cot_patronale")]
+    for i, (lib, expr) in enumerate(lignes_cout):
+        cout += [texte(f"cout_l{i}", X + 3, 9 + i * 5.5, 70, 5.5, lib, taille=8, couleur=GRIS),
+                 champ(f"cout_v{i}", X + LM - 45, 9 + i * 5.5, 30, 5.5, expr, masque="MONTANT", taille=8, alignement="DROITE"),
+                 champ(f"cout_p{i}", X + LM - 15, 9 + i * 5.5, 13, 5.5,
+                       f"SI(SIVIDE(cout_employeur, 0) = 0, 0, {expr} / cout_employeur * 100)", masque="POURCENTAGE", taille=7,
+                       couleur=GRIS, alignement="DROITE")]
+    cout += [ligne("cout_f", X + 3, 26, LM - 6, couleur=BLEU, epaisseur=0.5),
+             texte("cout_tl", X + 3, 27.5, 70, 6, "= Coût total employeur", taille=8.5, gras=True, couleur=BLEU),
+             champ("cout_tv", X + LM - 45, 27.5, 30, 6, "cout_employeur", masque="MONTANT", taille=9, gras=True, couleur=BLEU,
+                   alignement="DROITE"),
+             champ("cumul_l", X, 40, LM, 5,
+                   '"Depuis janvier : brut " + FORMAT(cumul.total_brut, "MONTANT") + " · net imposable " + FORMAT(cumul.net_imposable, "MONTANT")'
+                   ' + " · net payé " + FORMAT(cumul.net_a_payer, "MONTANT")', taille=7.5, couleur=GRIS)]
+    pied = [champ("p_page", X, 2, LM, 4, '"Page " + PAGE() + " / " + NB_PAGES()', taille=6.5, couleur=GRIS, alignement="DROITE"),
+            texte("p_mention", X, 6, LM, 4, MENTION, taille=6.5, italique=True, couleur=GRIS)]
+    # colonnes du tableau ajustées à la zone principale
+    total = sum(c["largeur"] for c in colonnes)
+    for c in colonnes:
+        c["largeur"] = round(c["largeur"] * LM / total, 1)
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS], [JEU_BULLETIN, JEU_LIGNES],
+        [bande("lateral", "FOND", 0, lateral),
+         bande("detail", "CORPS", 72, corps),
+         bande("net", "CORPS", 24, net, insecable=True),
+         bande("cout", "CORPS", 46, cout, insecable=True),
+         bande("pied", "PIED_PAGE", 16, pied)],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [0, 12, 0, 0]}, SORTIE_BULLETIN,
+        usages={"confidentialite": 4})
+
+
+def bulletin_formulaire() -> dict:
+    """Paysage, grille formulaire pleine page à gauche, colonne de synthèse à droite (net, cumuls, émargement)."""
+    L, T = 277.0, 192.0          # largeur utile, largeur du tableau
+    XD, LD = T + 5, 277.0 - T - 5
+    en_tete = entete_societe(L, "Bulletin de paie", f'"Période : " + {MOIS} + "   ·   " + {DU_AU}')
+    colonne_droite = [
+        # identité
+        cadre("id_c", XD, 21, LD, 44, couleur=BLEU, arrondi=1.5, epaisseur=0.6),
+        fond("id_b", XD + 0.3, 21.3, LD - 0.6, 6, BLEU),
+        champ("id_nom", XD + 2, 21.3, LD - 4, 6, 'MAJUSCULE(identite.nom) + " " + identite.prenom', taille=8.5, gras=True, couleur=BLANC),
+        *paires("id", XD + 2, 28, 24, LD - 28, [
+            ("Matricule", "identite.matricule"), ("Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
+            ("Entrée le", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
+            ("Ancienneté", ANCIENNETE), ("N° CNSS", 'SIVIDE(identite.num_cnss, "—")'), ("CIN", 'SIVIDE(identite.cin, "—")'),
+            ("Famille", 'SIVIDE(situation_familiale.libelle, "—") + " · " + SIVIDE(situation_familiale.nb_enfants_a_charge, 0) + " enf."'),
+            ]), 
+        # net
+        fond("net_f", XD, 68, LD, 16, BLEU),
+        texte("net_l", XD + 2, 68.5, LD - 4, 5, "Net à payer", taille=8, couleur=BLANC, casse="MAJUSCULES"),
+        champ("net_v", XD + 2, 73.5, LD - 4, 9, "net_a_payer", masque="MONTANT", taille=15, gras=True, couleur=BLANC,
+              alignement="DROITE"),
+        champ("net_lt", XD, 85, LD, 9, "MONTANT_EN_LETTRES(net_a_payer)", taille=6.5, italique=True, couleur=GRIS),
+        # mois et cumuls
+        {"id": "synthese", "type": "GRILLE", "x": XD, "y": 96, "l": LD, "h": 45, "largeur_titres": 30, "hauteur_ligne": 5,
+         "quadrillage": "COMPLET", "style": {"taille": 7, "couleur_bordure": GRIS_CLAIR, "alignement": "DROITE"},
+         "style_entete": {"fond": BLEU_CLAIR, "couleur": BLEU, "gras": True, "alignement": "CENTRE"},
+         "style_titres": {"couleur": BLEU, "alignement": "GAUCHE"},
+         "colonnes": [{"id": "m", "titre": "Mois", "largeur": (LD - 30) / 2, "affichage": {"masque": "MONTANT"}},
+                      {"id": "c", "titre": "Cumul", "largeur": (LD - 30) / 2, "affichage": {"masque": "MONTANT"}, "style": {"gras": True}}],
+         "lignes": [{"id": i, "titre": t, "valeurs": {"m": f, "c": f"cumul.{f}"}} for i, t, f in [
+             ("brut", "Brut", "total_brut"), ("imp", "Brut imposable", "total_brut_imposable"),
+             ("cot", "Cot. salariales", "total_cot_salariale"), ("netimp", "Net imposable", "net_imposable"),
+             ("ret", "Retenues", "total_retenues"), ("net", "Net payé", "net_a_payer"),
+             ("pat", "Cot. patronales", "total_cot_patronale"), ("cout", "Coût employeur", "cout_employeur")]]},
+        # paiement et émargement
+        *paires("pay", XD, 145, 20, LD - 20, [("Paiement", 'SIVIDE(paiement.mode_libelle, "—")'),
+                                             ("Banque", 'SIVIDE(paiement.banque_libelle, "—")'), ("Compte", RIB_MASQUE)], pas=4.5, taille=7),
+        cadre("sig_c", XD, 160, LD, 26, couleur=GRIS_CLAIR, arrondi=1.5),
+        texte("sig_t", XD + 2, 161, LD - 4, 4, "Reçu, lu et approuvé — signature du salarié", taille=6.5, italique=True, couleur=GRIS),
+    ]
+    colonnes = [
+        col("lib", "Désignation", 58, "libelle"),
+        col("code", "Code", 14, "code_rubrique", taille=6.5, couleur=GRIS),
+        col("nb", "Nombre", 14, "nombre", "QUANTITE", alignement="DROITE"),
+        col("base", "Base", 22, "base", "MONTANT_SANS_ZERO", alignement="DROITE"),
+        col("tx", "Taux", 13, "taux", "QUANTITE", alignement="DROITE"),
+        col("gain", "À payer", 22, 'SI(sens = "GAIN", montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE"),
+        col("ret", "À retenir", 22, 'SI(sens = "RETENUE", montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE"),
+        col("txp", "Tx pat.", 11, "taux_patronal", "QUANTITE", alignement="DROITE", couleur=GRIS),
+        col("pat", "Part pat.", 16, "montant_patronal", "MONTANT_SANS_ZERO", True, alignement="DROITE", couleur=GRIS),
+    ]
+    corps = [tableau("lignes", 0, 0, T, colonnes, quadrillage="COMPLET", lignes_min=18, hauteur_ligne=5,
+                     style_entete={"fond": BLEU, "couleur": BLANC, "gras": True, "taille": 7, "alignement": "CENTRE"},
+                     style={"taille": 7.5, "couleur_bordure": GRIS_CLAIR})]
+    pied = mentions_legales(L) + [champ("p_page", L - 40, 2, 40, 4, '"Page " + PAGE() + " / " + NB_PAGES()', taille=6.5,
+                                        couleur=GRIS, alignement="DROITE")]
+    pied[1]["l"] = L - 45
+    pied[2]["l"] = L - 45
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS], [JEU_BULLETIN, JEU_LIGNES],
+        [bande("droite", "FOND", 0, colonne_droite),
+         bande("en_tete", "EN_TETE_PAGE", 21, en_tete),
+         bande("detail", "CORPS", 30, corps),
+         bande("mention", "PIED_ETAT", 8, [texte("mention", 0, 2, T, 5, MENTION, taille=7, italique=True, couleur=GRIS)]),
+         bande("pied", "PIED_PAGE", 12, pied)],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 8, 10]}, SORTIE_BULLETIN,
+        usages={"confidentialite": 4})
+
+
 MODELES = {
     "journal_paie.json": journal_paie,
     "ordre_virement.json": ordre_virement,
@@ -659,6 +969,9 @@ MODELES = {
     "notification_remuneration.json": notification,
     "etat_cotisations.json": cotisations,
     "fiche_synthese_annuelle.json": fiche_synthese,
+    "bulletin_detaille.json": bulletin_detaille,
+    "bulletin_moderne.json": bulletin_moderne,
+    "bulletin_formulaire.json": bulletin_formulaire,
 }
 
 if __name__ == "__main__":
