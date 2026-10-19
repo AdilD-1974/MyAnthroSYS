@@ -101,6 +101,13 @@ class ModeleCreation(BaseModel):
     origine_id: Optional[str] = None
 
 
+class ModeleModification(BaseModel):
+    libelle: Optional[str] = None
+    description: Optional[str] = None
+    categorie: Optional[str] = None
+    visibilite: Optional[str] = None
+
+
 class VersionEcriture(BaseModel):
     definition: dict
     note: Optional[str] = None
@@ -225,6 +232,13 @@ def creer_modele(corps: ModeleCreation, u: sv.Utilisateur = Depends(utilisateur)
 @router.get("/modeles/{modele_id}")
 def lire_modele(modele_id: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
     return _lecture(db, sv.lire_modele, u, modele_id)
+
+
+@router.patch("/modeles/{modele_id}")
+def modifier_modele(modele_id: str, corps: ModeleModification, u: sv.Utilisateur = Depends(utilisateur),
+                    db: Session = Depends(get_db)):
+    """Libellé, description, catégorie (type) et visibilité du modèle."""
+    return _ecriture(db, ec.modifier_modele, u, modele_id, **corps.model_dump(exclude_none=True))
 
 
 @router.get("/modeles/{modele_id}/versions")

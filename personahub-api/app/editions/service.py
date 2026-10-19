@@ -378,6 +378,34 @@ def _modifiable(db: Session, u: Utilisateur, m: dict) -> None:
     exiger(db, u, "CONCEVOIR", m)
 
 
+def modifier_modele(db: Session, u: Utilisateur, modele_id: str, *, libelle: Optional[str] = None,
+                    description: Optional[str] = None, categorie: Optional[str] = None,
+                    visibilite: Optional[str] = None) -> dict:
+    """RG-EDT-MODELE-03 (Adil DAIA) : identité du modèle (libellé, description, catégorie, visibilité),
+    modifiable sans nouvelle version ; jamais pour un modèle système (RG-EDT-MODELE-02)."""
+    m = lire_modele(db, u, modele_id)
+    _modifiable(db, u, m)
+    champs, val = [], {"id": m["id"]}
+    if libelle is not None:
+        if not libelle.strip():
+            raise Invalide("Libellé obligatoire")
+        champs.append("libelle = :l"); val["l"] = libelle.strip()
+    if description is not None:
+        champs.append("description = :d"); val["d"] = description.strip() or None
+    if categorie is not None:
+        if categorie not in CATEGORIES:
+            raise Invalide(f"Catégorie inconnue : {categorie}")
+        champs.append("categorie = :c"); val["c"] = categorie
+    if visibilite is not None:
+        if visibilite not in ("PRIVE", "SOCIETE", "GLOBAL") or (visibilite == "GLOBAL" and not u.admin):
+            raise Invalide("Visibilité : PRIVE ou SOCIETE (GLOBAL réservé à l'administrateur)")
+        champs.append("visibilite = :v"); val["v"] = visibilite
+    if champs:
+        db.execute(text(f"UPDATE edt_modele SET {', '.join(champs)}, modifie_le = CURRENT_TIMESTAMP WHERE id = :id"), val)
+        auditer(db, u, "MODIFICATION", "MODELE", m["id"], {k: v for k, v in val.items() if k != "id"})
+    return lire_modele(db, u, m["id"])
+
+
 def ouvrir_brouillon(db: Session, u: Utilisateur, modele_id: str) -> dict:
     """Brouillon existant, ou nouveau brouillon copié de la version publiée."""
     m = lire_modele(db, u, modele_id)

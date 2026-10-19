@@ -280,6 +280,9 @@ export const editionsApi = {
 
   modeles: (categorie?: string) => appel<Modele[]>("GET", `/modeles${categorie ? `?categorie=${categorie}` : ""}`),
   modele: (id: string) => appel<Modele>("GET", `/modeles/${id}`),
+  /** Libellé, description, catégorie (type), visibilité — sans nouvelle version (RG-EDT-MODELE-03). */
+  modifierModele: (id: string, corps: { libelle?: string; description?: string; categorie?: Categorie; visibilite?: Visibilite }) =>
+    appel<Modele>("PATCH", `/modeles/${id}`, corps),
   creerModele: (corps: { code: string; libelle: string; categorie?: Categorie; description?: string; visibilite?: Visibilite; origine_id?: string; definition?: Definition }) =>
     appel<{ modele_id: string; version_id: string }>("POST", "/modeles", corps),
   versions: (modeleId: string) => appel<VersionResume[]>("GET", `/modeles/${modeleId}/versions`),

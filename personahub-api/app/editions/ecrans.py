@@ -130,6 +130,19 @@ def creer_modele(db: Session, u: sv.Utilisateur, **kw) -> dict:
     return res
 
 
+def modifier_modele(db: Session, u: sv.Utilisateur, modele_id: str, **kw) -> dict:
+    """Modification (service) ; une nouvelle catégorie rattache aussi aux écrans de celle-ci (RG-EDT-ECRAN-02)."""
+    avant = sv.lire_modele(db, u, modele_id)["categorie"]
+    m = sv.modifier_modele(db, u, modele_id, **kw)
+    if m["categorie"] != avant:
+        try:
+            with db.begin_nested():
+                rattacher_par_categorie(db, u, m["id"], m["categorie"])
+        except SQLAlchemyError:
+            log.warning("Rattachement aux menus impossible (migration 077 appliquée ?)", exc_info=True)
+    return m
+
+
 def rattacher_par_categorie(db: Session, u: sv.Utilisateur, modele_id: str, categorie: str) -> None:
     """RG-EDT-ECRAN-02 : à la création, rattachement aux écrans de la catégorie.
     Un écran qui n'avait encore aucun rattachement garde aussi les modèles déjà publiés

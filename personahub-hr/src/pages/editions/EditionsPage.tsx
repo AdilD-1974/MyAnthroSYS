@@ -113,7 +113,7 @@ export default function EditionsPage() {
           <h1 className="text-2xl font-semibold">Éditions</h1>
           <p className="text-sm text-muted-foreground">Bulletins, journaux, attestations et états : concevez, publiez et produisez vos documents.</p>
         </div>
-        <Button className="ml-auto" onClick={() => setCreation({ ouvert: true, code: "", libelle: "", categorie: "LISTE", visibilite: "SOCIETE", origine: "" })}>
+        <Button className="ml-auto" onClick={() => setCreation({ ouvert: true, code: "", libelle: "", categorie: categorie || "LISTE", visibilite: "SOCIETE", origine: "" })}>
           <Plus className="mr-1 h-4 w-4" />Nouveau modèle
         </Button>
       </div>
@@ -177,7 +177,12 @@ export default function EditionsPage() {
           </div>
         ))}
       </div>
-      {modeles && !visibles.length && <p className="mt-6 text-center text-sm text-muted-foreground">Aucun modèle.</p>}
+      {modeles && !visibles.length && (
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Aucun modèle{categorie ? ` de type « ${CATEGORIES.find((c) => c.code === categorie)?.libelle} »` : ""}.
+          {categorie && <><br />Créez-en un (« Nouveau modèle »), ou changez le type d'un modèle existant : onglet « Tous », bouton « Classement » du modèle.</>}
+        </p>
+      )}
 
       {/* création */}
       <Dialog open={creation.ouvert} onOpenChange={(o) => setCreation((c) => ({ ...c, ouvert: o }))}>

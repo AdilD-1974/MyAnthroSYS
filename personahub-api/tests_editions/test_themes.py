@@ -94,3 +94,17 @@ def test_ecran_bulletins_remplace_par_le_menu_paie(s):
     menu = s.execute(text("SELECT label, chemin FROM nav_menu_item WHERE code = 'paie_edition_bulletins'")).one()
     assert tuple(menu) == ("Éditions de la paie", "/paie/editions-paie")
     assert "edition_bulletins" not in {e["code_ecran"] for e in ec.lister_ecrans(s, PAIE)}
+
+
+def test_changer_la_categorie_d_un_modele(s):                              # RG-EDT-MODELE-03
+    j = sv.creer_modele(s, PAIE, code="JRNLPAIE", libelle="Journal de Paie", visibilite="SOCIETE", categorie="LISTE")
+    sv.publier(s, PAIE, j["version_id"])
+    assert _libelles(th.arbre(s, PAIE, "PAIE")).get("États standard") == ["JRNLPAIE"]
+    m = ec.modifier_modele(s, PAIE, j["modele_id"], categorie="JOURNAL", libelle="Journal de paie mensuel")
+    assert m["categorie"] == "JOURNAL" and m["libelle"] == "Journal de paie mensuel"
+    assert [x["code"] for x in sv.lister_modeles(s, PAIE, "JOURNAL")] == ["JRNLPAIE"]      # onglet Journaux
+    assert _libelles(th.arbre(s, PAIE, "PAIE"))["Journaux de paie"] == ["JRNLPAIE"]       # dossier suivi
+    with pytest.raises(sv.Invalide):
+        ec.modifier_modele(s, PAIE, j["modele_id"], categorie="INCONNUE")
+    with pytest.raises(sv.Interdit):                                        # modèle système
+        ec.modifier_modele(s, PAIE, str(_systeme(s)), categorie="JOURNAL")

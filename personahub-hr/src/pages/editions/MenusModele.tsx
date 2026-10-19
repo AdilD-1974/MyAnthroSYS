@@ -11,11 +11,11 @@ import { Loader2, MonitorCheck, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { editionsApi, type Categorie, type Ecran, type Theme } from "@/lib/editionsApi";
+import { CATEGORIES, editionsApi, type Categorie, type Ecran, type Theme } from "@/lib/editionsApi";
 import { Switch } from "@/components/ui/switch";
 
 type ModeleRegle = { id: string; libelle: string; version_publiee_id?: string | null; categorie?: Categorie;
-  actif?: boolean; theme_id?: string | null };
+  actif?: boolean; theme_id?: string | null; est_systeme?: boolean };
 
 /** Thèmes à plat, dans l'ordre de l'arbre, avec leur profondeur (listes déroulantes). */
 export function themesEnArbre(themes: Theme[]): { t: Theme; niveau: number }[] {
@@ -52,6 +52,8 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
   const [themes, setThemes] = useState<Theme[]>([]);
   const [themeId, setThemeId] = useState<string>("");
   const [actif, setActif] = useState(true);
+  const [libelle, setLibelle] = useState("");
+  const [categorie, setCategorie] = useState<Categorie | "">("");
   const [ecrans, setEcrans] = useState<Ecran[] | null>(null);
   const [choix, setChoix] = useState<Choix>({});
   const [implicite, setImplicite] = useState(false);
@@ -62,6 +64,8 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
     setEcrans(null);
     setThemeId(modele.theme_id ?? "");
     setActif(modele.actif !== false);
+    setLibelle(modele.libelle);
+    setCategorie(modele.categorie ?? "");
     Promise.all([chargerEcrans(), editionsApi.ecransDuModele(modele.id), editionsApi.themes().catch(() => [] as Theme[])])
       .then(([tous, rattaches, th]) => {
         setThemes(th.filter((t) => t.actif));
@@ -80,11 +84,17 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
     if (!modele) return;
     setOccupe(true);
     try {
+      // RG-EDT-MODELE-03 : identité d'abord (la nouvelle catégorie rattache ses écrans), puis les choix de l'écran
+      const identite: { libelle?: string; categorie?: Categorie } = {};
+      if (libelle.trim() && libelle.trim() !== modele.libelle) identite.libelle = libelle.trim();
+      if (categorie && categorie !== modele.categorie) identite.categorie = categorie;
+      if (Object.keys(identite).length) await editionsApi.modifierModele(modele.id, identite);
       const liste = Object.entries(choix).filter(([, v]) => v.coche).map(([code_ecran, v]) => ({ code_ecran, par_defaut: v.defaut }));
       await editionsApi.rattacher(modele.id, liste);
       if ((themeId || null) !== (modele.theme_id ?? null) || actif !== (modele.actif !== false))
         await editionsApi.reglerModele(modele.id, { actif, theme_id: themeId || null });
-      toast({ title: "Classement enregistré", description: `${actif ? "Actif" : "Inactif"} · ${liste.length} écran(s)` });
+      toast({ title: "Classement enregistré",
+        description: `${CATEGORIES.find((c) => c.code === (categorie || modele.categorie))?.libelle ?? ""} · ${actif ? "Actif" : "Inactif"} · ${liste.length} écran(s)` });
       onChange?.();
       onFermer();
     } catch (e: any) {
@@ -101,10 +111,37 @@ export function DialogueMenus({ modele, ouvert, onFermer, onChange }: {
     <Dialog open={ouvert} onOpenChange={(o) => !o && onFermer()}>
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Classement et menus — {modele?.libelle}</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-[1fr_180px] gap-3">
+          <label className="block text-xs font-medium">Libellé
+            <input className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
+              value={libelle} disabled={modele?.est_systeme} onChange={(e) => setLibelle(e.target.value)} />
+          </label>
+          <label className="block text-xs font-medium" title="Le type range le modèle dans l'onglet de la bibliothèque, le dossier par défaut et les écrans Imprimer">
+            Type (catégorie)
+            <select className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
+              value={categorie} disabled={modele?.est_systeme}
+              onChange={(e) => {
+                const c = e.target.value as Categorie;
+                setCategorie(c);
+                // les écrans « Imprimer » suivent le type : ceux du nouveau type cochés, ceux de l'ancien décochés
+                setChoix((p) => {
+                  const n = { ...p };
+                  (ecrans ?? []).forEach((x) => {
+                    if (x.categorie_edition === c) n[x.code_ecran] = { coche: true, defaut: n[x.code_ecran]?.defaut ?? false };
+                    else if (x.categorie_edition && x.categorie_edition === modele?.categorie) n[x.code_ecran] = { coche: false, defaut: false };
+                  });
+                  return n;
+                });
+              }}>
+              {CATEGORIES.map((c) => <option key={c.code} value={c.code}>{c.libelle}</option>)}
+            </select>
+          </label>
+        </div>
+        {modele?.est_systeme && <p className="-mt-2 text-[11px] text-muted-foreground">Modèle système : libellé et type fixes (copiez-le pour les changer).</p>}
         <div className="grid grid-cols-[1fr_auto] items-end gap-3 rounded border bg-muted/30 p-2">
           <label className="block text-xs font-medium">Dossier (thème) du menu d'éditions
             <select className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
-              <option value="">Selon la catégorie{modele?.categorie ? ` (${modele.categorie.toLowerCase()})` : ""}</option>
+              <option value="">Selon le type ({(CATEGORIES.find((c) => c.code === (categorie || modele?.categorie))?.libelle ?? "").toLowerCase()})</option>
               {themesEnArbre(themes).map(({ t, niveau }) => (
                 <option key={t.id} value={t.id}>{"\u00a0\u00a0\u00a0".repeat(niveau)}{niveau ? "└ " : ""}{t.module === "RH" ? "RH › " : niveau ? "" : "Paie › "}{t.libelle}</option>
               ))}
