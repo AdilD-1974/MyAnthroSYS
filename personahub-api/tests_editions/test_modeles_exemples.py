@@ -249,3 +249,29 @@ def test_listes_du_lancement_filtrees_par_annee(s):
     assert [c["matricule"] for c in sv.collaborateurs_payes(s, PAIE, periode_ids=[P_SEP])] == ["M001", "M002"]
     assert sv.collaborateurs_payes(s, PAIE, annee=2025) == []
     assert [p["code"] for p in sv.plans_paie(s, PAIE, 2026)] == ["MENS"] and sv.plans_paie(s, PAIE, 2024) == []
+
+
+# ---- situation figée incomplète complétée depuis la fiche RH (RG-EDT-SITUATION-01) ----
+def test_situation_figee_completee_depuis_la_fiche_rh(s):
+    from app.editions.sources.paie import FournisseurBulletin
+    s.execute(text("""CREATE TABLE collaborateur_qualifications (collaborateur_id uuid, date_evolution date, code_classification text,
+        code_qualification text, code_categorie_professionnelle text, code_categorie text, code_grade text, code_echelle text,
+        echelon_actuel text, code_emploi text, code_fonction text, code_niveau text, code_filiere text, archive boolean NOT NULL DEFAULT false)"""))
+    s.execute(text("CREATE TABLE IF NOT EXISTS ref_classification (code text, libelle text)"))
+    s.execute(text("CREATE TABLE IF NOT EXISTS ref_qualification (code text, libelle text)"))
+    s.execute(text("""INSERT INTO collaborateur_qualifications (collaborateur_id, date_evolution, code_categorie_professionnelle, code_classification, archive) VALUES
+        ('c0000000-0000-0000-0000-000000000002', '2024-05-01', 'EMP', 'CL-CADI', false),
+        ('c0000000-0000-0000-0000-000000000002', '2027-01-01', 'CAD', NULL, false),     -- postérieure : ignorée
+        ('c0000000-0000-0000-0000-000000000002', '2025-01-01', 'CAD', NULL, true),      -- archivée : ignorée
+        ('c0000000-0000-0000-0000-000000000001', '2024-01-01', 'EMP', NULL, false)"""))
+    s.execute(text("""UPDATE bulletin_snapshot_collaborateur SET donnees = jsonb_set(donnees, '{qualification}', '{"code_categorie_professionnelle": "CAD"}')
+                      WHERE bulletin_id = 'b0000000-0000-0000-0000-000000000001'"""))
+    lignes = {l["matricule"]: l for l in FournisseurBulletin().lire(s, {"periode": {"id": P_SEP}}, sv.contexte_securite(s, PAIE))}
+    omar, sara = lignes["M002"], lignes["M001"]
+    assert omar["qualification"]["code_categorie_professionnelle"] == "EMP" and omar["qualification"]["code_classification"] == "CL-CADI"
+    assert omar["qualification"]["categorie_professionnelle_libelle"] == "Employés"
+    assert omar["situation"]["completee"] == "qualification"
+    assert sara["qualification"]["code_categorie_professionnelle"] == "CAD" and "situation" not in sara   # le figé prime
+    # le filtre de population voit la catégorie complétée
+    assert [l["matricule"] for l in FournisseurBulletin().lire(s, {"periode": {"id": P_SEP}, "_filtres": {"categories": ["EMP"]}},
+                                                                sv.contexte_securite(s, PAIE))] == ["M002"]

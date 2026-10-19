@@ -131,6 +131,7 @@ CHAMPS_BULLETIN = [
     _d("identite.date_naissance", "Date de naissance", "Identité"),
     _t("identite.num_cnss", "N° CNSS", "Identité"), _t("identite.num_amo", "N° AMO", "Identité"),
     _t("affectation.organisation_libelle", "Organisation", "Affectation"),
+    _t("situation.completee", "Blocs complétés depuis la fiche RH (situation figée incomplète)", "Bulletin"),
     # RG-EDT-GROUPE-01 : axes de tri et de regroupement (app/editions/population.py)
     _t("affectation.organisation_id", "Identifiant de l'UO", "Affectation"),
     _t("affectation.uo_code", "Code de l'UO", "Affectation"),
@@ -310,6 +311,7 @@ class FournisseurBulletin(Fournisseur):
             resultat.append(l)
         # RG-EDT-FILTRE-01/02 : population choisie au lancement ; RG-EDT-GROUPE-01 : axes de regroupement
         from app.editions import population
+        population.completer_situation(db, resultat)                     # RG-EDT-SITUATION-01
         resultat = population.filtrer(db, resultat, parametres.get("_filtres"), sec.societe_id)
         population.enrichir(db, resultat, sec.societe_id)
         _ajouter_cumuls(db, resultat, sec)

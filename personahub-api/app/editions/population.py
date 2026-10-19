@@ -11,6 +11,12 @@ Auteur : Adil DAIA — 19/10/2026
                       (snapshot) : une mutation postérieure ne change pas une édition passée.
     RG-EDT-FILTRE-03  l'arbre des UO, les UO rattachées et les valeurs proposées sont limités
                       à la société active ; un identifiant étranger est ignoré.
+    RG-EDT-SITUATION-01  (Adil DAIA) un bloc VIDE de la situation figée au calcul (qualification,
+                      contrat, affectation) est complété depuis la fiche RH, à la date de fin de la
+                      période (même règles que la capture : non archivé, en vigueur à cette date).
+                      Cas réel : qualification saisie dans la fiche après le calcul de la paie.
+                      Ce qui a été figé n'est jamais remplacé ; `situation.completee` liste les blocs
+                      complétés. Recalculer la paie du mois refait la situation figée.
     RG-EDT-GROUPE-01  chaque bulletin reçoit des axes prêts à trier et regrouper : UO (code,
                       chemin complet, UO de 1er et 2e niveau), libellés de la catégorie
                       professionnelle et du type de contrat.
@@ -101,6 +107,96 @@ def _chemins(liste: list[dict]) -> dict[str, list[dict]]:
             x = par_id.get(x["parent_id"]) if x["parent_id"] else None
         res[u["id"]] = chaine
     return res
+
+
+# ---------------------------------------------------------------------------
+# Situation figée incomplète → fiche RH à la date de la période (RG-EDT-SITUATION-01)
+# ---------------------------------------------------------------------------
+def _vide(bloc: Any, cles: tuple[str, ...]) -> bool:
+    return not isinstance(bloc, dict) or all(bloc.get(k) in (None, "") for k in cles)
+
+
+def _a_date(lignes_rh: list[dict], champ_debut: str, a_date: Any, champ_fin: Optional[str] = None) -> Optional[dict]:
+    """La ligne en vigueur à `a_date` : début ≤ date (et fin ≥ date), la plus récente."""
+    candidats = [r for r in lignes_rh if r.get(champ_debut) is not None and str(r[champ_debut]) <= str(a_date)
+                 and (champ_fin is None or r.get(champ_fin) is None or str(r[champ_fin]) >= str(a_date))]
+    return max(candidats, key=lambda r: str(r[champ_debut])) if candidats else None
+
+
+def completer_situation(db: Session, lignes: list[dict]) -> None:
+    besoin = {"qualification": [], "contrat": [], "affectation": []}
+    for l in lignes:
+        if not l.get("collaborateur_id") or not (l.get("periode") or {}).get("date_fin"):
+            continue
+        if _vide(l.get("qualification"), ("code_categorie_professionnelle", "code_classification", "code_qualification",
+                                          "code_grade", "date_evolution")):
+            besoin["qualification"].append(l)
+        if _vide(l.get("contrat"), ("code_type_contrat", "date_embauche")):
+            besoin["contrat"].append(l)
+        if _vide(l.get("affectation"), ("organisation_id",)):
+            besoin["affectation"].append(l)
+    if not any(besoin.values()):
+        return
+
+    def lire(sql: str, liste: list[dict]) -> dict[str, list[dict]]:
+        ids = sorted({str(l["collaborateur_id"]) for l in liste})
+        res: dict[str, list[dict]] = {}
+        if not ids:
+            return res
+        for r in _sur(db, sql, {"ids": ids}):
+            res.setdefault(str(r["collaborateur_id"]), []).append(r)
+        return res
+
+    def noter(l: dict, bloc: str) -> None:
+        sit = l.setdefault("situation", {})
+        sit["completee"] = ", ".join(x for x in [sit.get("completee"), bloc] if x)
+
+    quals = lire("""
+        SELECT cq.collaborateur_id, cq.date_evolution, cq.code_classification, rcl.libelle AS classification_libelle,
+               cq.code_qualification, rq.libelle AS qualification_libelle, cq.code_categorie_professionnelle,
+               cq.code_categorie, cq.code_grade, cq.code_echelle, cq.echelon_actuel, cq.code_emploi, cq.code_fonction,
+               cq.code_niveau, cq.code_filiere
+        FROM collaborateur_qualifications cq
+        LEFT JOIN ref_classification rcl ON rcl.code = cq.code_classification
+        LEFT JOIN ref_qualification rq ON rq.code = cq.code_qualification
+        WHERE CAST(cq.collaborateur_id AS text) = ANY(:ids) AND COALESCE(cq.archive, false) = false""", besoin["qualification"])
+    for l in besoin["qualification"]:
+        r = _a_date(quals.get(str(l["collaborateur_id"]), []), "date_evolution", l["periode"]["date_fin"])
+        if r:
+            q = dict(l.get("qualification") or {})
+            for k, v in r.items():
+                if k != "collaborateur_id" and q.get(k) in (None, ""):
+                    q[k] = str(v) if k == "date_evolution" and v is not None else v
+            l["qualification"] = q
+            noter(l, "qualification")
+
+    contrats = lire("""
+        SELECT collaborateur_id, code_type_contrat, code_statut_contrat, code_temps, date_debut AS date_embauche, date_fin
+        FROM collaborateur_contrats
+        WHERE CAST(collaborateur_id AS text) = ANY(:ids) AND COALESCE(archive, false) = false""", besoin["contrat"])
+    for l in besoin["contrat"]:
+        r = _a_date(contrats.get(str(l["collaborateur_id"]), []), "date_embauche", l["periode"]["date_fin"], "date_fin")
+        if r:
+            c = dict(l.get("contrat") or {})
+            for k in ("code_type_contrat", "code_statut_contrat", "code_temps", "date_embauche"):
+                if c.get(k) in (None, "") and r.get(k) is not None:
+                    c[k] = str(r[k]) if k == "date_embauche" else r[k]
+            l["contrat"] = c
+            noter(l, "contrat")
+
+    affs = lire("""
+        SELECT ca.collaborateur_id, ca.unite_id, o.libelle AS organisation_libelle, ca.date_debut_uo, ca.date_fin_uo
+        FROM collaborateur_affectations ca LEFT JOIN unites_organisationnelles o ON o.id = ca.unite_id
+        WHERE CAST(ca.collaborateur_id AS text) = ANY(:ids) AND COALESCE(ca.archive, false) = false""", besoin["affectation"])
+    for l in besoin["affectation"]:
+        r = _a_date(affs.get(str(l["collaborateur_id"]), []), "date_debut_uo", l["periode"]["date_fin"], "date_fin_uo")
+        if r and r.get("unite_id"):
+            a = dict(l.get("affectation") or {})
+            a["organisation_id"] = str(r["unite_id"])
+            if a.get("organisation_libelle") in (None, ""):
+                a["organisation_libelle"] = r.get("organisation_libelle")
+            l["affectation"] = a
+            noter(l, "affectation")
 
 
 # ---------------------------------------------------------------------------
