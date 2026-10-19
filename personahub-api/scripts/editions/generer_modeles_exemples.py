@@ -140,9 +140,9 @@ def definition(parametres, jeux, bandes, page, sortie, variables=None, usages=No
 
 
 # =============================================================================
-# 1. JOURNAL — Journal de paie
+# 1. JOURNAL — Journal de paie (présentation synthétique, proposée en 2e mise en forme)
 # =============================================================================
-def journal_paie() -> dict:
+def journal_paie_synthetique() -> dict:
     L = 277.0
     cols = [  # code, titre, largeur, expression, masque, alignement
         ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
@@ -225,6 +225,140 @@ def journal_paie() -> dict:
         {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
         {"formats": ["PDF"], "nom_fichier": '"Journal_paie_" + @periode.code'},
         usages={"confidentialite": 3})
+
+
+# =============================================================================
+# 1 bis. JOURNAL — présentation « grille réglementaire » (4 lignes par salarié)
+# =============================================================================
+GRIS_ENTETE = "#E3E6E8"
+# 4 lignes × 8 colonnes de valeurs ; (titre d'en-tête, affectation) — None : case libre, à affecter dans
+# le designer (Données › corps « journal »). Les codes sont ceux du plan de paie livré (paie_seed).
+GRILLE_JOURNAL = [
+    [("Jrs\nTravaillés", ("NBJTRV", "NB")), ("Salaire de\nBase", ("SALBASE", "MT")), ("Jrs\nCongés", ("NBJCNG", "NB")),
+     ("Salaire\nCongé Payé", ("SALCONGE", "MT")), ("Congé Payé\nPour Départ", None), ("Prime\nAncienneté", ("PRIM_ANC", "MT")),
+     ("", None), ("", None)],
+    [("Ind. de\nCaisse", None), ("Ind.\nTransport", ("INDTRSP", "MT")), ("Ind.\nReprésentation", ("INDREPR", "MT")),
+     ("Ind. Panier", None), ("Ind. forfaitaire\nde déplacement", None), ("", None),
+     ("Salaire Brut", ("=", "total_brut")), ("Brut\nImposable", ("=", "total_brut_imposable"))],
+    [("CNSS", ("CNSS_SAL", "MT")), ("AMO", ("CNSS_AMO_SAL", "MT")), ("", None), ("", None), ("", None),
+     ("Frais\nProfessionnel", ("FRAIS_PROF", "MT")), ("Net Imposable", ("=", "net_imposable")), ("Retenue IR", ("RET_IR", "MT"))],
+    [("Remb. Frais\nDéplacement", None), ("Ret. Avance\nSur Salaire", None), ("", None), ("", None), ("", None),
+     ("", None), ("", None), ("Net à Payer", ("=", "net_a_payer"))],
+]
+
+
+def journal_paie() -> dict:
+    synthetique = journal_paie_synthetique()
+    L = 277.0
+    A, B = 22.0, 72.0                    # colonne Matricule/CIN/Entrée, bloc Collaborateur
+    B1, B2, B3 = 24.0, 32.0, 16.0        # Dt. naissance | CNSS | Sit. fam.
+    XV = A + B
+    LV = (L - XV) / 8                    # largeur d'une colonne de valeurs
+    HE, HL = 7.0, 5.0                    # hauteur d'une rangée d'en-tête / d'une rangée salarié
+    trait = dict(bordures="TOUT", epaisseur_bordure=0.3, couleur_bordure="#555555")
+
+    corps_cases = {
+        "code": "journal", "libelle": "Journal (4 lignes × 8 colonnes)", "nature": "CASES",
+        "colonnes": [{"code": f"c{j + 1}", "libelle": f"Colonne {j + 1}", "type": "MONTANT"} for j in range(8)],
+        "lignes": [{"code": f"l{i + 1}", "libelle": f"Ligne {i + 1}"} for i in range(4)],
+        "affectations": [], "emplacement": "MASQUE",
+    }
+    for i, rang in enumerate(GRILLE_JOURNAL):
+        for j, (titre, aff) in enumerate(rang):
+            if not aff:
+                continue
+            cible = f"l{i + 1}.c{j + 1}"
+            lib = titre.replace("\n", " ")
+            if aff[0] == "=":
+                corps_cases["affectations"].append({"formule": aff[1], "cibles": {"VAL": cible}, "libelle": lib})
+            else:
+                corps_cases["affectations"].append({"rubrique": aff[0], "cibles": {aff[1]: cible}, "libelle": lib})
+
+    def cellule(id, x, y, l, h, valeur, est_texte=False, **s):
+        st_ = {**trait, **s}
+        if est_texte:                     # intitulé sur deux lignes au besoin (texte riche : retour à la ligne)
+            return {**riche(id, x, y, l, h, valeur, **st_), "extensible": False}
+        return champ(id, x, y, l, h, valeur, **st_)
+
+    # ---- en-tête de page : société, titre, période, puis les 4 rangées de titres
+    lbl = dict(taille=8, gras=True)
+    en_tete = [
+        {"id": "logo", "type": "IMAGE", "x": 0, "y": 0, "l": 40, "h": 18, "valeur": 'CHARTE("logo")'},
+        texte("l_adr", 44, 0, 32, 5, "Adresse :", **lbl), champ("v_adr", 76, 0, 120, 5,
+              'SIVIDE(societe.adresse, "") + SI(ESTVIDE(societe.ville), "", ", " + MAJUSCULE(societe.ville))', taille=8),
+        texte("l_if", 44, 5.5, 32, 5, "Identifiant Fiscal :", **lbl), champ("v_if", 76, 5.5, 60, 5, 'SIVIDE(societe.identifiant_fiscal, "")', taille=8),
+        texte("l_cnss", 44, 11, 32, 5, "Affiliation CNSS :", **lbl), champ("v_cnss", 76, 11, 60, 5, 'SIVIDE(societe.numero_cnss, "")', taille=8),
+        texte("l_date", 205, 0, 32, 5, "Date d'édition :", **lbl, alignement="DROITE"),
+        champ("v_date", 239, 0, 38, 5, 'FORMAT(DATEJOUR(), "DATE_FR")', taille=8, alignement="DROITE"),
+        texte("titre", 0, 20, L, 9, "JOURNAL DE PAIE", taille=15, gras=True, alignement="CENTRE"),
+        texte("l_mois", 98, 31, 42, 5, "Mois de Paie :", taille=9, gras=True),
+        champ("v_mois", 140, 31, 50, 5, MOIS, taille=9, gras=True, casse="INITIALES"),
+        texte("l_du", 98, 38, 42, 5, "Période de Paie du :", taille=9, gras=True),
+        champ("v_du", 140, 38, 25, 5, 'FORMAT(@periode.date_debut, "DATE_FR")', taille=9),
+        texte("l_au", 166, 38, 9, 5, "Au", taille=9, gras=True),
+        champ("v_au", 176, 38, 25, 5, 'FORMAT(@periode.date_fin, "DATE_FR")', taille=9),
+    ]
+    y0 = 47.0
+    ent = dict(taille=7, gras=True, fond=GRIS_ENTETE, alignement="CENTRE")
+    en_tete += [
+        cellule("e_mat", 0, y0, A, HE, "Matricule", True, **ent),
+        cellule("e_collab", A, y0, B, HE, "Collaborateur", True, **ent),
+        cellule("e_cin", 0, y0 + HE, A, HE, "Cin", True, **ent),
+        cellule("e_naiss", A, y0 + HE, B1, HE, "Dt.\nNaissance", True, **ent),
+        cellule("e_cnss", A + B1, y0 + HE, B2, HE, "Cnss", True, **ent),
+        cellule("e_sf", A + B1 + B2, y0 + HE, B3, HE, "Sit.\nFam", True, **ent),
+        cellule("e_entree", 0, y0 + 2 * HE, A, 2 * HE, "Date\nd'Entrée", True, **ent),
+        cellule("e_fonction", A, y0 + 2 * HE, B, 2 * HE, "Fonction", True, **ent),
+    ]
+    for i, rang in enumerate(GRILLE_JOURNAL):
+        for j, (titre, _a) in enumerate(rang):
+            en_tete.append(cellule(f"e_{i + 1}_{j + 1}", XV + j * LV, y0 + i * HE, LV, HE, titre, True, **ent))
+    # ---- un salarié = 4 rangées
+    val = dict(police="Courier", taille=7.5)
+    corps = [
+        cellule("s_mat", 0, 0, A, HL, "identite.matricule", **val, gras=True),
+        cellule("s_nom", A, 0, B, HL, 'SIVIDE(identite.civilite, "") + " " + MAJUSCULE(identite.nom) + " " + identite.prenom', **val, gras=True),
+        cellule("s_cin", 0, HL, A, HL, 'SIVIDE(identite.cin, "")', **val),
+        cellule("s_naiss", A, HL, B1, HL, 'SI(ESTVIDE(identite.date_naissance), "", FORMAT(identite.date_naissance, "DATE_FR"))', **val, alignement="CENTRE"),
+        cellule("s_cnss", A + B1, HL, B2, HL, 'SIVIDE(identite.num_cnss, "")', **val, alignement="CENTRE"),
+        cellule("s_sf", A + B1 + B2, HL, B3, HL, 'MAJUSCULE(GAUCHE(SIVIDE(situation_familiale.libelle, ""), 1))', **val, gras=True, alignement="CENTRE"),
+        cellule("s_entree", 0, 2 * HL, A, 2 * HL, 'SI(ESTVIDE(contrat.date_embauche), "", FORMAT(contrat.date_embauche, "DATE_FR"))', **val),
+        cellule("s_fonction", A, 2 * HL, B, 2 * HL, 'SIVIDE(affectation.emploi_libelle, "")', **val, gras=True),
+    ]
+    for i in range(4):
+        for j in range(8):
+            corps.append(champ(f"s_{i + 1}_{j + 1}", XV + j * LV, i * HL, LV, HL, f"corps.journal.l{i + 1}.c{j + 1}",
+                               masque="MONTANT", **trait, **val, alignement="DROITE"))
+    # ---- totaux de l'état : même grille, sommes
+    totaux = [texte("t_lib", 0, 2, XV - 4, 6, "TOTAUX", taille=9, gras=True, alignement="DROITE"),
+              champ("t_eff", 0, 9, XV - 4, 5, '"Effectif : " + NB(matricule, ETAT) + " salarié(s)"', taille=8, alignement="DROITE",
+                    couleur=GRIS)]
+    for i in range(4):
+        for j in range(8):
+            dernier = (i, j) == (3, 7)
+            totaux.append(champ(f"t_{i + 1}_{j + 1}", XV + j * LV, 2 + i * (HL + 1.5), LV, HL + 1.5,
+                                f"TOTAL(corps.journal.l{i + 1}.c{j + 1}, ETAT)", masque="MONTANT_SANS_ZERO", vide="-", taille=7.5, gras=True,
+                                alignement="DROITE", bordures="TOUT", epaisseur_bordure=0.4, couleur_bordure="#555555",
+                                fond="#BFC5C9" if dernier else None))
+    pied = [champ("p_page", L - 40, 2, 40, 4, '"Page " + PAGE() + "/" + NB_PAGES()', taille=7, gras=True, alignement="DROITE"),
+            champ("p_edit", 0, 2, 150, 4, '"Édité par " + SIVIDE(UTILISATEUR("nom"), "—")', taille=6.5, couleur=GRIS)]
+    d = definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+          "tri": [{"champ": "plan.code"}, {"champ": "identite.matricule"}], "groupes": ["plan.code"]}],
+        [bande("en_tete", "EN_TETE_PAGE", y0 + 4 * HE + 1, en_tete),
+         bande("salarie", "CORPS", 4 * HL + 1.5, corps, insecable=True),
+         bande("totaux", "PIED_ETAT", 2 + 4 * (HL + 1.5) + 2, totaux, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied)],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [8, 10, 8, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Journal_paie_" + @periode.code'},
+        usages={"confidentialite": 3, "formes_au_choix": True})
+    d["corps"] = [corps_cases]
+    d["forme_code"], d["forme_libelle"] = "grille", "Grille réglementaire (4 lignes par salarié)"
+    # l'ancienne présentation reste proposée au lancement (« Mise en forme »)
+    d["formes"] = [{"code": "synthetique", "libelle": "Synthétique (une ligne par salarié, sous-totaux par plan)",
+                    "page": synthetique["page"], "bandes": synthetique["bandes"], "sortie": synthetique["sortie"]}]
+    return d
 
 
 # =============================================================================
@@ -670,6 +804,12 @@ DU_AU = '"Du " + FORMAT(@periode.date_debut, "DATE_FR") + " au " + FORMAT(@perio
 MENTION = "Pour vous aider à faire valoir vos droits, conservez ce bulletin de paie sans limitation de durée."
 
 
+def qr_bulletin(id, x, y, cote=18):
+    """RG-EDT-QR-01 (Adil DAIA) : QR de contrôle du bulletin — ICE, matricule, période, net à payer."""
+    return {"id": id, "type": "CODE_BARRE", "x": x, "y": y, "l": cote, "h": cote, "symbologie": "QR",
+            "valeur": '"BUL|" + SIVIDE(societe.ice, "") + "|" + identite.matricule + "|" + @periode.code + "|" + FORMAT(net_a_payer, "MONTANT")'}
+
+
 def col(id, titre, largeur, valeur, masque=None, total=False, **s):
     c = {"id": id, "titre": titre, "largeur": largeur, "valeur": valeur, "style": st(**s)}
     if masque:
@@ -729,8 +869,8 @@ def bulletin_detaille() -> dict:
             ("Déductions", 'SIVIDE(situation_familiale.nb_deductions_fiscales, 0) + " personne(s)"')], pas=4.5, taille=7.5),
     ]
     colonnes = [
-        col("lib", "Désignation", 54, "libelle"),
-        col("code", "Code", 11, "code_rubrique", taille=6, couleur=GRIS),
+        col("lib", "Désignation", 49, "libelle"),
+        col("code", "Code", 16, "code_rubrique", taille=6, couleur=GRIS),
         col("base", "Base", 22, "base", "MONTANT_SANS_ZERO", alignement="DROITE"),
         col("nb", "Nombre", 13, "nombre", "QUANTITE", alignement="DROITE"),
         col("tx", "Taux sal.", 13, "taux", "QUANTITE", alignement="DROITE"),
@@ -783,16 +923,18 @@ def bulletin_detaille() -> dict:
     pied = [
         ligne("p_filet", 0, 0.5, L, couleur=BLEU, epaisseur=0.6),
         texte("p_mention", 0, 2, 150, 4, MENTION, taille=6.5, italique=True, couleur=GRIS),
+        qr_bulletin("p_qr", L - 18, 1.5, 17),
+        texte("p_qr_t", 120, 11, 50, 4, "Code de contrôle du bulletin", taille=6, italique=True, couleur=GRIS, alignement="DROITE"),
         champ("p_cnss", 0, 6, 150, 4, '"Cotisations versées à la CNSS sous le n° d\'affiliation " + SIVIDE(societe.numero_cnss, "—")'
                                       ' + " — en cas de litige, adressez-vous à l\'inspection du travail."', taille=6.5, couleur=GRIS),
-        champ("p_page", 150, 2, 40, 4, '"Page " + PAGE() + " / " + NB_PAGES()', taille=6.5, couleur=GRIS, alignement="DROITE"),
+        champ("p_page", 120, 15, 50, 4, '"Page " + PAGE() + " / " + NB_PAGES()', taille=6.5, couleur=GRIS, alignement="DROITE"),
     ]
     return definition(
         [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS], [JEU_BULLETIN, JEU_LIGNES],
         [bande("en_tete", "EN_TETE_PAGE", 58, en_tete),
          bande("detail", "CORPS", 60, corps),
          bande("cumuls", "CORPS", 26, bas, insecable=True),
-         bande("pied", "PIED_PAGE", 11, pied)],
+         bande("pied", "PIED_PAGE", 20, pied)],
         {"format": "A4", "orientation": "PORTRAIT", "marges": [10, 10, 10, 10]}, SORTIE_BULLETIN,
         usages={"confidentialite": 4})
 
@@ -928,10 +1070,11 @@ def bulletin_formulaire() -> dict:
              ("ret", "Retenues", "total_retenues"), ("net", "Net payé", "net_a_payer"),
              ("pat", "Cot. patronales", "total_cot_patronale"), ("cout", "Coût employeur", "cout_employeur")]]},
         # paiement et émargement
-        *paires("pay", XD, 145, 20, LD - 20, [("Paiement", 'SIVIDE(paiement.mode_libelle, "—")'),
+        qr_bulletin("qr", XD + LD - 18, 144, 18),
+        *paires("pay", XD, 145, 20, LD - 40, [("Paiement", 'SIVIDE(paiement.mode_libelle, "—")'),
                                              ("Banque", 'SIVIDE(paiement.banque_libelle, "—")'), ("Compte", RIB_MASQUE)], pas=4.5, taille=7),
-        cadre("sig_c", XD, 160, LD, 26, couleur=GRIS_CLAIR, arrondi=1.5),
-        texte("sig_t", XD + 2, 161, LD - 4, 4, "Reçu, lu et approuvé — signature du salarié", taille=6.5, italique=True, couleur=GRIS),
+        cadre("sig_c", XD, 164, LD, 22, couleur=GRIS_CLAIR, arrondi=1.5),
+        texte("sig_t", XD + 2, 165, LD - 4, 4, "Reçu, lu et approuvé — signature du salarié", taille=6.5, italique=True, couleur=GRIS),
     ]
     colonnes = [
         col("lib", "Désignation", 58, "libelle"),

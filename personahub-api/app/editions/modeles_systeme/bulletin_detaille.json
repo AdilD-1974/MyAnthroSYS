@@ -834,13 +834,13 @@
       {
        "id": "lib",
        "titre": "Désignation",
-       "largeur": 54.0,
+       "largeur": 49.0,
        "valeur": "libelle"
       },
       {
        "id": "code",
        "titre": "Code",
-       "largeur": 11.0,
+       "largeur": 16.0,
        "valeur": "code_rubrique",
        "style": {
         "taille": 6.0,
@@ -1509,7 +1509,7 @@
   {
    "id": "pied",
    "type": "PIED_PAGE",
-   "hauteur": 11.0,
+   "hauteur": 20.0,
    "elements": [
     {
      "id": "p_filet",
@@ -1538,6 +1538,30 @@
      "valeur": "\"Pour vous aider à faire valoir vos droits, conservez ce bulletin de paie sans limitation de durée.\""
     },
     {
+     "id": "p_qr",
+     "x": 172.0,
+     "y": 1.5,
+     "l": 17.0,
+     "h": 17.0,
+     "type": "CODE_BARRE",
+     "valeur": "\"BUL|\" + SIVIDE(societe.ice, \"\") + \"|\" + identite.matricule + \"|\" + @periode.code + \"|\" + FORMAT(net_a_payer, \"MONTANT\")"
+    },
+    {
+     "id": "p_qr_t",
+     "x": 120.0,
+     "y": 11.0,
+     "l": 50.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.0,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Code de contrôle du bulletin\""
+    },
+    {
      "id": "p_cnss",
      "x": 0.0,
      "y": 6.0,
@@ -1555,9 +1579,9 @@
     },
     {
      "id": "p_page",
-     "x": 150.0,
-     "y": 2.0,
-     "l": 40.0,
+     "x": 120.0,
+     "y": 15.0,
+     "l": 50.0,
      "h": 4.0,
      "style": {
       "taille": 6.5,

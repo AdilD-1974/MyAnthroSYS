@@ -67,3 +67,20 @@ def test_fond_de_page_dans_l_ordre_des_elements(s):
     pages, _ = composer(Contexte(definition=prep.definition, lignes=prep.lignes[:1], **prep.contexte))
     ids = [b.source_id for b in pages[0].boites]
     assert ids.index("lat_fond") < ids.index("lat_nom") < ids.index("titre")
+
+
+def test_qr_de_controle_sur_tous_les_bulletins(s):                        # RG-EDT-QR-01
+    from app.editions.definition import CodeBarre, Definition
+    for m in sv.lister_modeles(s, PAIE):
+        if m["categorie"] != "BULLETIN" or not m["est_systeme"]:
+            continue
+        d = Definition.model_validate(sv.lire_version(s, PAIE, m["version_publiee_id"])[0]["definition"])
+        qr = [e for b in d.bandes for e in b.elements if isinstance(e, CodeBarre)]
+        assert qr and "net_a_payer" in qr[0].valeur, m["code"]
+
+
+def test_journal_grille_et_forme_synthetique(s):
+    m = next(x for x in sv.lister_modeles(s, PAIE) if x["code"] == "JOURNAL_PAIE")
+    for forme in (None, "synthetique"):
+        r = sv.lancer(s, PAIE, m["id"], {"periode": P_SEP}, forme)
+        assert len(r["documents"]) == 1 and not r["documents"][0]["anomalies"], forme
