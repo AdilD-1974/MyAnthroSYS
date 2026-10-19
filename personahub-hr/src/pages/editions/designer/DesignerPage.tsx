@@ -432,7 +432,7 @@ export default function DesignerPage() {
 
       {/* aperçu */}
       <Dialog open={apercu.ouvert} onOpenChange={(o) => setApercu((a) => ({ ...a, ouvert: o }))}>
-        <DialogContent className={apercu.url ? "max-w-5xl" : "max-w-lg"}>
+        <DialogContent className={`ecran-editions-texte ${apercu.url ? "max-w-5xl" : "max-w-lg"}`}>
           <DialogHeader><DialogTitle>Aperçu{version.statut !== "PUBLIEE" ? " du brouillon" : ""}</DialogTitle></DialogHeader>
           <div className={apercu.url ? "grid grid-cols-[260px_1fr] gap-4" : ""}>
             <div>

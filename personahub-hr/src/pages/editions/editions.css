@@ -41,3 +41,36 @@
 
 /* ombres selon la préférence (aucune, légère, standard, marquée) */
 .ecran-editions .carte-edition { box-shadow: var(--shadow-app, none); }
+
+/* RG-EDT-UI-03 (Adil DAIA) : couleur des icônes d'action dans TOUS les écrans des éditions
+ * (bibliothèque, menu, lanceurs, designer, inspecteur, dialogues), comme dans les listes de
+ * l'application, et toujours tirée des préférences d'apparence (variables du thème) :
+ *   lancer, imprimer, publier, tester → succès     modifier, voir, réglages → accent
+ *   copier, ouvrir, télécharger, importer → info     créer, enregistrer, classement → principale
+ *   désarchiver, verrou → avertissement     supprimer, retirer → danger
+ *   monter, descendre, annuler, rétablir, archiver, réinitialiser → texte atténué
+ * Les icônes posées sur un bouton plein (fond principal ou danger) gardent le texte du bouton ;
+ * une action indisponible est grisée. Une seule table ici : ActionIcone.tsx applique les mêmes couleurs. */
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-play, svg.lucide-printer, svg.lucide-send, svg.lucide-circle-play, svg.lucide-check-circle-2, svg.lucide-circle-check)
+  { color: hsl(var(--success)); }
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-pencil, svg.lucide-eye, svg.lucide-settings, svg.lucide-settings-2, svg.lucide-wand-2, svg.lucide-sliders-horizontal, svg.lucide-pen-line)
+  { color: hsl(var(--accent)); }
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-copy, svg.lucide-external-link, svg.lucide-download, svg.lucide-upload, svg.lucide-file-down, svg.lucide-history)
+  { color: hsl(var(--info)); }
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-plus, svg.lucide-folder-plus, svg.lucide-save, svg.lucide-monitor-check, svg.lucide-file-text, svg.lucide-filter)
+  { color: hsl(var(--primary)); }
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-archive-restore, svg.lucide-lock, svg.lucide-star, svg.lucide-folder, svg.lucide-alert-triangle, svg.lucide-triangle-alert)
+  { color: hsl(var(--warning)); }
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-trash-2, svg.lucide-trash)
+  { color: hsl(var(--destructive)); }
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(svg.lucide-arrow-up, svg.lucide-arrow-down, svg.lucide-undo-2, svg.lucide-redo-2, svg.lucide-archive, svg.lucide-rotate-ccw, svg.lucide-grip-vertical)
+  { color: hsl(var(--muted-foreground)); }
+/* icône sur un bouton plein, onglet actif, case cochée : couleur du texte de l'élément */
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(.bg-primary, .bg-destructive, .bg-accent, .bg-success, [data-state="checked"], [data-state="active"]) svg.lucide
+  { color: inherit; }
+/* action indisponible */
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) :is(button:disabled, [aria-disabled="true"]) svg.lucide
+  { color: hsl(var(--muted-foreground)); }
+/* boutons-icônes nus (monter, descendre, retirer…) : survol comme dans les listes de l'application */
+:is(.ecran-editions, .ecran-editions-texte, .carte-edition) button:not([class*="bg-"]):not(:disabled):has(> svg.lucide:only-child):hover
+  { background-color: hsl(var(--muted)); border-radius: calc(var(--radius) - 4px); }
