@@ -33,7 +33,7 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
 }) {
   const [periodes, setPeriodes] = useState<Periode[]>([]);
   const [plans, setPlans] = useState<{ id: string; code: string; libelle: string }[]>([]);
-  const aPeriode = parametres.some((p) => p.type === "PERIODE" || p.type === "ANNEE");
+  const aPeriode = parametres.some((p) => p.type === "PERIODE" || p.type === "MOIS" || p.type === "ANNEE");
   const aPlan = parametres.some((p) => p.type === "PLAN_PAIE");
 
   useEffect(() => {
@@ -49,6 +49,11 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
           const defaut = payees[rang] ?? payees[0] ?? ps[0];
           rang++;
           if (!valeurs[p.code] && defaut) { nouv[p.code] = defaut.id; change = true; }
+        }
+        // RG-EDT-MOIS-01 : mois de paie le plus récent qui a des bulletins
+        if (p.type === "MOIS" && !valeurs[p.code] && (p.obligatoire ?? true)) {
+          const r = payees[0] ?? ps[0];
+          if (r) { nouv[p.code] = `${r.annee}-${String(r.mois).padStart(2, "0")}`; change = true; }
         }
         if (p.type === "ANNEE" && valeurs[p.code] === undefined && !p.defaut) {
           const an = (payees[0] ?? ps[0])?.annee;
@@ -80,6 +85,44 @@ export default function ParametresForm({ parametres, valeurs, onChange }: {
               </select>
             );
             break;
+          case "MOIS": {
+            // année puis mois : toutes les périodes de paie du mois (plusieurs plans ou périodes)
+            const [a, m] = typeof v === "string" && /^\d{4}-\d{2}$/.test(v) ? v.split("-").map(Number) : [undefined, undefined];
+            const annees = [...new Set(periodes.map((x) => x.annee))].sort((x, y) => y - x);
+            const duMois = (an?: number, mo?: number) => periodes.filter((x) => x.annee === an && x.mois === mo);
+            const poserMois = (an?: number, mo?: number) => set(p.code, an && mo ? `${an}-${String(mo).padStart(2, "0")}` : undefined);
+            const choisies = duMois(a, m);
+            champ = (
+              <div>
+                <div className="grid grid-cols-[110px_1fr] gap-2">
+                  <select className={classe} value={a ?? ""} aria-label="Année"
+                    onChange={(e) => {
+                      const an = e.target.value ? Number(e.target.value) : undefined;
+                      const mois = periodes.filter((x) => x.annee === an).map((x) => x.mois);
+                      poserMois(an, m && mois.includes(m) ? m : Math.max(0, ...mois) || undefined);
+                    }}>
+                    {!obligatoire && <option value="">—</option>}
+                    {annees.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                  <select className={classe} value={m ?? ""} aria-label="Mois" onChange={(e) => poserMois(a, e.target.value ? Number(e.target.value) : undefined)}>
+                    {!m && <option value="">—</option>}
+                    {MOIS.slice(1).map((nom, i) => {
+                      const ps = duMois(a, i + 1);
+                      if (!ps.length) return null;
+                      const nb = ps.reduce((t, x) => t + x.nb_bulletins, 0);
+                      return <option key={i + 1} value={i + 1}>{nom} — {ps.length > 1 ? `${ps.length} périodes, ` : ""}{nb} bulletin(s)</option>;
+                    })}
+                  </select>
+                </div>
+                {choisies.length > 1 && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {choisies.length} périodes regroupées : {choisies.map((x) => x.intitule || x.plan_code || "").filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+            );
+            break;
+          }
           case "PLAN_PAIE":
             champ = (
               <select className={classe} value={(v as string) ?? ""} onChange={(e) => set(p.code, e.target.value || undefined)}>

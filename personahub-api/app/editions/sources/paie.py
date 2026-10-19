@@ -229,9 +229,11 @@ class FournisseurBulletin(Fournisseur):
     def _perimetre(self, p: dict) -> tuple[str, dict, list[str]]:
         conds, binds, expanding = [], {}, []
         bulletin = _id(p.get("bulletin"))
-        periode = _id(p.get("periode"))
+        # RG-EDT-MOIS-01 : un mois de paie porte la liste de ses périodes (« ids »), pas un identifiant
+        mois_paie = next((v for v in (p.get("periode"), p.get("mois")) if isinstance(v, dict) and v.get("ids")), None)
+        periode = None if mois_paie else _id(p.get("periode"))
         annee = p.get("annee")
-        periodes = _ids(p.get("_periodes_ids"))                 # lecture interne (sortants)
+        periodes = _ids(p.get("_periodes_ids")) or (list(mois_paie["ids"]) if mois_paie else [])   # sortants, mois de paie
         if not (bulletin or periode or annee or periodes):
             raise ErreurSource("Paramètre requis : une période, une année ou un bulletin")
         if periodes and not periode:
@@ -354,7 +356,7 @@ class FournisseurBulletin(Fournisseur):
                 ph[c] = Decimal(0)
             ph.update({"id": f"{SORTANT}{rb['id']}", "_comparaison_id": str(rb["id"]), "mouvement": "SORTIE",
                        "sortant": 1, "origine": "SORTANT", "statut": "SORTANT"})
-            if per:
+            if per and per.get("id"):
                 ph["periode_id"] = str(per["id"])
                 ph["periode"] = {k: per.get(k) for k in ("id", "intitule", "annee", "mois", "date_debut", "date_fin")}
             res.append(ph)

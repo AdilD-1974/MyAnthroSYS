@@ -2,8 +2,8 @@
  "parametres": [
   {
    "code": "periode",
-   "libelle": "Période",
-   "type": "PERIODE"
+   "libelle": "Mois de paie",
+   "type": "MOIS"
   },
   {
    "code": "collaborateurs",
@@ -18,9 +18,6 @@
    "code": "b",
    "source": "BULLETIN",
    "role": "PRINCIPAL",
-   "filtres": [
-    "periode_id = @periode.id"
-   ],
    "tri": [
     {
      "champ": "identite.nom"

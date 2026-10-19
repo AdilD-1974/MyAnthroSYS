@@ -67,7 +67,7 @@ export default function FormuleInput({ value, onChange, jeu, placeholder, lignes
       const q = bas.slice(1);
       return (definition?.parametres ?? [])
         .filter((p) => p.code.startsWith(q))
-        .flatMap((p) => p.type === "PERIODE"
+        .flatMap((p) => p.type === "PERIODE" || p.type === "MOIS"
           ? [{ texte: `@${p.code}`, insertion: `@${p.code}`, detail: p.libelle, genre: "Paramètre" },
              ...["id", "code", "intitule", "date_debut", "date_fin", "annee", "mois"].map((a) => ({
                texte: `@${p.code}.${a}`, insertion: `@${p.code}.${a}`, detail: `${p.libelle} — ${a}`, genre: "Paramètre" }))]

@@ -11,7 +11,7 @@ export type Expr = string;
 export type Verrou = "AUCUN" | "FORME" | "TOTAL";
 
 export type TypeParametre =
-  | "PERIODE" | "COLLABORATEUR" | "ORGANISATION" | "PLAN_PAIE" | "DATE" | "ANNEE"
+  | "PERIODE" | "MOIS" | "COLLABORATEUR" | "ORGANISATION" | "PLAN_PAIE" | "DATE" | "ANNEE"
   | "TEXTE" | "NOMBRE" | "BOOLEEN" | "LISTE";
 
 export interface Parametre {
@@ -407,7 +407,7 @@ export const ATTRIBUTS_RUBRIQUE: { code: string; libelle: string }[] = [
 ];
 
 export const LIBELLES_PARAMETRE: Record<TypeParametre, string> = {
-  PERIODE: "Période de paie", COLLABORATEUR: "Collaborateur(s)", ORGANISATION: "Organisation",
+  PERIODE: "Période de paie", MOIS: "Mois de paie (année + mois, toutes ses périodes)", COLLABORATEUR: "Collaborateur(s)", ORGANISATION: "Organisation",
   PLAN_PAIE: "Plan de paie", DATE: "Date", ANNEE: "Année", TEXTE: "Texte", NOMBRE: "Nombre",
   BOOLEEN: "Oui / non", LISTE: "Liste de valeurs",
 };

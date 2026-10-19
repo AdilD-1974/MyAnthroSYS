@@ -236,8 +236,10 @@ def parametres_depuis_contexte(d: Definition, contexte: dict, saisis: Optional[d
     for p in d.parametres:
         if p.code in ctx:
             res[p.code] = ctx[p.code]
-        elif p.type == "PERIODE" and ctx.get("periode_id"):
-            res[p.code] = ctx["periode_id"]
+        elif p.type in ("PERIODE", "MOIS") and ctx.get("periode_id"):
+            res[p.code] = ctx["periode_id"]                  # MOIS : le mois de cette période (RG-EDT-MOIS-01)
+        elif p.type == "MOIS" and ctx.get("annee") and ctx.get("mois"):
+            res[p.code] = f"{int(ctx['annee'])}-{int(ctx['mois']):02d}"
         elif p.type == "COLLABORATEUR" and collabs:
             res[p.code] = list(collabs) if p.multiple else collabs[0]
         elif p.type == "PLAN_PAIE" and ctx.get("plan_paie_id"):

@@ -64,6 +64,8 @@ def resoudre_parametres(db: Session, d: Definition, bruts: dict, sec: ContexteSe
             continue
         if p.type == "PERIODE":
             v = _periode(db, v, sec)
+        elif p.type == "MOIS":
+            v = mois_de_paie(db, v, sec)
         elif p.type == "DATE" and isinstance(v, str):
             v = date.fromisoformat(v[:10])
         elif p.type in ("ANNEE", "NOMBRE"):
@@ -90,6 +92,50 @@ def _periode(db: Session, v: Any, sec: ContexteSecurite) -> dict:
     p = {k: (str(x) if k in ("id", "plan_paie_id") and x is not None else x) for k, x in dict(row).items()}
     p["code"] = f"{p['annee']}-{int(p['mois']):02d}"
     return p
+
+
+MOIS_LONGS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
+              "octobre", "novembre", "décembre")
+
+
+def mois_de_paie(db: Session, v: Any, sec: ContexteSecurite) -> dict:
+    """RG-EDT-MOIS-01 (Adil DAIA) : un mois de paie = toutes les périodes de paie de la société
+    pour cette année et ce mois (plusieurs plans, ou plusieurs périodes dans le mois).
+    Accepte « AAAA-MM », {annee, mois} ou l'identifiant d'une période (écran appelant : son mois).
+    Rend les attributs d'une période (@periode.date_debut, date_fin, code, intitule, annee, mois)
+    et la liste des périodes du mois (ids)."""
+    annee = mois = None
+    if isinstance(v, dict):
+        annee, mois = v.get("annee"), v.get("mois")
+        if (annee is None or mois is None) and v.get("id"):
+            v = v["id"]
+    if annee is None and isinstance(v, str) and re.fullmatch(r"\d{4}-\d{1,2}", v.strip()):
+        annee, mois = (int(x) for x in v.strip().split("-"))
+    if annee is None and v not in (None, ""):
+        row = db.execute(text("SELECT annee, mois FROM calendrier_paie WHERE id = :id AND societe_id = :s"),
+                         {"id": str(v), "s": sec.societe_id}).first()
+        if row is None:
+            raise ErreurSource("Période introuvable dans la société active")          # RG-EDT-SECU-02
+        annee, mois = row
+    try:
+        annee, mois = int(annee), int(mois)
+    except (TypeError, ValueError):
+        raise ErreurSource("Mois de paie invalide : année et mois attendus")
+    if not 1 <= mois <= 12:
+        raise ErreurSource("Mois de paie invalide : mois de 1 à 12")
+    rows = db.execute(text("""
+        SELECT id, date_debut, date_fin FROM calendrier_paie
+        WHERE societe_id = :s AND annee = :a AND mois = :m ORDER BY date_debut, id"""),
+        {"s": sec.societe_id, "a": annee, "m": mois}).mappings().all()
+    if not rows:
+        raise ErreurSource(f"Aucune période de paie en {MOIS_LONGS[mois - 1]} {annee}")
+    debuts = [r["date_debut"] for r in rows if r["date_debut"]]
+    fins = [r["date_fin"] for r in rows if r["date_fin"]]
+    return {"annee": annee, "mois": mois, "code": f"{annee}-{mois:02d}",
+            "intitule": f"{MOIS_LONGS[mois - 1].capitalize()} {annee}",
+            "date_debut": min(debuts) if debuts else date(annee, mois, 1),
+            "date_fin": max(fins) if fins else date(annee, mois, 1),
+            "ids": [str(r["id"]) for r in rows], "nb_periodes": len(rows)}
 
 
 # ---------------------------------------------------------------------------

@@ -209,3 +209,30 @@ def test_corps_exercice_valide(s):
          "bandes": [{"id": "c", "type": "CORPS", "hauteur": 5, "elements": []}]}
     msgs = [e.message for e in valider(d, CatalogueValidation()).erreurs]
     assert any("m01 à m12" in m for m in msgs) and any("un seul attribut" in m for m in msgs) and any("période « Mois »" in m for m in msgs)
+
+
+# ---- mois de paie : toutes les périodes du mois (RG-EDT-MOIS-01) ----
+def test_mois_de_paie_regroupe_les_periodes_du_mois(s):
+    from tests_editions.recette import S1
+    from app.editions.moteur import executeur
+    sec = sv.contexte_securite(s, PAIE)
+    # 2e période de septembre (plan des primes) avec un bulletin d'Omar
+    s.execute(text("INSERT INTO plan_paie (id, code, libelle) VALUES ('dddddddd-0000-0000-0000-000000000002', 'PRIM', 'Primes')"))
+    s.execute(text("""INSERT INTO calendrier_paie (id, plan_paie_id, annee, mois, date_debut, date_fin, intitule, societe_id)
+                      VALUES ('aaaaaaaa-0000-0000-0000-000000000019', 'dddddddd-0000-0000-0000-000000000002', 2026, 9,
+                              '2026-09-15', '2026-09-30', 'Primes septembre 2026', :s)"""), {"s": S1})
+    s.execute(text("""INSERT INTO bulletin (id, periode_id, collaborateur_id, matricule, plan_paie_id, total_brut, net_a_payer, statut)
+                      VALUES ('b0000000-0000-0000-0000-000000000019', 'aaaaaaaa-0000-0000-0000-000000000019',
+                              'c0000000-0000-0000-0000-000000000002', 'M002', 'dddddddd-0000-0000-0000-000000000002', 1000, 800, 'VALIDE')"""))
+    for valeur in ("2026-09", {"annee": 2026, "mois": 9}, P_SEP):          # saisie, objet, ou période d'un écran appelant
+        m = executeur.mois_de_paie(s, valeur, sec)
+        assert (m["code"], m["nb_periodes"], str(m["date_debut"]), m["intitule"]) == ("2026-09", 2, "2026-09-01", "Septembre 2026")
+    mid = next(x["id"] for x in sv.lister_modeles(s, PAIE) if x["code"] == "JOURNAL_PAIE")
+    prep = _preparer(s, "JOURNAL_PAIE", {"periode": "2026-09"})
+    assert len(prep.lignes) == 3                                          # Sara, Omar (mensuel) et Omar (primes)
+    assert sv.lancer(s, PAIE, mid, {"periode": "2026-09"})["documents"]
+    # un bulletin garde une période précise
+    assert len(_preparer(s, "BULLETIN_DETAILLE", {"periode": P_SEP}).lignes) == 2
+    import pytest
+    with pytest.raises(Exception, match="Aucune période de paie en mars 2025"):
+        executeur.mois_de_paie(s, "2025-03", sec)

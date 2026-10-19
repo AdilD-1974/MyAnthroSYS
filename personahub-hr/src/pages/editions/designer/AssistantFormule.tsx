@@ -137,7 +137,7 @@ export default function AssistantFormule({ valeur, jeu, corpsCourant, onValider,
         const items: (Element & { groupe: string })[] = [];
         (definition?.parametres ?? []).forEach((p) => {
           items.push({ groupe: p.libelle, insert: `@${p.code}`, titre: `@${p.code}`, detail: p.libelle });
-          if (p.type === "PERIODE") ["code", "intitule", "date_debut", "date_fin", "annee", "mois"].forEach((a) =>
+          if (p.type === "PERIODE" || p.type === "MOIS") ["code", "intitule", "date_debut", "date_fin", "annee", "mois"].forEach((a) =>
             items.push({ groupe: p.libelle, insert: `@${p.code}.${a}`, titre: `@${p.code}.${a}`, detail: a }));
         });
         return parGroupe(items.filter((i) => filtre(i.titre, i.detail)));

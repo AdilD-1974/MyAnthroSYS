@@ -38,7 +38,8 @@ class Strict(BaseModel):
 class Parametre(Strict):
     code: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
     libelle: str
-    type: Literal["PERIODE", "COLLABORATEUR", "ORGANISATION", "PLAN_PAIE", "DATE", "ANNEE",
+    # MOIS : année + mois de paie, toutes les périodes du mois (RG-EDT-MOIS-01)
+    type: Literal["PERIODE", "MOIS", "COLLABORATEUR", "ORGANISATION", "PLAN_PAIE", "DATE", "ANNEE",
                   "TEXTE", "NOMBRE", "BOOLEEN", "LISTE"]
     obligatoire: bool = True
     multiple: bool = False

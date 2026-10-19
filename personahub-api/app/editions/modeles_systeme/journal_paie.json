@@ -2,8 +2,8 @@
  "parametres": [
   {
    "code": "periode",
-   "libelle": "Période",
-   "type": "PERIODE"
+   "libelle": "Mois de paie",
+   "type": "MOIS"
   },
   {
    "code": "plan_paie",
@@ -24,9 +24,6 @@
    "code": "b",
    "source": "BULLETIN",
    "role": "PRINCIPAL",
-   "filtres": [
-    "periode_id = @periode.id"
-   ],
    "tri": [
     {
      "champ": "plan.code"

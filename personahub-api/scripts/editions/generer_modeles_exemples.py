@@ -27,6 +27,9 @@ DOSSIER = Path(__file__).resolve().parents[2] / "app" / "editions" / "modeles_sy
 
 BLEU, BLEU_CLAIR, GRIS, GRIS_CLAIR, BLANC = "#0E3D5C", "#E8F1F5", "#6B7C88", "#D5DEE3", "#FFFFFF"
 PARAM_PERIODE = {"code": "periode", "libelle": "Période", "type": "PERIODE"}
+# RG-EDT-MOIS-01 : journaux, listes, déclarations, attestations, courriers, synthèses : année + mois de paie,
+# toutes les périodes du mois (bulletins et états de contrôle gardent une période précise)
+PARAM_MOIS = {"code": "periode", "libelle": "Mois de paie", "type": "MOIS"}
 PARAM_COLLABS = {"code": "collaborateurs", "libelle": "Collaborateurs", "type": "COLLABORATEUR",
                  "obligatoire": False, "multiple": True}
 PARAM_PLAN = {"code": "plan_paie", "libelle": "Plan de paie", "type": "PLAN_PAIE", "obligatoire": False}
@@ -222,8 +225,8 @@ def journal_paie_synthetique() -> dict:
               taille=6.5, couleur=GRIS),
     ]
     return definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "plan.code"}, {"champ": "identite.nom"}, {"champ": "identite.prenom"}], "groupes": ["plan.code"]}],
         [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
          bande("groupe_tete", "EN_TETE_GROUPE", 8, groupe_tete, niveau_groupe=1),
@@ -352,8 +355,8 @@ def journal_paie() -> dict:
     pied = [champ("p_page", L - 40, 2, 40, 4, '"Page " + PAGE() + "/" + NB_PAGES()', taille=7, gras=True, alignement="DROITE"),
             champ("p_edit", 0, 2, 150, 4, '"Édité par " + SIVIDE(UTILISATEUR("nom"), "—")', taille=6.5, couleur=GRIS)]
     d = definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "plan.code"}, {"champ": "identite.matricule"}], "groupes": ["plan.code"]}],
         [bande("en_tete", "EN_TETE_PAGE", y0 + 4 * HE + 1, en_tete),
          bande("salarie", "CORPS", 4 * HL + 1.5, corps, insecable=True),
@@ -425,9 +428,9 @@ def ordre_virement() -> dict:
         champ("sig_nom", 112, 64, 66, 5, 'SIVIDE(societe.nom_gerant, "")', taille=8, alignement="CENTRE"),
     ]
     return definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS],
         [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL",
-          "filtres": ["periode_id = @periode.id", "net_a_payer > 0"],
+          "filtres": ["net_a_payer > 0"],
           "tri": [{"champ": "paiement.banque_libelle"}, {"champ": "identite.nom"}, {"champ": "identite.prenom"}],
           "groupes": ["paiement.banque_libelle"]}],
         [bande("lettre", "EN_TETE_ETAT", 72, lettre, extensible=True),
@@ -511,8 +514,8 @@ def attestation() -> dict:
                  italique=True, couleur=GRIS), "extensible": True},
     ]
     return definition(
-        [PARAM_PERIODE, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
         [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Ressources humaines", f'"Période : " + {MOIS}')),
          bande("titre", "CORPS", 26, titre),
@@ -599,8 +602,8 @@ def notification() -> dict:
     for r in reperes:
         r["x"] = 0
     return definition(
-        [PARAM_PERIODE, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
         [bande("reperes", "FOND", 0, reperes),
          bande("en_tete", "CORPS", 88, en_tete),
@@ -694,8 +697,8 @@ def cotisations() -> dict:
               texte("n_t5", 162, y0 + 27.5, 113, 5, "Taux modifiables dans le designer : Données › Variables.", taille=6.5,
                     italique=True, couleur=GRIS)]
     return definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
         [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
          bande("detail", "CORPS", 5, corps),
@@ -781,8 +784,8 @@ def fiche_synthese() -> dict:
                              "Moyennes et projection calculées sur les bulletins de l'année jusqu'à la période choisie.",
                              taille=6.5, italique=True, couleur=GRIS))
     return definition(
-        [PARAM_PERIODE, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
         [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Ressources humaines", f'"Exercice " + @periode.annee')),
          bande("identite", "CORPS", 60, identite),
@@ -798,7 +801,7 @@ def fiche_synthese() -> dict:
 # =============================================================================
 # 7 à 9. BULLETINS — trois présentations complètes
 # =============================================================================
-JEU_BULLETIN = {"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+JEU_BULLETIN = {"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
                 "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}
 JEU_LIGNES = {"code": "l", "source": "BULLETIN_LIGNE", "role": "SECONDAIRE", "parent": "b", "relation": "lignes",
               "filtres": ['sens = "GAIN" OU sens = "RETENUE"', "COALESCE(montant, 0) <> 0 OU COALESCE(montant_patronal, 0) <> 0"],
@@ -1384,8 +1387,8 @@ def masse_salariale() -> dict:
                        "% masse : part de la masse brute de la société. Taux de charges : cotisations patronales / masse brute.",
                        taille=7, italique=True, couleur=GRIS))
     return definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "groupes": ["affectation.uo_niveau1_libelle", "qualification.categorie_professionnelle_libelle"],
           "tri": [{"champ": "affectation.uo_niveau1_libelle"}, {"champ": "qualification.categorie_professionnelle_libelle"}]}],
         [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
@@ -1434,8 +1437,8 @@ def emargement() -> dict:
              cadre("vis_c2", 95, 24, 85, 26, couleur=GRIS_CLAIR, arrondi=1.5),
              texte("vis_t2", 97, 25, 81, 5, "Visa de la direction", taille=7.5, gras=True, couleur=BLEU)]
     return definition(
-        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
-        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id", "net_a_payer > 0"],
+        [PARAM_MOIS, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["net_a_payer > 0"],
           "groupes": ["paiement.mode_libelle"],
           "tri": [{"champ": "paiement.mode_libelle"}, {"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
         [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
