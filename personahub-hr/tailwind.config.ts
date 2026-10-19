@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { couleursTailwind } from "./src/lib/themeCouleurs";
 
 export default {
   darkMode: ["class"],
@@ -14,6 +15,12 @@ export default {
     },
     extend: {
       colors: {
+        // RG-UI-COULEUR-02 : red, green, amber, blue, gray… suivent les préférences « Apparence »
+        ...couleursTailwind(),
+        success: { DEFAULT: "hsl(var(--success) / <alpha-value>)", foreground: "hsl(var(--success-foreground))" },
+        warning: { DEFAULT: "hsl(var(--warning) / <alpha-value>)", foreground: "hsl(var(--warning-foreground))" },
+        info: { DEFAULT: "hsl(var(--info) / <alpha-value>)", foreground: "hsl(var(--info-foreground))" },
+        danger: { DEFAULT: "hsl(var(--danger) / <alpha-value>)", foreground: "hsl(var(--danger-foreground))" },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

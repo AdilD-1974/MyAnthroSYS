@@ -57,7 +57,11 @@ function ongletDAttente(): Window | null {
   const w = window.open("", "_blank");
   if (w) {
     w.document.title = "Édition en cours…";
-    w.document.body.innerHTML = '<p style="font:14px system-ui;color:#555;padding:24px">Préparation du document…</p>';
+    // RG-UI-COULEUR-01 : couleurs du thème de l'utilisateur, même dans l'onglet d'attente
+    const css = getComputedStyle(document.documentElement);
+    const jeton = (n: string, d: string) => (css.getPropertyValue(n).trim() ? `hsl(${css.getPropertyValue(n).trim()})` : d);
+    w.document.body.style.background = jeton("--background", "#fff");
+    w.document.body.innerHTML = `<p style="font:14px system-ui;color:${jeton("--muted-foreground", "#555")};padding:24px">Préparation du document…</p>`;
   }
   return w;
 }

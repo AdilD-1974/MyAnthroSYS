@@ -21,71 +21,135 @@ input[type="number"] {
 
 @layer base {
   :root {
-    /* Brand – palette issue des images ANTHRO-SYS */
-    --brand-navy:       200 60% 22%;   /* #0E3D5C bleu pétrole foncé */
-    --brand-navy-light: 195 50% 30%;   /* #1A5A73 */
-    --brand-teal:       180 55% 45%;   /* #34A1A1 teal */
-    --brand-cyan:       175 80% 55%;   /* #1DCFCF cyan vif */
-
-    /* Semantic tokens */
-    --background:       195 20% 96%;   /* #F1F6F8 */
-    --foreground:       200 60% 18%;   /* navy foncé */
-
-    --card:             0 0% 100%;
-    --card-foreground:  200 50% 15%;
-
-    --popover:          0 0% 100%;
-    --popover-foreground: 200 50% 15%;
-
-    --primary:          200 60% 22%;   /* navy */
+    /* RG-UI-COULEUR-01 (Adil DAIA) : valeurs par défaut (écran de connexion, avant chargement des
+       préférences), générées par src/lib/themeCouleurs.ts avec les préférences par défaut.
+       ThemeContext les remplace toutes par celles calculées depuis « Apparence ». Ne pas éditer
+       à la main : modifier les préférences par défaut de ThemeContext et régénérer. */
+    --background: 197 33% 96%;
+    --foreground: 204 55% 16%;
+    --card: 197 30% 100%;
+    --card-foreground: 204 55% 16%;
+    --popover: 197 30% 100%;
+    --popover-foreground: 204 55% 16%;
+    --primary: 204 74% 21%;
     --primary-foreground: 0 0% 100%;
-
-    --secondary:        180 55% 45%;   /* teal */
+    --secondary: 180 51% 42%;
     --secondary-foreground: 0 0% 100%;
-
-    --accent:           175 80% 40%;   /* cyan */
-    --accent-foreground: 0 0% 100%;
-
-    --muted:            195 20% 92%;
-    --muted-foreground: 200 20% 50%;
-
-    --destructive:      0 84% 60%;
+    --accent: 180 75% 46%;
+    --accent-foreground: 204 55% 16%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-
-    /* Statuts sémantiques (sens stable, non modifiables via Apparence) */
-    --success:               142 64% 36%;
-    --success-foreground:    0 0% 100%;
-    --warning:               38 92% 45%;
-    --warning-foreground:    0 0% 100%;
-    --info:                  210 80% 48%;
-    --info-foreground:       0 0% 100%;
-
-    --border:           195 20% 88%;
-    --input:            195 20% 88%;
-    --ring:             175 80% 40%;
+    --danger: 0 72% 51%;
+    --danger-foreground: 0 0% 100%;
+    --success: 152 65% 34%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+    --info: 204 74% 21%;
+    --info-foreground: 0 0% 100%;
+    --muted: 197 33% 92%;
+    --muted-foreground: 204 22% 46%;
+    --border: 197 33% 88%;
+    --input: 197 33% 88%;
+    --ring: 180 75% 46%;
+    --sidebar-background: 203 74% 15%;
+    --sidebar-foreground: 203 10% 95%;
+    --sidebar-primary: 180 75% 46%;
+    --sidebar-primary-foreground: 204 55% 16%;
+    --sidebar-accent: 203 74% 24%;
+    --sidebar-accent-foreground: 203 10% 95%;
+    --sidebar-border: 203 74% 21%;
+    --sidebar-ring: 180 75% 46%;
+    --brand-navy: 204 74% 21%;
+    --brand-navy-light: 204 74% 29%;
+    --brand-teal: 180 51% 42%;
+    --brand-cyan: 180 75% 46%;
+    --gradient-brand: linear-gradient(135deg, hsl(204 74% 21%), hsl(204 74% 29%));
+    --gradient-hero: linear-gradient(160deg, hsl(204 74% 15%) 0%, hsl(204 74% 29%) 50%, hsl(180 75% 46% / 0.3) 100%);
+    --gradient-green: linear-gradient(135deg, hsl(180 51% 42%), hsl(180 75% 46%));
+    --shadow-sm: 0 1px 3px hsl(204 74% 21% / 0.08);
+    --shadow-md: 0 4px 12px hsl(204 74% 21% / 0.12);
+    --shadow-lg: 0 8px 24px hsl(204 74% 21% / 0.16);
+    --shadow-glow: 0 0 20px hsl(180 75% 46% / 0.25);
+    --pal-danger-50: 0 54% 97%;
+    --pal-danger-100: 0 54% 94%;
+    --pal-danger-200: 0 72% 87%;
+    --pal-danger-300: 0 72% 77%;
+    --pal-danger-400: 0 72% 64%;
+    --pal-danger-500: 0 72% 52%;
+    --pal-danger-600: 0 72% 44%;
+    --pal-danger-700: 0 72% 36%;
+    --pal-danger-800: 0 72% 28%;
+    --pal-danger-900: 0 72% 21%;
+    --pal-danger-950: 0 58% 13%;
+    --pal-succes-50: 152 49% 97%;
+    --pal-succes-100: 152 49% 94%;
+    --pal-succes-200: 152 65% 87%;
+    --pal-succes-300: 152 65% 77%;
+    --pal-succes-400: 152 65% 64%;
+    --pal-succes-500: 152 65% 52%;
+    --pal-succes-600: 152 65% 44%;
+    --pal-succes-700: 152 65% 36%;
+    --pal-succes-800: 152 65% 28%;
+    --pal-succes-900: 152 65% 21%;
+    --pal-succes-950: 152 52% 13%;
+    --pal-alerte-50: 32 71% 97%;
+    --pal-alerte-100: 32 71% 94%;
+    --pal-alerte-200: 32 95% 87%;
+    --pal-alerte-300: 32 95% 77%;
+    --pal-alerte-400: 32 95% 64%;
+    --pal-alerte-500: 32 95% 52%;
+    --pal-alerte-600: 32 95% 44%;
+    --pal-alerte-700: 32 95% 36%;
+    --pal-alerte-800: 32 95% 28%;
+    --pal-alerte-900: 32 95% 21%;
+    --pal-alerte-950: 32 76% 13%;
+    --pal-principale-50: 204 56% 97%;
+    --pal-principale-100: 204 56% 94%;
+    --pal-principale-200: 204 74% 87%;
+    --pal-principale-300: 204 74% 77%;
+    --pal-principale-400: 204 74% 64%;
+    --pal-principale-500: 204 74% 52%;
+    --pal-principale-600: 204 74% 44%;
+    --pal-principale-700: 204 74% 36%;
+    --pal-principale-800: 204 74% 28%;
+    --pal-principale-900: 204 74% 21%;
+    --pal-principale-950: 204 59% 13%;
+    --pal-accent-50: 180 56% 97%;
+    --pal-accent-100: 180 56% 94%;
+    --pal-accent-200: 180 75% 87%;
+    --pal-accent-300: 180 75% 77%;
+    --pal-accent-400: 180 75% 64%;
+    --pal-accent-500: 180 75% 52%;
+    --pal-accent-600: 180 75% 44%;
+    --pal-accent-700: 180 75% 36%;
+    --pal-accent-800: 180 75% 28%;
+    --pal-accent-900: 180 75% 21%;
+    --pal-accent-950: 180 60% 13%;
+    --pal-secondaire-50: 180 38% 97%;
+    --pal-secondaire-100: 180 38% 94%;
+    --pal-secondaire-200: 180 51% 87%;
+    --pal-secondaire-300: 180 51% 77%;
+    --pal-secondaire-400: 180 51% 64%;
+    --pal-secondaire-500: 180 51% 52%;
+    --pal-secondaire-600: 180 51% 44%;
+    --pal-secondaire-700: 180 51% 36%;
+    --pal-secondaire-800: 180 51% 28%;
+    --pal-secondaire-900: 180 51% 21%;
+    --pal-secondaire-950: 180 41% 13%;
+    --pal-neutre-50: 204 10% 97%;
+    --pal-neutre-100: 204 10% 94%;
+    --pal-neutre-200: 204 10% 87%;
+    --pal-neutre-300: 204 10% 77%;
+    --pal-neutre-400: 204 10% 64%;
+    --pal-neutre-500: 204 10% 52%;
+    --pal-neutre-600: 204 10% 44%;
+    --pal-neutre-700: 204 10% 36%;
+    --pal-neutre-800: 204 10% 28%;
+    --pal-neutre-900: 204 10% 21%;
+    --pal-neutre-950: 204 10% 13%;
 
     --radius: 0.5rem;
-
-    /* Sidebar */
-    --sidebar-background:          200 60% 16%;
-    --sidebar-foreground:          0 0% 95%;
-    --sidebar-primary:             175 80% 40%;
-    --sidebar-primary-foreground:  0 0% 100%;
-    --sidebar-accent:              200 50% 25%;
-    --sidebar-accent-foreground:   0 0% 95%;
-    --sidebar-border:              200 40% 22%;
-    --sidebar-ring:                175 80% 40%;
-
-    /* Gradients */
-    --gradient-brand:   linear-gradient(135deg, hsl(200 60% 22%), hsl(195 50% 30%));
-    --gradient-hero:    linear-gradient(160deg, hsl(200 60% 16%) 0%, hsl(195 50% 30%) 50%, hsl(175 80% 40% / 0.3) 100%);
-    --gradient-green:   linear-gradient(135deg, hsl(180 55% 40%), hsl(175 80% 50%));
-
-    /* Shadows */
-    --shadow-sm:   0 1px 3px hsl(200 60% 22% / 0.08);
-    --shadow-md:   0 4px 12px hsl(200 60% 22% / 0.12);
-    --shadow-lg:   0 8px 24px hsl(200 60% 22% / 0.16);
-    --shadow-glow: 0 0 20px hsl(175 80% 40% / 0.25);
   }
 
   .dark {
@@ -169,10 +233,11 @@ input[type="number"] {
   .badge-role {
     @apply text-xs font-semibold px-2.5 py-0.5 rounded-full;
   }
-  .badge-administrateur { background: hsl(200 60% 22%); color: white; }
-  .badge-gestionnaire_rh { background: hsl(175 80% 40%); color: white; }
-  .badge-gestionnaire_paie { background: hsl(180 55% 45%); color: white; }
-  .badge-manager { background: hsl(39 95% 55%); color: white; }
+  /* RG-UI-COULEUR-01 : rôles aux couleurs des préférences */
+  .badge-administrateur { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .badge-gestionnaire_rh { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+  .badge-gestionnaire_paie { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+  .badge-manager { background: hsl(var(--warning)); color: hsl(var(--warning-foreground)); }
   .badge-collaborateur { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
 
   /* Page header */
@@ -197,7 +262,7 @@ input[type="number"] {
     color: hsl(var(--foreground));
   }
   .ref-chip:hover { border-color: hsl(var(--accent)); color: hsl(var(--accent)); }
-  .ref-chip.active { background: hsl(var(--accent)); color: white; border-color: hsl(var(--accent)); }
+  .ref-chip.active { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); border-color: hsl(var(--accent)); }
 }
 
 /* Custom scrollbar */

@@ -86,7 +86,7 @@ export default function Canevas({ editeur, zoom, lectureSeule, erreursParElement
       ))}
       {/* repères verticaux : toute la hauteur de la page */}
       {guides.x.map((x) => (
-        <div key={x} className="pointer-events-none absolute bottom-24 top-5 z-30 w-px bg-fuchsia-500" style={{ left: 150 + x * mm }} />
+        <div key={x} className="pointer-events-none absolute bottom-24 top-5 z-30 w-px bg-accent" style={{ left: 150 + x * mm }} />
       ))}
       {lasso && (
         <div className="pointer-events-none fixed z-40 border border-primary bg-primary/10"
@@ -249,7 +249,7 @@ function BandeVue({ bande, editeur, mm, largeur, lectureSeule, erreursParElement
             <ElementVue key={el.id} el={el} bande={bande} editeur={editeur} mm={mm} largeur={largeur}
               lectureSeule={lectureSeule} erreur={erreursParElement.get(el.id)} />
           ))}
-          {guidesY.map((y) => <div key={y} className="pointer-events-none absolute left-0 right-0 z-30 h-px bg-fuchsia-500" style={{ top: y * mm }} />)}
+          {guidesY.map((y) => <div key={y} className="pointer-events-none absolute left-0 right-0 z-30 h-px bg-accent" style={{ top: y * mm }} />)}
         </div>
         {!lectureSeule && (
           <div onPointerDown={tirerBord} title="Hauteur de la bande"
