@@ -200,3 +200,29 @@ def test_periode_d_une_autre_societe_refusee(db):               # RG-EDT-SECU-02
         executer(db, Definition.model_validate(BULLETIN), {"periode": P_S2}, ContexteSecurite(None, S1))
     with pytest.raises(ErreurSource, match="société active"):
         executer(db, Definition.model_validate(BULLETIN), {"periode": P_SEP}, ContexteSecurite(None, S2))
+
+
+# ---- logo de la société (RG-EDT-IMAGE-06/07) ----
+def test_logo_enregistre_en_url_par_l_ecran_societes():
+    from app.editions.moteur.executeur import _chemin_relatif
+    assert _chemin_relatif("http://localhost:8000/api/v1/storage/logos_societes/a1.png") == "logos_societes/a1.png"
+    assert _chemin_relatif("http://serveur:8000/api/v1/storage/logos_societes/a1.png?v=3") == "logos_societes/a1.png"
+    assert _chemin_relatif("storage/logos_societes/a1.png") == "logos_societes/a1.png"
+    assert _chemin_relatif("/storage/logos_societes/a1.png") == "logos_societes/a1.png"
+    assert _chemin_relatif("logos_societes\\a1.png") == "logos_societes/a1.png"
+    assert _chemin_relatif("https://autre-site.ma/logo.png") == ""          # hors du storage : ignoré
+
+
+def test_logo_svg_dessine(tmp_path):
+    import pytest
+    pytest.importorskip("svglib")
+    from app.editions.definition import Page as PageDef
+    from app.editions.moteur.mise_en_page import Boite, Page
+    from app.editions.moteur.rendu_pdf import RenduPDF
+    (tmp_path / "logos_societes").mkdir()
+    (tmp_path / "logos_societes" / "l.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#0E3D5C"/></svg>')
+    page = Page(numero=1, boites=[Boite(0, 0, 40, 20, "IMAGE", valeur="logos_societes/l.svg", ajustement="CONTENIR")])
+    sans = RenduPDF(PageDef(), {}, str(tmp_path)).rendre([Page(numero=1, boites=[])])
+    avec = RenduPDF(PageDef(), {}, str(tmp_path)).rendre([page])
+    assert b"0.054902 0.239216 0.360784" in avec or len(avec) > len(sans) + 40    # le rectangle bleu est dessiné

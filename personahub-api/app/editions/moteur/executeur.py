@@ -337,8 +337,15 @@ def _valeurs_rubriques(prep: "Preparation", d: Definition, ligne: dict) -> list[
 
 
 def _chemin_relatif(p: str) -> str:
-    p = p.replace("\\", "/")
-    return p[len("storage/"):] if p.startswith("storage/") else p.lstrip("/")
+    """RG-EDT-IMAGE-06 (Adil DAIA) : chemin d'une image dans storage, quelle que soit la forme enregistrée.
+    L'écran Sociétés enregistre l'URL publique (http://hôte/api/v1/storage/logos_societes/x.png) :
+    on garde ce qui suit « /storage/ ». Un chemin « storage/… » ou relatif est accepté tel quel."""
+    p = str(p).strip().replace("\\", "/").split("?", 1)[0].split("#", 1)[0]
+    if "://" in p or p.startswith("/api/"):
+        i = p.find("/storage/")
+        return p[i + len("/storage/"):] if i >= 0 else ""
+    p = p.lstrip("/")
+    return p[len("storage/"):] if p.startswith("storage/") else p
 
 
 def _nom_fichier(v: Any) -> str:

@@ -209,6 +209,9 @@ class RenduPDF:
         if not autorise(chemin, self.racine):               # RG-EDT-SECU-06
             log.warning("Image hors des dossiers autorisés, ignorée : %s", chemin)
             return
+        if chemin.suffix.lower() == ".svg":                 # RG-EDT-IMAGE-07 : logo vectoriel
+            self._image_svg(c, b, chemin)
+            return
         # RG-EDT-IMAGE-04/05 (Adil DAIA) : rognage, puis ajustement dans le cadre
         from PIL import Image as ImagePIL
         try:
@@ -242,6 +245,29 @@ class RenduPDF:
             w, hh = iw * echelle, ih * echelle
             x0, y0 = x + (l - w) / 2, haut - h + (h - hh) / 2      # centrée dans le cadre
         c.drawImage(ImageReader(img), x0, y0, w, hh, mask="auto")
+
+    def _image_svg(self, c, b: Boite, chemin: Path):
+        """RG-EDT-IMAGE-07 (Adil DAIA) : une image SVG (logo vectoriel enregistré dans l'écran Sociétés)
+        est dessinée en vectoriel, centrée et contenue dans son cadre (ou étirée) ; pas de rognage."""
+        try:
+            from svglib.svglib import svg2rlg
+            dessin = svg2rlg(str(chemin))
+        except Exception as e:                              # svglib absent ou SVG illisible
+            log.info("SVG illisible %s : %s", chemin, e)
+            return
+        if dessin is None or not dessin.width or not dessin.height:
+            log.info("SVG vide %s", chemin)
+            return
+        l, h = tx.mm(b.l), tx.mm(b.h)
+        x, haut = tx.mm(b.x), self._y(b.y)
+        if b.ajustement == "ETIRER":
+            ex_, ey = l / dessin.width, h / dessin.height
+        else:
+            ex_ = ey = min(l / dessin.width, h / dessin.height)
+        w, hh = dessin.width * ex_, dessin.height * ey
+        dessin.scale(ex_, ey)
+        dessin.width, dessin.height = w, hh
+        renderPDF.draw(dessin, c, x + (l - w) / 2, haut - h + (h - hh) / 2)
 
     def _code_barre(self, c, b: Boite):
         l, h = tx.mm(b.l), tx.mm(b.h)
