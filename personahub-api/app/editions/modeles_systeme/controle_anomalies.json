@@ -1,0 +1,846 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  },
+  {
+   "code": "smig",
+   "libelle": "SMIG mensuel brut (0 : non contrôlé)",
+   "type": "NOMBRE",
+   "obligatoire": false,
+   "defaut": "SIVIDE(#SMIG_MENSUEL, 0)"
+  },
+  {
+   "code": "seuil_ir",
+   "libelle": "Seuil mensuel d'exonération de l'IR (net imposable)",
+   "type": "NOMBRE",
+   "obligatoire": false,
+   "defaut": "3333.33"
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "periode_id = @periode.id",
+    "OU(net_a_payer <= 0, net_a_payer > total_brut, ET(@smig > 0, total_brut < @smig), ET(total_brut > 0, SIVIDE(total_cot_salariale, 0) = 0), ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), ET(CONTIENT(SIVIDE(paiement.mode_libelle, \"\"), \"irement\"), ESTVIDE(paiement.numero_compte)), ESTVIDE(identite.num_cnss), ESTVIDE(identite.cin), ESTVIDE(contrat.date_embauche), ESTVIDE(affectation.organisation_id))"
+   ],
+   "tri": [
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 3
+ },
+ "page": {
+  "orientation": "PAYSAGE",
+  "marges": [
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 31.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 167.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Contrôle des bulletins\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 167.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Anomalies — \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 21.0,
+     "l": 277.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_mat",
+     "x": 0.8,
+     "y": 21.0,
+     "l": 16.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Matricule\""
+    },
+    {
+     "id": "c_nom",
+     "x": 18.8,
+     "y": 21.0,
+     "l": 48.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Nom et prénom\""
+    },
+    {
+     "id": "c_emploi",
+     "x": 68.8,
+     "y": 21.0,
+     "l": 34.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Emploi\""
+    },
+    {
+     "id": "c_brut",
+     "x": 104.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Brut\""
+    },
+    {
+     "id": "c_net",
+     "x": 125.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net à payer\""
+    },
+    {
+     "id": "c_anomalies",
+     "x": 146.8,
+     "y": 21.0,
+     "l": 129.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Anomalies détectées\""
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.5,
+   "extensible": true,
+   "elements": [
+    {
+     "id": "v_mat",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 16.4,
+     "h": 5.5,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_nom",
+     "x": 18.8,
+     "y": 0.0,
+     "l": 48.4,
+     "h": 5.5,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_emploi",
+     "x": 68.8,
+     "y": 0.0,
+     "l": 34.4,
+     "h": 5.5,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(affectation.emploi_libelle, \"\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_brut",
+     "x": 104.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.5,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_net",
+     "x": 125.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.5,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_a_payer",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_anomalies",
+     "x": 146.8,
+     "y": 0.0,
+     "l": 129.4,
+     "h": 5.5,
+     "style": {
+      "taille": 7.0,
+      "couleur": "#B91C1C",
+      "alignement": "GAUCHE"
+     },
+     "extensible": true,
+     "type": "CHAMP",
+     "valeur": "SI(net_a_payer <= 0, \"• Net à payer nul ou négatif   \", \"\") + SI(net_a_payer > total_brut, \"• Net supérieur au brut   \", \"\") + SI(ET(@smig > 0, total_brut < @smig), \"• Brut inférieur au SMIG   \", \"\") + SI(ET(total_brut > 0, SIVIDE(total_cot_salariale, 0) = 0), \"• Aucune cotisation salariale   \", \"\") + SI(ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), \"• IR retenu alors que net imposable sous le seuil d'exonération   \", \"\") + SI(ET(CONTIENT(SIVIDE(paiement.mode_libelle, \"\"), \"irement\"), ESTVIDE(paiement.numero_compte)), \"• Virement sans RIB   \", \"\") + SI(ESTVIDE(identite.num_cnss), \"• N° CNSS manquant   \", \"\") + SI(ESTVIDE(identite.cin), \"• CIN manquante   \", \"\") + SI(ESTVIDE(contrat.date_embauche), \"• Date d'embauche manquante   \", \"\") + SI(ESTVIDE(affectation.organisation_id), \"• Sans unité organisationnelle   \", \"\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 5.3,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "style_trait": "POINTILLES",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "recap",
+   "type": "PIED_ETAT",
+   "hauteur": 61.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "r_titre",
+     "x": 0.0,
+     "y": 3.0,
+     "l": 200.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Décompte des anomalies\""
+    },
+    {
+     "id": "r_cadre",
+     "x": 0.0,
+     "y": 9.0,
+     "l": 150.0,
+     "h": 51.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "r_lnet",
+     "x": 2.0,
+     "y": 10.0,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net à payer nul ou négatif\""
+    },
+    {
+     "id": "r_vnet",
+     "x": 122.0,
+     "y": 10.0,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(net_a_payer <= 0, 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lnet_brut",
+     "x": 2.0,
+     "y": 14.6,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net supérieur au brut\""
+    },
+    {
+     "id": "r_vnet_brut",
+     "x": 122.0,
+     "y": 14.6,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(net_a_payer > total_brut, 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lsmig",
+     "x": 2.0,
+     "y": 19.2,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Brut inférieur au SMIG\""
+    },
+    {
+     "id": "r_vsmig",
+     "x": 122.0,
+     "y": 19.2,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ET(@smig > 0, total_brut < @smig), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lcnss",
+     "x": 2.0,
+     "y": 23.799999999999997,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Aucune cotisation salariale\""
+    },
+    {
+     "id": "r_vcnss",
+     "x": 122.0,
+     "y": 23.799999999999997,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ET(total_brut > 0, SIVIDE(total_cot_salariale, 0) = 0), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lir",
+     "x": 2.0,
+     "y": 28.4,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"IR retenu alors que net imposable sous le seuil d'exonération\""
+    },
+    {
+     "id": "r_vir",
+     "x": 122.0,
+     "y": 28.4,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lrib",
+     "x": 2.0,
+     "y": 33.0,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Virement sans RIB\""
+    },
+    {
+     "id": "r_vrib",
+     "x": 122.0,
+     "y": 33.0,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ET(CONTIENT(SIVIDE(paiement.mode_libelle, \"\"), \"irement\"), ESTVIDE(paiement.numero_compte)), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lnum_cnss",
+     "x": 2.0,
+     "y": 37.599999999999994,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"N° CNSS manquant\""
+    },
+    {
+     "id": "r_vnum_cnss",
+     "x": 122.0,
+     "y": 37.599999999999994,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ESTVIDE(identite.num_cnss), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lcin",
+     "x": 2.0,
+     "y": 42.199999999999996,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"CIN manquante\""
+    },
+    {
+     "id": "r_vcin",
+     "x": 122.0,
+     "y": 42.199999999999996,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ESTVIDE(identite.cin), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_lembauche",
+     "x": 2.0,
+     "y": 46.8,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Date d'embauche manquante\""
+    },
+    {
+     "id": "r_vembauche",
+     "x": 122.0,
+     "y": 46.8,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ESTVIDE(contrat.date_embauche), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_luo",
+     "x": 2.0,
+     "y": 51.4,
+     "l": 120.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5
+     },
+     "type": "TEXTE",
+     "valeur": "\"Sans unité organisationnelle\""
+    },
+    {
+     "id": "r_vuo",
+     "x": 122.0,
+     "y": 51.4,
+     "l": 26.0,
+     "h": 4.6,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(SI(ESTVIDE(affectation.organisation_id), 1, \"\"), ETAT)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "r_total",
+     "x": 160.0,
+     "y": 9.0,
+     "l": 117.0,
+     "h": 8.0,
+     "style": {
+      "taille": 10.0,
+      "gras": true,
+      "couleur": "#B91C1C"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Bulletins à revoir : \" + NB(id, ETAT)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "r_aucune",
+     "x": 160.0,
+     "y": 18.0,
+     "l": 117.0,
+     "h": 8.0,
+     "style": {
+      "taille": 10.0,
+      "gras": true,
+      "couleur": "#15803D"
+     },
+     "condition": {
+      "expression": "NB(id, ETAT) = 0"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Aucune anomalie détectée sur la période.\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "r_note",
+     "x": 160.0,
+     "y": 28.0,
+     "l": 117.0,
+     "h": 20.0,
+     "style": {
+      "taille": 7.0,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE_RICHE",
+     "contenu": "SMIG et seuil d'exonération de l'IR se règlent au lancement (0 = contrôle désactivé). Le contrôle de l'IR lit la rubrique RET_IR. La situation contrôlée est celle du salarié au calcul du bulletin."
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 110.80000000000001,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Contrôle de paie — document interne\""
+    },
+    {
+     "id": "p_page",
+     "x": 221.60000000000002,
+     "y": 2.0,
+     "l": 55.400000000000006,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Controle_bulletins_\" + @periode.code"
+ }
+}

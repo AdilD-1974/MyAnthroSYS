@@ -1,0 +1,686 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "periode_id = @periode.id",
+    "net_a_payer > 0"
+   ],
+   "tri": [
+    {
+     "champ": "paiement.mode_libelle"
+    },
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ],
+   "groupes": [
+    "paiement.mode_libelle"
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 3
+ },
+ "page": {
+  "marges": [
+   15.0,
+   15.0,
+   12.0,
+   15.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 31.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 70.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"État d'émargement\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 70.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Nets à payer — \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 21.0,
+     "l": 180.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_rang",
+     "x": 0.8,
+     "y": 21.0,
+     "l": 7.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"N°\""
+    },
+    {
+     "id": "c_mat",
+     "x": 9.8,
+     "y": 21.0,
+     "l": 16.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Matricule\""
+    },
+    {
+     "id": "c_nom",
+     "x": 27.8,
+     "y": 21.0,
+     "l": 48.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Nom et prénom\""
+    },
+    {
+     "id": "c_cin",
+     "x": 77.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"CIN\""
+    },
+    {
+     "id": "c_net",
+     "x": 99.8,
+     "y": 21.0,
+     "l": 24.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net à payer\""
+    },
+    {
+     "id": "c_sig",
+     "x": 125.8,
+     "y": 21.0,
+     "l": 53.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Émargement\""
+    }
+   ]
+  },
+  {
+   "id": "g_tete",
+   "type": "EN_TETE_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 9.0,
+   "elements": [
+    {
+     "id": "g_fond",
+     "x": 0.0,
+     "y": 1.5,
+     "l": 180.0,
+     "h": 6.5,
+     "style": {
+      "fond": "#E8F1F5"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "g_titre",
+     "x": 2.0,
+     "y": 1.5,
+     "l": 150.0,
+     "h": 6.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Mode de paiement : \" + SIVIDE(paiement.mode_libelle, \"non renseigné\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 9.0,
+   "elements": [
+    {
+     "id": "v_rang",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 7.4,
+     "h": 9.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "NB(id, GROUPE)",
+     "affichage": {
+      "masque": "ENTIER"
+     }
+    },
+    {
+     "id": "v_mat",
+     "x": 9.8,
+     "y": 0.0,
+     "l": 16.4,
+     "h": 9.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_nom",
+     "x": 27.8,
+     "y": 0.0,
+     "l": 48.4,
+     "h": 9.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_cin",
+     "x": 77.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 9.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(identite.cin, \"\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_net",
+     "x": 99.8,
+     "y": 0.0,
+     "l": 24.4,
+     "h": 9.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_a_payer",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_sig",
+     "x": 125.8,
+     "y": 0.0,
+     "l": 53.4,
+     "h": 9.0,
+     "style": {
+      "taille": 8.0,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_sig_c",
+     "x": 126.0,
+     "y": 1.0,
+     "l": 53.0,
+     "h": 7.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 0.5
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 8.8,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "g_pied",
+   "type": "PIED_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 9.0,
+   "elements": [
+    {
+     "id": "g_lib",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 97.0,
+     "h": 6.0,
+     "style": {
+      "taille": 8.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Total \" + SIVIDE(paiement.mode_libelle, \"\") + \" — \" + NB(id, GROUPE) + \" salarié(s)\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "g_net",
+     "x": 99.8,
+     "y": 1.0,
+     "l": 24.4,
+     "h": 6.0,
+     "style": {
+      "taille": 8.5,
+      "gras": true,
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, GROUPE)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "g_filet",
+     "x": 60.0,
+     "y": 0.5,
+     "l": 65.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 0.5
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "total",
+   "type": "PIED_ETAT",
+   "hauteur": 52.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "t_fond",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 180.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "t_lib",
+     "x": 2.0,
+     "y": 2.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#FFFFFF"
+     },
+     "type": "CHAMP",
+     "valeur": "\"TOTAL GÉNÉRAL — \" + NB(id, ETAT) + \" salariés\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "t_net",
+     "x": 99.8,
+     "y": 2.0,
+     "l": 24.4,
+     "h": 8.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_lettres",
+     "x": 0.0,
+     "y": 12.0,
+     "l": 180.0,
+     "h": 8.0,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Arrêté le présent état à la somme de {MAJUSCULE(MONTANT_EN_LETTRES(TOTAL(net_a_payer, ETAT)))}."
+    },
+    {
+     "id": "vis_c1",
+     "x": 0.0,
+     "y": 24.0,
+     "l": 85.0,
+     "h": 26.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "vis_t1",
+     "x": 2.0,
+     "y": 25.0,
+     "l": 81.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Payé par (nom, date et signature)\""
+    },
+    {
+     "id": "vis_c2",
+     "x": 95.0,
+     "y": 24.0,
+     "l": 85.0,
+     "h": 26.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "vis_t2",
+     "x": 97.0,
+     "y": 25.0,
+     "l": 81.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Visa de la direction\""
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 72.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 72.0,
+     "y": 2.0,
+     "l": 72.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"État d'émargement des salaires\""
+    },
+    {
+     "id": "p_page",
+     "x": 144.0,
+     "y": 2.0,
+     "l": 36.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Emargement_\" + @periode.code"
+ }
+}

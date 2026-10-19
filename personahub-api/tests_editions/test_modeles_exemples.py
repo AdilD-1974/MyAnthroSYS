@@ -15,6 +15,8 @@ ATTENDUS = {  # code : (catégorie, nb de documents pour septembre : 1 = un éta
     "ATTESTATION_TRAVAIL_SALAIRE": ("ATTESTATION", 2), "NOTIFICATION_REMUNERATION": ("COURRIER", 2),
     "ETAT_COTISATIONS_SOCIALES": ("DECLARATION", 1), "FICHE_SYNTHESE_ANNUELLE": ("AUTRE", 2),
     "BULLETIN_DETAILLE": ("BULLETIN", 2), "BULLETIN_MODERNE": ("BULLETIN", 2), "BULLETIN_FORMULAIRE": ("BULLETIN", 2),
+    "ETAT_ECARTS_M_M1": ("AUTRE", 1), "CONTROLE_ANOMALIES_PAIE": ("AUTRE", 1), "CONTROLE_IR": ("AUTRE", 1),
+    "MASSE_SALARIALE": ("AUTRE", 1), "ETAT_EMARGEMENT": ("LISTE", 1),
 }
 
 
@@ -44,7 +46,9 @@ def test_exemples_ranges_dans_le_menu_de_la_paie(s):
     a = {t["libelle"]: {m["code"] for m in t["modeles"]} for t in th.arbre(s, PAIE, "PAIE")["themes"]}
     assert a["Journaux de paie"] == {"JOURNAL_PAIE"}
     assert a["Déclarations"] == {"ETAT_COTISATIONS_SOCIALES"}
-    assert a["États standard"] == {"ORDRE_VIREMENT", "FICHE_SYNTHESE_ANNUELLE"}
+    assert a["États standard"] == {"ORDRE_VIREMENT", "ETAT_EMARGEMENT"}
+    assert a["États de contrôle paie"] == {"ETAT_ECARTS_M_M1", "CONTROLE_ANOMALIES_PAIE", "CONTROLE_IR"}
+    assert a["États de synthèse"] == {"MASSE_SALARIALE", "FICHE_SYNTHESE_ANNUELLE"}
     rh = {t["libelle"]: {m["code"] for m in t["modeles"]} for t in th.arbre(s, PAIE, "RH")["themes"]}
     assert rh == {"Attestations": {"ATTESTATION_TRAVAIL_SALAIRE"}, "Courriers": {"NOTIFICATION_REMUNERATION"}}
 
@@ -84,3 +88,21 @@ def test_journal_grille_et_forme_synthetique(s):
     for forme in (None, "synthetique"):
         r = sv.lancer(s, PAIE, m["id"], {"periode": P_SEP}, forme)
         assert len(r["documents"]) == 1 and not r["documents"][0]["anomalies"], forme
+
+
+def test_ecarts_m_m1_et_mois_precedent(s):                                # RG-EDT-PRECEDENT-01
+    from app.editions.sources.paie import FournisseurBulletin
+    lignes = {l["matricule"]: l for l in FournisseurBulletin().lire(s, {"periode": {"id": P_SEP}}, sv.contexte_securite(s, PAIE))}
+    assert lignes["M001"]["precedent"]["existe"] == 1 and float(lignes["M001"]["precedent"]["net_a_payer"]) == 8000
+    assert lignes["M002"]["precedent"]["existe"] == 0                     # pas de bulletin en août : entrée
+    m = next(x for x in sv.lister_modeles(s, PAIE) if x["code"] == "ETAT_ECARTS_M_M1")
+    tous = sv.lancer(s, PAIE, m["id"], {"periode": P_SEP})
+    ecarts = sv.lancer(s, PAIE, m["id"], {"periode": P_SEP, "seuil": 50, "affichage": "Écarts et entrées seulement"})
+    assert tous["documents"] and ecarts["documents"]
+    from app.editions.definition import Definition
+    from app.editions.moteur import executeur
+    d = Definition.model_validate(sv.lire_version(s, PAIE, m["version_publiee_id"])[0]["definition"])
+    prep = executeur._preparer(s, d, {"periode": P_SEP, "seuil": 50, "affichage": "Écarts et entrées seulement"},
+                               sv.contexte_securite(s, PAIE, m), registre_masques=None, racine_fichiers="storage",
+                               contexte_fixe=None, forme=None)
+    assert [l["matricule"] for l in prep.lignes] == ["M002"]              # Sara : +5,6 % < 50 % ; Omar : entrée

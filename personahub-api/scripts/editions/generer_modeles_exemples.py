@@ -1105,6 +1105,339 @@ def bulletin_formulaire() -> dict:
         usages={"confidentialite": 4})
 
 
+# =============================================================================
+# 10 à 14. ÉTATS DE PAIE ET DE CONTRÔLE
+# =============================================================================
+ORANGE, ORANGE_CLAIR, ROUGE, VERT = "#B45309", "#FEF3C7", "#B91C1C", "#15803D"
+
+
+def entete_colonnes(prefixe, cols, y, L, h=8):
+    return [fond(f"{prefixe}_fond", 0, y, L, h, BLEU)] + tableau_colonnes(
+        prefixe, cols, y, h, "TITRE", lambda c, t, e: t, lambda a: dict(taille=7, gras=True, couleur=BLANC, alignement=a))
+
+
+def ligne_valeurs(prefixe, cols, h=5, taille=7.5, **s):
+    el = tableau_colonnes(prefixe, cols, 0, h, "VALEUR", lambda c, t, e: e, lambda a: dict(taille=taille, alignement=a, **s))
+    el.append(ligne(f"{prefixe}_sep", 0, h - 0.2, sum(c[2] for c in cols), couleur=GRIS_CLAIR, epaisseur=0.2, trait="POINTILLES"))
+    return el
+
+
+def totaux_colonnes(prefixe, cols, portee, y, h, couleur, fond_, libelle, x_lib=1, l_lib=100):
+    L = sum(c[2] for c in cols)
+    el = [fond(f"{prefixe}_fond", 0, y, L, h, fond_),
+          champ(f"{prefixe}_lib", x_lib, y, l_lib, h, libelle, taille=7.5, gras=True, couleur=couleur)]
+    x = 0.0
+    for code, _t, l, expr, masque, _a in cols:
+        if masque in ("MONTANT", "MONTANT_SANS_ZERO"):
+            el.append(champ(f"{prefixe}_{code}", x + 0.8, y, l - 1.6, h, f"TOTAL({expr}, {portee})", masque="MONTANT",
+                            taille=7.5, gras=True, couleur=couleur, alignement="DROITE"))
+        x += l
+    return el
+
+
+def etat_ecarts() -> dict:
+    """Écarts M / M-1 par salarié : brut, cotisations, net ; mise en évidence au-delà d'un seuil."""
+    L = 277.0
+    cols = [
+        ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
+        ("nom", "Nom et prénom", 48, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
+        ("brut_p", "Brut M-1", 22, "precedent.total_brut", "MONTANT_SANS_ZERO", "DROITE"),
+        ("brut", "Brut M", 22, "total_brut", "MONTANT", "DROITE"),
+        ("ec_brut", "Écart brut", 21, "ecart_brut", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cot_p", "Retenues M-1", 21, "precedent.total_retenues", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cot", "Retenues M", 21, "total_retenues", "MONTANT", "DROITE"),
+        ("net_p", "Net M-1", 22, "precedent.net_a_payer", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net", "Net M", 22, "net_a_payer", "MONTANT", "DROITE"),
+        ("ec_net", "Écart net", 21, "ecart_net", "MONTANT_SANS_ZERO", "DROITE"),
+        ("pct", "Var. net", 15, 'SI(precedent.existe = 0, "", pct_net)', "POURCENTAGE", "DROITE"),
+        ("obs", "Observation", 24, 'SI(precedent.existe = 0, "Entrée / 1re paie", SI(ABS(pct_net) >= @seuil, "À vérifier", ""))', None, "GAUCHE"),
+    ]
+    en_tete = entete_societe(L, "Écarts M / M-1",
+                             f'{MOIS} + " comparé au mois précédent   ·   seuil d\'alerte " + FORMAT(@seuil, "MONTANT") + " %"')
+    en_tete += entete_colonnes("c", cols, 21, L)
+    corps = [{**fond("alerte", 0, 0, L, 5, ORANGE_CLAIR),
+              "condition": {"expression": "OU(precedent.existe = 0, ABS(pct_net) >= @seuil)"}}]
+    corps += ligne_valeurs("v", cols)
+    for e in corps:
+        if e["id"] in ("v_obs", "v_pct", "v_ec_net"):
+            e["style"]["gras"] = True
+    corps[[e["id"] for e in corps].index("v_obs")]["style"]["couleur"] = ORANGE
+    total = totaux_colonnes("t", cols, "ETAT", 1, 7, BLANC, BLEU, '"TOTAL — " + NB(id, ETAT) + " salariés"', l_lib=64)
+    synthese = [
+        texte("s_titre", 0, 11, 150, 5, "Synthèse", taille=9, gras=True, couleur=BLEU),
+        cadre("s_cadre", 0, 16, 150, 30, couleur=GRIS_CLAIR, arrondi=1.5),
+        *paires("s", 2, 17, 95, 50, [
+            ("Salariés payés ce mois", 'FORMAT(NB(id, ETAT), "ENTIER")'),
+            ("dont entrées ou première paie (sans bulletin M-1)", 'FORMAT(NB(SI(precedent.existe = 0, 1, ""), ETAT), "ENTIER")'),
+            ("Bulletins au-delà du seuil d'alerte", 'FORMAT(NB(SI(ET(precedent.existe = 1, ABS(pct_net) >= @seuil), 1, ""), ETAT), "ENTIER")'),
+            ("Variation de la masse brute", 'FORMAT(TOTAL(total_brut, ETAT) - TOTAL(precedent.total_brut, ETAT), "MONTANT")'),
+            ("Variation du net à payer", 'FORMAT(TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT), "MONTANT")'),
+            ("Variation du net (en %)", 'SI(TOTAL(precedent.net_a_payer, ETAT) = 0, "—", FORMAT((TOTAL(net_a_payer, ETAT) - TOTAL(precedent.net_a_payer, ETAT)) / TOTAL(precedent.net_a_payer, ETAT) * 100, "POURCENTAGE"))'),
+        ], pas=4.8, taille=8),
+        cadre("leg_c", 160, 16, 117, 30, couleur=GRIS_CLAIR, arrondi=1.5),
+        fond("leg_f", 162, 18, 6, 4, ORANGE_CLAIR),
+        texte("leg_t", 170, 17.5, 105, 5, "Ligne surlignée : écart du net au-delà du seuil, ou pas de bulletin M-1", taille=7.5),
+        texte("leg_t2", 162, 24, 113, 18,
+              "Les sorties du mois (bulletin M-1 sans bulletin M) n'apparaissent pas dans cet état : "
+              "lancez-le sur le mois précédent pour les repérer. Le seuil se règle au lancement.", taille=7, italique=True,
+              couleur=GRIS, extensible=None),
+    ]
+    synthese[-1] = {**riche("leg_t2", 162, 24, 113, 18,
+                            "Les sorties du mois (bulletin M-1 sans bulletin M) n'apparaissent pas ici : lancez l'état sur "
+                            "le mois précédent pour les repérer. Le seuil d'alerte se règle au lancement.", taille=7,
+                            italique=True, couleur=GRIS), "extensible": False}
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS,
+         {"code": "seuil", "libelle": "Seuil d'alerte (variation du net, en %)", "type": "NOMBRE", "obligatoire": False, "defaut": "10"},
+         {"code": "affichage", "libelle": "Salariés affichés", "type": "LISTE", "obligatoire": False,
+          "valeurs": ["Tous", "Écarts et entrées seulement"], "defaut": '"Tous"'}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL",
+          "calculs": [{"code": "ecart_brut", "expression": "total_brut - SIVIDE(precedent.total_brut, 0)"},
+                      {"code": "ecart_net", "expression": "net_a_payer - SIVIDE(precedent.net_a_payer, 0)"},
+                      {"code": "pct_net", "expression": "SI(SIVIDE(precedent.net_a_payer, 0) = 0, 0, (net_a_payer - precedent.net_a_payer) / precedent.net_a_payer * 100)"}],
+          "filtres": ["periode_id = @periode.id",
+                      'OU(@affichage <> "Écarts et entrées seulement", precedent.existe = 0, ABS(pct_net) >= @seuil)'],
+          "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("detail", "CORPS", 5, corps),
+         bande("total", "PIED_ETAT", 48, total + synthese, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — document interne"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Ecarts_M_M-1_" + @periode.code'},
+        usages={"confidentialite": 3})
+
+
+ANOMALIES = [  # (code, libellé court, condition)
+    ("net", "Net à payer nul ou négatif", "net_a_payer <= 0"),
+    ("net_brut", "Net supérieur au brut", "net_a_payer > total_brut"),
+    ("smig", "Brut inférieur au SMIG", "ET(@smig > 0, total_brut < @smig)"),
+    ("cnss", "Aucune cotisation salariale", "ET(total_brut > 0, SIVIDE(total_cot_salariale, 0) = 0)"),
+    ("ir", "IR retenu alors que net imposable sous le seuil d'exonération",
+     "ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir)"),
+    ("rib", "Virement sans RIB", 'ET(CONTIENT(SIVIDE(paiement.mode_libelle, ""), "irement"), ESTVIDE(paiement.numero_compte))'),
+    ("num_cnss", "N° CNSS manquant", "ESTVIDE(identite.num_cnss)"),
+    ("cin", "CIN manquante", "ESTVIDE(identite.cin)"),
+    ("embauche", "Date d'embauche manquante", "ESTVIDE(contrat.date_embauche)"),
+    ("uo", "Sans unité organisationnelle", "ESTVIDE(affectation.organisation_id)"),
+]
+
+
+def controle_anomalies() -> dict:
+    """Bulletins présentant au moins une anomalie, avec la liste des anomalies et leur décompte."""
+    L = 277.0
+    condition = "OU(" + ", ".join(c for _k, _l, c in ANOMALIES) + ")"
+    liste = " + ".join(f'SI({c}, "• {l}   ", "")' for _k, l, c in ANOMALIES)
+    cols = [
+        ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
+        ("nom", "Nom et prénom", 50, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
+        ("emploi", "Emploi", 36, 'SIVIDE(affectation.emploi_libelle, "")', None, "GAUCHE"),
+        ("brut", "Brut", 21, "total_brut", "MONTANT", "DROITE"),
+        ("net", "Net à payer", 21, "net_a_payer", "MONTANT", "DROITE"),
+        ("anomalies", "Anomalies détectées", 131, liste, None, "GAUCHE"),
+    ]
+    en_tete = entete_societe(L, "Contrôle des bulletins", f'"Anomalies — " + {MOIS}') + entete_colonnes("c", cols, 21, L)
+    corps = ligne_valeurs("v", cols, h=5.5)
+    for e in corps:
+        if e["id"] == "v_anomalies":
+            e["extensible"] = True
+            e["style"].update(couleur=ROUGE, taille=7)
+    recap = [texte("r_titre", 0, 3, 200, 6, "Décompte des anomalies", taille=9, gras=True, couleur=BLEU),
+             cadre("r_cadre", 0, 9, 150, 5 + 4.6 * len(ANOMALIES), couleur=GRIS_CLAIR, arrondi=1.5)]
+    for i, (k, lib, cond) in enumerate(ANOMALIES):
+        recap += [texte(f"r_l{k}", 2, 10 + i * 4.6, 120, 4.6, lib, taille=7.5),
+                  champ(f"r_v{k}", 122, 10 + i * 4.6, 26, 4.6, f'NB(SI({cond}, 1, ""), ETAT)', masque="ENTIER", taille=7.5,
+                        gras=True, alignement="DROITE")]
+    recap += [
+        champ("r_total", 160, 9, 117, 8, '"Bulletins à revoir : " + NB(id, ETAT)', taille=10, gras=True, couleur=ROUGE),
+        {**champ("r_aucune", 160, 18, 117, 8, '"Aucune anomalie détectée sur la période."', taille=10, gras=True, couleur=VERT),
+         "condition": {"expression": "NB(id, ETAT) = 0"}},
+        {**riche("r_note", 160, 28, 117, 20,
+                 "SMIG et seuil d'exonération de l'IR se règlent au lancement (0 = contrôle désactivé). "
+                 "Le contrôle de l'IR lit la rubrique RET_IR. La situation contrôlée est celle du salarié au calcul du bulletin.",
+                 taille=7, italique=True, couleur=GRIS), "extensible": False},
+    ]
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS,
+         {"code": "smig", "libelle": "SMIG mensuel brut (0 : non contrôlé)", "type": "NOMBRE", "obligatoire": False,
+          "defaut": "SIVIDE(#SMIG_MENSUEL, 0)"},
+         {"code": "seuil_ir", "libelle": "Seuil mensuel d'exonération de l'IR (net imposable)", "type": "NOMBRE",
+          "obligatoire": False, "defaut": "3333.33"}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id", condition],
+          "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("detail", "CORPS", 5.5, corps, extensible=True),
+         bande("recap", "PIED_ETAT", 15 + 4.6 * len(ANOMALIES), recap, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — document interne"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Controle_bulletins_" + @periode.code'},
+        usages={"confidentialite": 3})
+
+
+def controle_ir() -> dict:
+    """Du brut imposable à l'IR retenu, salarié par salarié, avec taux moyen et cumuls."""
+    L = 277.0
+    cols = [
+        ("mat", "Matricule", 17, "identite.matricule", None, "GAUCHE"),
+        ("nom", "Nom et prénom", 46, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
+        ("sf", "Sit. / déd.", 18, 'GAUCHE(SIVIDE(situation_familiale.libelle, "-"), 1) + " / " + SIVIDE(situation_familiale.nb_deductions_fiscales, 0)', None, "CENTRE"),
+        ("brut_imp", "Brut imposable", 23, "total_brut_imposable", "MONTANT", "DROITE"),
+        ("fp", "Frais prof.", 21, "SIVIDE([FRAIS_PROF].MT, 0)", "MONTANT_SANS_ZERO", "DROITE"),
+        ("cot", "Cot. déductibles", 22, "SIVIDE(total_cot_salariale, 0)", "MONTANT_SANS_ZERO", "DROITE"),
+        ("net_imp", "Net imposable", 23, "net_imposable", "MONTANT", "DROITE"),
+        ("ir", "IR retenu", 20, "SIVIDE([RET_IR].MT, 0)", "MONTANT_SANS_ZERO", "DROITE"),
+        ("tx", "Taux moy.", 16, "SI(SIVIDE(net_imposable, 0) = 0, 0, SIVIDE([RET_IR].MT, 0) / net_imposable * 100)", "POURCENTAGE", "DROITE"),
+        ("cum_imp", "Net imp. cumulé", 24, "cumul.net_imposable", "MONTANT", "DROITE"),
+        ("cum_ir", "IR cumulé", 21, "SIVIDE([RET_IR].CMT, 0)", "MONTANT_SANS_ZERO", "DROITE"),
+        ("obs", "Contrôle", 26, 'SI(ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), "IR sous le seuil", SI(SIVIDE(net_imposable, 0) > total_brut_imposable, "Net imp. > brut imp.", ""))', None, "GAUCHE"),
+    ]
+    en_tete = entete_societe(L, "Contrôle de l'impôt sur le revenu", f'"IR retenu à la source — " + {MOIS}') + entete_colonnes("c", cols, 21, L)
+    corps = ligne_valeurs("v", cols)
+    corps[[e["id"] for e in corps].index("v_obs")]["style"].update(couleur=ROUGE, gras=True)
+    total = totaux_colonnes("t", cols, "ETAT", 1, 7, BLANC, BLEU, '"TOTAL — " + NB(id, ETAT) + " salariés"', l_lib=80)
+    synthese = [
+        texte("s_titre", 0, 11, 150, 5, "Synthèse", taille=9, gras=True, couleur=BLEU),
+        cadre("s_cadre", 0, 16, 150, 22, couleur=GRIS_CLAIR, arrondi=1.5),
+        *paires("s", 2, 17, 95, 50, [
+            ("IR à reverser pour la période", 'FORMAT(TOTAL(SIVIDE([RET_IR].MT, 0), ETAT), "MONTANT")'),
+            ("Salariés imposés (IR > 0)", 'FORMAT(NB(SI(SIVIDE([RET_IR].MT, 0) > 0, 1, ""), ETAT), "ENTIER")'),
+            ("Taux moyen d'imposition", 'SI(TOTAL(net_imposable, ETAT) = 0, "—", FORMAT(TOTAL(SIVIDE([RET_IR].MT, 0), ETAT) / TOTAL(net_imposable, ETAT) * 100, "POURCENTAGE"))'),
+            ("Salariés à vérifier", 'FORMAT(NB(SI(ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), 1, ""), ETAT), "ENTIER")'),
+        ], pas=4.8, taille=8),
+        {**riche("s_note", 160, 16, 117, 22,
+                 "Rubriques lues : FRAIS_PROF (frais professionnels) et RET_IR (IR retenu, mois et cumul). "
+                 "« Sit. / déd. » : situation familiale et nombre de personnes à charge déductibles. "
+                 "Le seuil mensuel d'exonération se règle au lancement.", taille=7, italique=True, couleur=GRIS), "extensible": False},
+    ]
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS,
+         {"code": "seuil_ir", "libelle": "Seuil mensuel d'exonération de l'IR (net imposable)", "type": "NOMBRE",
+          "obligatoire": False, "defaut": "3333.33"}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+          "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("detail", "CORPS", 5, corps),
+         bande("total", "PIED_ETAT", 40, total + synthese, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Contrôle de paie — à rapprocher de l'état 9421"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Controle_IR_" + @periode.code'},
+        usages={"confidentialite": 4})
+
+
+def masse_salariale() -> dict:
+    """Récapitulatif sans détail nominatif : direction › catégorie professionnelle, effectifs et coûts."""
+    L = 277.0
+    cols = [
+        ("lib", "Direction / catégorie", 75, "", None, "GAUCHE"),
+        ("eff", "Effectif", 17, "id", "ENTIER", "DROITE"),
+        ("brut", "Masse brute", 26, "total_brut", "MONTANT", "DROITE"),
+        ("cot_sal", "Cot. salariales", 24, "total_cot_salariale", "MONTANT", "DROITE"),
+        ("net", "Net à payer", 26, "net_a_payer", "MONTANT", "DROITE"),
+        ("cot_pat", "Cot. patronales", 24, "total_cot_patronale", "MONTANT", "DROITE"),
+        ("cout", "Coût employeur", 27, "cout_employeur", "MONTANT", "DROITE"),
+        ("moy", "Coût moyen", 24, "", "MONTANT", "DROITE"),
+        ("part", "% masse", 17, "", "POURCENTAGE", "DROITE"),
+        ("charge", "Tx charges", 17, "", "POURCENTAGE", "DROITE"),
+    ]
+
+    def rangee(prefixe, portee, libelle, couleur, fond_, gras, y=0.5, h=6, retrait=1):
+        el = [fond(f"{prefixe}_fond", 0, y, L, h, fond_)] if fond_ else []
+        el.append(champ(f"{prefixe}_lib", retrait, y, 75 - retrait, h, libelle, taille=8, gras=gras, couleur=couleur))
+        x = 75.0
+        for code, _t, l, expr, masque, _a in cols[1:]:
+            if code == "eff":
+                v = f"NB(id, {portee})"
+            elif code == "moy":
+                v = f"SI(NB(id, {portee}) = 0, 0, TOTAL(cout_employeur, {portee}) / NB(id, {portee}))"
+            elif code == "part":
+                v = f"SI(TOTAL(total_brut, ETAT) = 0, 0, TOTAL(total_brut, {portee}) / TOTAL(total_brut, ETAT) * 100)"
+            elif code == "charge":
+                v = f"SI(TOTAL(total_brut, {portee}) = 0, 0, TOTAL(total_cot_patronale, {portee}) / TOTAL(total_brut, {portee}) * 100)"
+            else:
+                v = f"TOTAL({expr}, {portee})"
+            el.append(champ(f"{prefixe}_{code}", x + 0.8, y, l - 1.6, h, v, masque=masque, taille=8, gras=gras,
+                            couleur=couleur, alignement="DROITE"))
+            x += l
+        return el
+
+    en_tete = entete_societe(L, "Masse salariale", f'"Récapitulatif par direction et catégorie — " + {MOIS}') + entete_colonnes("c", cols, 21, L)
+    g1_tete = [fond("g1_fond", 0, 1, L, 6.5, BLEU_CLAIR),
+               champ("g1_titre", 1.5, 1, 200, 6.5, 'SIVIDE(affectation.uo_niveau1_libelle, "Sans unité organisationnelle")',
+                     taille=8.5, gras=True, couleur=BLEU)]
+    g2_pied = rangee("g2", "GROUPE", 'SIVIDE(qualification.categorie_professionnelle_libelle, "Catégorie non renseignée")',
+                     None, None, False, retrait=6) + [ligne("g2_sep", 0, 6.6, L, couleur=GRIS_CLAIR, epaisseur=0.2, trait="POINTILLES")]
+    g1_pied = rangee("g1", "GROUPE", '"Total " + SIVIDE(affectation.uo_niveau1_libelle, "sans UO")', BLEU, None, True)
+    g1_pied.append(ligne("g1_filet", 0, 0.4, L, couleur=BLEU, epaisseur=0.5))
+    total = rangee("t", "ETAT", '"TOTAL SOCIÉTÉ"', BLANC, BLEU, True, y=2, h=8)
+    total.append(riche("t_note", 0, 13, L, 10,
+                       "Effectif : nombre de bulletins de la période. Coût moyen : coût employeur par bulletin. "
+                       "% masse : part de la masse brute de la société. Taux de charges : cotisations patronales / masse brute.",
+                       taille=7, italique=True, couleur=GRIS))
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id"],
+          "groupes": ["affectation.uo_niveau1_libelle", "qualification.categorie_professionnelle_libelle"],
+          "tri": [{"champ": "affectation.uo_niveau1_libelle"}, {"champ": "qualification.categorie_professionnelle_libelle"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("g1_tete", "EN_TETE_GROUPE", 8, g1_tete, niveau_groupe=1),
+         bande("detail", "CORPS", 0, []),
+         bande("g2_pied", "PIED_GROUPE", 7, g2_pied, niveau_groupe=2),
+         bande("g1_pied", "PIED_GROUPE", 9, g1_pied, niveau_groupe=1),
+         bande("total", "PIED_ETAT", 24, total, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Document de synthèse — sans données nominatives"))],
+        {"format": "A4", "orientation": "PAYSAGE", "marges": [10, 10, 10, 10]},
+        {"formats": ["PDF"], "nom_fichier": '"Masse_salariale_" + @periode.code'},
+        usages={"confidentialite": 2})
+
+
+def emargement() -> dict:
+    """Liste des nets à payer par mode de paiement, avec colonne d'émargement (espèces, chèques)."""
+    L = 180.0
+    cols = [
+        ("rang", "N°", 9, "NB(id, GROUPE)", "ENTIER", "CENTRE"),
+        ("mat", "Matricule", 18, "identite.matricule", None, "GAUCHE"),
+        ("nom", "Nom et prénom", 50, 'MAJUSCULE(identite.nom) + " " + identite.prenom', None, "GAUCHE"),
+        ("cin", "CIN", 22, 'SIVIDE(identite.cin, "")', None, "GAUCHE"),
+        ("net", "Net à payer", 26, "net_a_payer", "MONTANT", "DROITE"),
+        ("sig", "Émargement", 55, '""', None, "GAUCHE"),
+    ]
+    en_tete = entete_societe(L, "État d'émargement", f'"Nets à payer — " + {MOIS}') + entete_colonnes("c", cols, 21, L)
+    g_tete = [fond("g_fond", 0, 1.5, L, 6.5, BLEU_CLAIR),
+              champ("g_titre", 2, 1.5, 150, 6.5, '"Mode de paiement : " + SIVIDE(paiement.mode_libelle, "non renseigné")',
+                    taille=8.5, gras=True, couleur=BLEU)]
+    corps = tableau_colonnes("v", cols, 0, 9, "VALEUR", lambda c, t, e: e, lambda a: dict(taille=8, alignement=a))
+    corps += [cadre("v_sig_c", 126, 1, 53, 7, couleur=GRIS_CLAIR, arrondi=0.5),
+              ligne("v_sep", 0, 8.8, L, couleur=GRIS_CLAIR, epaisseur=0.2)]
+    g_pied = [champ("g_lib", 0, 1, 97, 6, '"Total " + SIVIDE(paiement.mode_libelle, "") + " — " + NB(id, GROUPE) + " salarié(s)"',
+                    taille=8.5, gras=True, couleur=BLEU, alignement="DROITE"),
+              champ("g_net", 99.8, 1, 24.4, 6, "TOTAL(net_a_payer, GROUPE)", masque="MONTANT", taille=8.5, gras=True,
+                    couleur=BLEU, alignement="DROITE"),
+              ligne("g_filet", 60, 0.5, 65, couleur=BLEU, epaisseur=0.5)]
+    total = [fond("t_fond", 0, 2, L, 8, BLEU),
+             champ("t_lib", 2, 2, 110, 8, '"TOTAL GÉNÉRAL — " + NB(id, ETAT) + " salariés"', taille=9, gras=True, couleur=BLANC),
+             champ("t_net", 99.8, 2, 24.4, 8, "TOTAL(net_a_payer, ETAT)", masque="MONTANT", taille=9, gras=True, couleur=BLANC,
+                   alignement="DROITE"),
+             riche("t_lettres", 0, 12, L, 8, "Arrêté le présent état à la somme de {MAJUSCULE(MONTANT_EN_LETTRES(TOTAL(net_a_payer, ETAT)))}.",
+                   taille=8.5, gras=True),
+             cadre("vis_c1", 0, 24, 85, 26, couleur=GRIS_CLAIR, arrondi=1.5),
+             texte("vis_t1", 2, 25, 81, 5, "Payé par (nom, date et signature)", taille=7.5, gras=True, couleur=BLEU),
+             cadre("vis_c2", 95, 24, 85, 26, couleur=GRIS_CLAIR, arrondi=1.5),
+             texte("vis_t2", 97, 25, 81, 5, "Visa de la direction", taille=7.5, gras=True, couleur=BLEU)]
+    return definition(
+        [PARAM_PERIODE, PARAM_PLAN, PARAM_COLLABS],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": ["periode_id = @periode.id", "net_a_payer > 0"],
+          "groupes": ["paiement.mode_libelle"],
+          "tri": [{"champ": "paiement.mode_libelle"}, {"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 31, en_tete),
+         bande("g_tete", "EN_TETE_GROUPE", 9, g_tete, niveau_groupe=1),
+         bande("detail", "CORPS", 9, corps),
+         bande("g_pied", "PIED_GROUPE", 9, g_pied, niveau_groupe=1),
+         bande("total", "PIED_ETAT", 52, total, insecable=True),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "État d'émargement des salaires"))],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [15, 15, 12, 15]},
+        {"formats": ["PDF"], "nom_fichier": '"Emargement_" + @periode.code'},
+        usages={"confidentialite": 3})
+
+
 MODELES = {
     "journal_paie.json": journal_paie,
     "ordre_virement.json": ordre_virement,
@@ -1115,6 +1448,11 @@ MODELES = {
     "bulletin_detaille.json": bulletin_detaille,
     "bulletin_moderne.json": bulletin_moderne,
     "bulletin_formulaire.json": bulletin_formulaire,
+    "etat_ecarts.json": etat_ecarts,
+    "controle_anomalies.json": controle_anomalies,
+    "controle_ir.json": controle_ir,
+    "masse_salariale.json": masse_salariale,
+    "emargement.json": emargement,
 }
 
 if __name__ == "__main__":

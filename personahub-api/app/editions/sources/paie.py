@@ -173,6 +173,17 @@ CHAMPS_BULLETIN = [
     _m("cumul.net_a_payer", "Cumul : net à payer", "Cumuls de l'année"),
     _m("cumul.cout_employeur", "Cumul : coût employeur", "Cumuls de l'année"),
     _n("cumul.nb_bulletins", "Cumul : nombre de bulletins", "Cumuls de l'année"),
+    # mois précédent du même collaborateur (RG-EDT-PRECEDENT-01) : contrôles M / M-1
+    _n("precedent.existe", "Mois précédent : bulletin trouvé (1/0)", "Mois précédent"),
+    _t("precedent.periode", "Mois précédent : période", "Mois précédent"),
+    _m("precedent.total_brut", "Mois précédent : salaire brut", "Mois précédent"),
+    _m("precedent.total_brut_imposable", "Mois précédent : brut imposable", "Mois précédent"),
+    _m("precedent.total_cot_salariale", "Mois précédent : cotisations salariales", "Mois précédent"),
+    _m("precedent.total_cot_patronale", "Mois précédent : cotisations patronales", "Mois précédent"),
+    _m("precedent.total_retenues", "Mois précédent : retenues", "Mois précédent"),
+    _m("precedent.net_imposable", "Mois précédent : net imposable", "Mois précédent"),
+    _m("precedent.net_a_payer", "Mois précédent : net à payer", "Mois précédent"),
+    _m("precedent.cout_employeur", "Mois précédent : coût employeur", "Mois précédent"),
     # régimes : regimes.CNSS.matricule_organisme, regimes.CIMR.date_affiliation…
     _t("regimes.*.regime_libelle", "Régime : libellé", "Régimes"),
     _t("regimes.*.matricule_organisme", "Régime : matricule à l'organisme", "Régimes"),
@@ -275,6 +286,7 @@ class FournisseurBulletin(Fournisseur):
         resultat = population.filtrer(db, resultat, parametres.get("_filtres"), sec.societe_id)
         population.enrichir(db, resultat, sec.societe_id)
         _ajouter_cumuls(db, resultat, sec)
+        _ajouter_precedent(db, resultat, sec)
         return resultat
 
     def _snapshots(self, db: Session, ids: list[str]) -> dict[str, dict]:
@@ -326,6 +338,41 @@ def _ajouter_cumuls(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) 
         cumul = {c: sum((Decimal(str(r[c])) for r in retenus if r[c] is not None), Decimal(0)) for c in TOTAUX_CUMULES}
         cumul["nb_bulletins"] = len(retenus)
         b["cumul"] = cumul
+
+
+def _ajouter_precedent(db: Session, bulletins: list[Ligne], sec: ContexteSecurite) -> None:
+    """RG-EDT-PRECEDENT-01 (Adil DAIA) : totaux du bulletin du MOIS PRÉCÉDENT du même collaborateur
+    (même plan de paie de préférence), pour les états de contrôle M / M-1. `precedent.existe` vaut 0
+    quand il n'y en a pas (entrée dans le mois, ou premier mois de paie)."""
+    if not bulletins:
+        return
+    collabs = sorted({str(b["collaborateur_id"]) for b in bulletins if b.get("collaborateur_id")})
+    rangs = sorted({int(b["periode"]["annee"]) * 12 + int(b["periode"]["mois"]) - 2
+                    for b in bulletins if (b.get("periode") or {}).get("annee") and (b.get("periode") or {}).get("mois")})
+    if not collabs or not rangs:
+        return
+    cols = ", ".join(f"b.{c}" for c in TOTAUX_CUMULES)
+    corps = f"""
+        SELECT b.collaborateur_id, b.plan_paie_id, cal.annee, cal.mois, cal.intitule, {cols} FROM {{table}} b
+        JOIN calendrier_paie cal ON cal.id = b.periode_id
+        WHERE cal.societe_id = :societe AND b.collaborateur_id IN :collabs AND (cal.annee * 12 + cal.mois - 1) IN :rangs"""
+    q = text(corps.format(table="bulletin") + " UNION ALL " + corps.format(table="bulletin_historique")
+             + " AND NOT EXISTS (SELECT 1 FROM bulletin live WHERE live.id = b.id)") \
+        .bindparams(bindparam("collabs", expanding=True), bindparam("rangs", expanding=True))
+    par_cle: dict[tuple[str, int], list[dict]] = defaultdict(list)
+    for paquet in _paquets(collabs):
+        for r in db.execute(q, {"societe": sec.societe_id, "collabs": paquet, "rangs": rangs}).mappings():
+            par_cle[(str(r["collaborateur_id"]), int(r["annee"]) * 12 + int(r["mois"]) - 1)].append(dict(r))
+    for b in bulletins:
+        per = b.get("periode") or {}
+        if not per.get("annee") or not per.get("mois"):
+            continue
+        candidats = par_cle.get((str(b["collaborateur_id"]), int(per["annee"]) * 12 + int(per["mois"]) - 2), [])
+        r = next((c for c in candidats if str(c["plan_paie_id"]) == str(b.get("plan_paie_id"))), candidats[0] if candidats else None)
+        prec: dict[str, Any] = {c: (r[c] if r else None) for c in TOTAUX_CUMULES}
+        prec["existe"] = 1 if r else 0
+        prec["periode"] = (r["intitule"] or f"{int(r['mois']):02d}/{r['annee']}") if r else None
+        b["precedent"] = prec
 
 
 def _cumuls_rubriques(db: Session, bulletins: list[Ligne]) -> dict[str, dict[str, dict[str, Decimal]]]:

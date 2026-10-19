@@ -1,0 +1,967 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Période",
+   "type": "PERIODE"
+  },
+  {
+   "code": "plan_paie",
+   "libelle": "Plan de paie",
+   "type": "PLAN_PAIE",
+   "obligatoire": false
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  },
+  {
+   "code": "seuil_ir",
+   "libelle": "Seuil mensuel d'exonération de l'IR (net imposable)",
+   "type": "NOMBRE",
+   "obligatoire": false,
+   "defaut": "3333.33"
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "filtres": [
+    "periode_id = @periode.id"
+   ],
+   "tri": [
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 4
+ },
+ "page": {
+  "orientation": "PAYSAGE",
+  "marges": [
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 31.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 167.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Contrôle de l'impôt sur le revenu\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 167.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"IR retenu à la source — \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 21.0,
+     "l": 277.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_mat",
+     "x": 0.8,
+     "y": 21.0,
+     "l": 15.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Matricule\""
+    },
+    {
+     "id": "c_nom",
+     "x": 17.8,
+     "y": 21.0,
+     "l": 44.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Nom et prénom\""
+    },
+    {
+     "id": "c_sf",
+     "x": 63.8,
+     "y": 21.0,
+     "l": 16.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Sit. / déd.\""
+    },
+    {
+     "id": "c_brut_imp",
+     "x": 81.8,
+     "y": 21.0,
+     "l": 21.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Brut imposable\""
+    },
+    {
+     "id": "c_fp",
+     "x": 104.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Frais prof.\""
+    },
+    {
+     "id": "c_cot",
+     "x": 125.8,
+     "y": 21.0,
+     "l": 20.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Cot. déductibles\""
+    },
+    {
+     "id": "c_net_imp",
+     "x": 147.8,
+     "y": 21.0,
+     "l": 21.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net imposable\""
+    },
+    {
+     "id": "c_ir",
+     "x": 170.8,
+     "y": 21.0,
+     "l": 18.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"IR retenu\""
+    },
+    {
+     "id": "c_tx",
+     "x": 190.8,
+     "y": 21.0,
+     "l": 14.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Taux moy.\""
+    },
+    {
+     "id": "c_cum_imp",
+     "x": 206.8,
+     "y": 21.0,
+     "l": 22.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net imp. cumulé\""
+    },
+    {
+     "id": "c_cum_ir",
+     "x": 230.8,
+     "y": 21.0,
+     "l": 19.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"IR cumulé\""
+    },
+    {
+     "id": "c_obs",
+     "x": 251.8,
+     "y": 21.0,
+     "l": 24.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Contrôle\""
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.0,
+   "elements": [
+    {
+     "id": "v_mat",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 15.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_nom",
+     "x": 17.8,
+     "y": 0.0,
+     "l": 44.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_sf",
+     "x": 63.8,
+     "y": 0.0,
+     "l": 16.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "GAUCHE(SIVIDE(situation_familiale.libelle, \"-\"), 1) + \" / \" + SIVIDE(situation_familiale.nb_deductions_fiscales, 0)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_brut_imp",
+     "x": 81.8,
+     "y": 0.0,
+     "l": 21.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_fp",
+     "x": 104.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE([FRAIS_PROF].MT, 0)",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_cot",
+     "x": 125.8,
+     "y": 0.0,
+     "l": 20.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(total_cot_salariale, 0)",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_net_imp",
+     "x": 147.8,
+     "y": 0.0,
+     "l": 21.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_ir",
+     "x": 170.8,
+     "y": 0.0,
+     "l": 18.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE([RET_IR].MT, 0)",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_tx",
+     "x": 190.8,
+     "y": 0.0,
+     "l": 14.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "SI(SIVIDE(net_imposable, 0) = 0, 0, SIVIDE([RET_IR].MT, 0) / net_imposable * 100)",
+     "affichage": {
+      "masque": "POURCENTAGE"
+     }
+    },
+    {
+     "id": "v_cum_imp",
+     "x": 206.8,
+     "y": 0.0,
+     "l": 22.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "cumul.net_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_cum_ir",
+     "x": 230.8,
+     "y": 0.0,
+     "l": 19.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE([RET_IR].CMT, 0)",
+     "affichage": {
+      "masque": "MONTANT_SANS_ZERO"
+     }
+    },
+    {
+     "id": "v_obs",
+     "x": 251.8,
+     "y": 0.0,
+     "l": 24.4,
+     "h": 5.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#B91C1C",
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "SI(ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), \"IR sous le seuil\", SI(SIVIDE(net_imposable, 0) > total_brut_imposable, \"Net imp. > brut imp.\", \"\"))",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 4.8,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "style_trait": "POINTILLES",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "total",
+   "type": "PIED_ETAT",
+   "hauteur": 40.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "t_fond",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 277.0,
+     "h": 7.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "t_lib",
+     "x": 1.0,
+     "y": 1.0,
+     "l": 80.0,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF"
+     },
+     "type": "CHAMP",
+     "valeur": "\"TOTAL — \" + NB(id, ETAT) + \" salariés\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "t_brut_imp",
+     "x": 81.8,
+     "y": 1.0,
+     "l": 21.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_fp",
+     "x": 104.8,
+     "y": 1.0,
+     "l": 19.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(SIVIDE([FRAIS_PROF].MT, 0), ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_cot",
+     "x": 125.8,
+     "y": 1.0,
+     "l": 20.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(SIVIDE(total_cot_salariale, 0), ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_net_imp",
+     "x": 147.8,
+     "y": 1.0,
+     "l": 21.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_ir",
+     "x": 170.8,
+     "y": 1.0,
+     "l": 18.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(SIVIDE([RET_IR].MT, 0), ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_cum_imp",
+     "x": 206.8,
+     "y": 1.0,
+     "l": 22.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(cumul.net_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_cum_ir",
+     "x": 230.8,
+     "y": 1.0,
+     "l": 19.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(SIVIDE([RET_IR].CMT, 0), ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "s_titre",
+     "x": 0.0,
+     "y": 11.0,
+     "l": 150.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Synthèse\""
+    },
+    {
+     "id": "s_cadre",
+     "x": 0.0,
+     "y": 16.0,
+     "l": 150.0,
+     "h": 22.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 1.5
+    },
+    {
+     "id": "s_l0",
+     "x": 2.0,
+     "y": 17.0,
+     "l": 95.0,
+     "h": 4.8,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"IR à reverser pour la période\""
+    },
+    {
+     "id": "s_v0",
+     "x": 97.0,
+     "y": 17.0,
+     "l": 50.0,
+     "h": 4.8,
+     "style": {
+      "taille": 8.0,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "FORMAT(TOTAL(SIVIDE([RET_IR].MT, 0), ETAT), \"MONTANT\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "s_l1",
+     "x": 2.0,
+     "y": 21.8,
+     "l": 95.0,
+     "h": 4.8,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salariés imposés (IR > 0)\""
+    },
+    {
+     "id": "s_v1",
+     "x": 97.0,
+     "y": 21.8,
+     "l": 50.0,
+     "h": 4.8,
+     "style": {
+      "taille": 8.0,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "FORMAT(NB(SI(SIVIDE([RET_IR].MT, 0) > 0, 1, \"\"), ETAT), \"ENTIER\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "s_l2",
+     "x": 2.0,
+     "y": 26.6,
+     "l": 95.0,
+     "h": 4.8,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Taux moyen d'imposition\""
+    },
+    {
+     "id": "s_v2",
+     "x": 97.0,
+     "y": 26.6,
+     "l": 50.0,
+     "h": 4.8,
+     "style": {
+      "taille": 8.0,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SI(TOTAL(net_imposable, ETAT) = 0, \"—\", FORMAT(TOTAL(SIVIDE([RET_IR].MT, 0), ETAT) / TOTAL(net_imposable, ETAT) * 100, \"POURCENTAGE\"))",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "s_l3",
+     "x": 2.0,
+     "y": 31.4,
+     "l": 95.0,
+     "h": 4.8,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salariés à vérifier\""
+    },
+    {
+     "id": "s_v3",
+     "x": 97.0,
+     "y": 31.4,
+     "l": 50.0,
+     "h": 4.8,
+     "style": {
+      "taille": 8.0,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "FORMAT(NB(SI(ET(SIVIDE([RET_IR].MT, 0) > 0, SIVIDE(net_imposable, 0) < @seuil_ir), 1, \"\"), ETAT), \"ENTIER\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "s_note",
+     "x": 160.0,
+     "y": 16.0,
+     "l": 117.0,
+     "h": 22.0,
+     "style": {
+      "taille": 7.0,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE_RICHE",
+     "contenu": "Rubriques lues : FRAIS_PROF (frais professionnels) et RET_IR (IR retenu, mois et cumul). « Sit. / déd. » : situation familiale et nombre de personnes à charge déductibles. Le seuil mensuel d'exonération se règle au lancement."
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 277.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 110.80000000000001,
+     "y": 2.0,
+     "l": 110.80000000000001,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Contrôle de paie — à rapprocher de l'état 9421\""
+    },
+    {
+     "id": "p_page",
+     "x": 221.60000000000002,
+     "y": 2.0,
+     "l": 55.400000000000006,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Controle_IR_\" + @periode.code"
+ }
+}

@@ -77,6 +77,12 @@ MODELES_SYSTEME = {
     "bulletin_detaille.json": ("BULLETIN_DETAILLE", "Bulletin de paie détaillé (parts salariale et patronale)", "BULLETIN"),
     "bulletin_moderne.json": ("BULLETIN_MODERNE", "Bulletin de paie moderne (bandeau latéral)", "BULLETIN"),
     "bulletin_formulaire.json": ("BULLETIN_FORMULAIRE", "Bulletin de paie paysage (formulaire et cumuls)", "BULLETIN"),
+    # états de paie et de contrôle
+    "etat_ecarts.json": ("ETAT_ECARTS_M_M1", "État des écarts M / M-1", "AUTRE"),
+    "controle_anomalies.json": ("CONTROLE_ANOMALIES_PAIE", "Contrôle des bulletins (anomalies)", "AUTRE"),
+    "controle_ir.json": ("CONTROLE_IR", "Contrôle de l'IR retenu", "AUTRE"),
+    "masse_salariale.json": ("MASSE_SALARIALE", "Masse salariale par direction et catégorie", "AUTRE"),
+    "emargement.json": ("ETAT_EMARGEMENT", "État d'émargement (nets par mode de paiement)", "LISTE"),
 }
 CATEGORIES = ("BULLETIN", "JOURNAL", "ATTESTATION", "COURRIER", "LISTE", "DECLARATION", "AUTRE")
 TYPES_DEPENDANCE = {"SOURCE", "CHAMP", "RUBRIQUE", "CONSTANTE", "MASQUE", "ASSET", "SOUS_MODELE", "TABLE"}

@@ -27,6 +27,11 @@ from app.editions import ecrans as ec
 from app.editions import service as sv
 
 MODULES = {"PAIE": "Paie", "RH": "Ressources humaines"}
+# RG-EDT-THEME-04 (Adil DAIA) : dossier d'origine des modèles livrés dont la catégorie ne suffit pas
+THEMES_MODELES_SYSTEME = {
+    "ETAT_ECARTS_M_M1": "PAIE_CONTROLE", "CONTROLE_ANOMALIES_PAIE": "PAIE_CONTROLE", "CONTROLE_IR": "PAIE_CONTROLE",
+    "MASSE_SALARIALE": "PAIE_SYNTHESE", "FICHE_SYNTHESE_ANNUELLE": "PAIE_SYNTHESE",
+}
 # catégories sans thème dédié → thème « standard » du module
 REPLI_CATEGORIE = {"AUTRE": "LISTE"}
 
@@ -173,6 +178,8 @@ def avec_theme(db: Session, u: sv.Utilisateur, modeles: list[dict]) -> list[dict
     for m in modeles:
         t = par_id.get(str(m.get("theme_id"))) if m.get("theme_id") else None
         implicite = t is None
+        if t is None and m.get("est_systeme") and m.get("code") in THEMES_MODELES_SYSTEME:
+            t = next((x for x in themes if x["est_systeme"] and x["code"] == THEMES_MODELES_SYSTEME[m["code"]]), None)
         t = t or theme_par_defaut(themes, m["categorie"])
         m["theme_effectif_id"] = t["id"] if t else None
         m["theme_libelle"] = t["libelle"] if t else None
