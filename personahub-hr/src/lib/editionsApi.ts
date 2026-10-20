@@ -465,6 +465,8 @@ export const editionsApi = {
   genererEcran: (type: "MODELE" | "DOSSIER", id: string, libelle?: string) =>
     appel<{ code: string; chemin: string; libelle: string; cree: boolean }>("POST", "/navigation", { type, id, libelle }),
   retirerEcran: (type: "MODELE" | "DOSSIER", id: string) => appel<{ ok: boolean }>("DELETE", `/navigation?type=${type}&id=${encodeURIComponent(id)}`),
+  publierNavigation: (module: string, avec_etats: boolean) =>
+    appel<{ crees: number; mis_a_jour: number; retires: number }>("POST", "/navigation/publier", { module, avec_etats }),
   menuModule: (module: string, tout = false) => appel<ArbreMenu>("GET", `/menus/${module}${tout ? "?tout=true" : ""}`),
   lancerMenu: (module: string, corps: { modele_id: string; parametres?: Record<string, unknown>; forme?: string }) =>
     appel<{ demande_id: string; statut: string; documents: DocumentProduit[]; modele: { id: string; code: string; libelle: string } }>(

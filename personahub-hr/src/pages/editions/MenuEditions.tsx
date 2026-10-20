@@ -10,12 +10,13 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import {
-  ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, Pencil,
+  ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, MonitorUp, Pencil,
   Search, Settings2, ShieldCheck, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { editionsApi, type ArbreMenu, type ModeleEcran, type ThemeMenu } from "@/lib/editionsApi";
 import { PanneauProduction } from "./LanceurEcran";
@@ -58,6 +59,21 @@ export default function MenuEditions({ module, titre, description }: { module: s
   });
   const [survol, setSurvol] = useState<string | null>(null);
   const [saisie, setSaisie] = useState<{ titre: string; valeur: string; valider: (v: string) => Promise<unknown> } | null>(null);
+  // RG-EDT-NAV-05 : publier l'arborescence comme sous-menus de « Éditions de la paie »
+  const [publication, setPublication] = useState<{ avecEtats: boolean; occupe: boolean } | null>(null);
+  const publierNavigation = async () => {
+    if (!publication) return;
+    setPublication({ ...publication, occupe: true });
+    try {
+      const b = await editionsApi.publierNavigation(module, publication.avecEtats);
+      toast.success("Menu publié dans la navigation", {
+        description: `${b.crees} écran(s) créé(s), ${b.mis_a_jour} mis à jour, ${b.retires} retiré(s). Rechargez la page pour voir le menu ; rôles et ordre se règlent dans Configuration › Navigation.` });
+      setPublication(null);
+    } catch (e: any) {
+      toast.error("Publication impossible", { description: e.message });
+      setPublication((p) => p && { ...p, occupe: false });
+    }
+  };
 
   const charger = useCallback(() => {
     editionsApi.menuModule(module, organiser)
@@ -180,6 +196,10 @@ export default function MenuEditions({ module, titre, description }: { module: s
           title="Créer des dossiers et y classer les états (glisser-déposer)">
           <FolderPlus className="mr-1.5 h-4 w-4" />{organiser ? "Terminer l'organisation" : "Organiser"}
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setPublication({ avecEtats: true, occupe: false })}
+          title="Les dossiers (et les états) de ce menu deviennent les sous-menus de « Éditions de la paie » dans la navigation">
+          <MonitorUp className="mr-1.5 h-4 w-4" />Publier dans la navigation
+        </Button>
         <Button variant="outline" size="sm" onClick={() => retour.ouvrir("/editions", titre)} title="Concevoir les états, les activer ou les désactiver">
           <Settings2 className="mr-1.5 h-4 w-4" />Gérer les états
         </Button>
@@ -238,6 +258,25 @@ export default function MenuEditions({ module, titre, description }: { module: s
       )}
 
       </div>
+      <Dialog open={!!publication} onOpenChange={(o) => !o && setPublication(null)}>
+        <DialogContent className="ecran-editions-texte max-w-md">
+          <DialogHeader><DialogTitle>Publier le menu dans la navigation</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Chaque dossier de ce menu devient un sous-menu de « Éditions de la paie », dans le même ordre et la même
+            arborescence, avec les rôles de « Éditions de la paie ». Les dossiers créés, renommés ou supprimés ensuite
+            suivront d'eux-mêmes.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={!!publication?.avecEtats} onCheckedChange={(v) => setPublication((p) => p && { ...p, avecEtats: v === true })} />
+            Inclure les états (un écran par état, sous son dossier)
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublication(null)}>Annuler</Button>
+            <Button disabled={publication?.occupe} onClick={publierNavigation}>
+              {publication?.occupe && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Publier</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!saisie} onOpenChange={(o) => !o && setSaisie(null)}>
         <DialogContent className="ecran-editions-texte max-w-sm">
           <DialogHeader><DialogTitle>{saisie?.titre}</DialogTitle></DialogHeader>

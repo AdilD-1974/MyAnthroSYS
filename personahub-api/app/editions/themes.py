@@ -100,6 +100,7 @@ def creer_theme(db: Session, u: sv.Utilisateur, *, libelle: str, module: str = "
                        VALUES (:id, :c, :l, :m, :p, :s, :o)"""),
                {"id": tid, "c": code, "l": libelle, "m": module, "p": parent_id, "s": u.societe_id, "o": int(ordre)})
     sv.auditer(db, u, "THEME_CREATION", "THEME", tid, {"libelle": libelle, "module": module})
+    suivre_navigation(db, u, module)
     return _theme(db, u, tid)
 
 
@@ -137,6 +138,7 @@ def modifier_theme(db: Session, u: sv.Utilisateur, theme_id: str, *, libelle: Op
     if champs:
         db.execute(text(f"UPDATE edt_theme SET {', '.join(champs)} WHERE id = :id"), val)
         sv.auditer(db, u, "THEME_MODIFICATION", "THEME", t["id"], {k: v for k, v in val.items() if k != "id"})
+        suivre_navigation(db, u, t["module"])
     return _theme(db, u, t["id"])
 
 
@@ -145,6 +147,7 @@ def supprimer_theme(db: Session, u: sv.Utilisateur, theme_id: str) -> None:
     # RG-EDT-THEME-03 : modèles des thèmes supprimés → thème de leur catégorie (theme_id ON DELETE SET NULL)
     db.execute(text("DELETE FROM edt_theme WHERE id = :id"), {"id": t["id"]})
     sv.auditer(db, u, "THEME_SUPPRESSION", "THEME", t["id"], {"libelle": t["libelle"]})
+    suivre_navigation(db, u, t["module"])
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +174,8 @@ def regler_modele(db: Session, u: sv.Utilisateur, modele_id: str, *, actif: Opti
         db.execute(text("""INSERT INTO edt_modele_reglage (modele_id, societe_id, actif, theme_id, ordre)
                            VALUES (:m, :s, :a, :t, :o)"""), params)
     sv.auditer(db, u, "REGLAGE", "MODELE", m["id"], nouveau)
+    for module in MODULES:
+        suivre_navigation(db, u, module)
     return sv.lire_modele(db, u, m["id"])
 
 
@@ -237,3 +242,34 @@ def lancer(db: Session, u: sv.Utilisateur, module: str, modele_id: str, parametr
     m = sv.lire_modele(db, u, modele_id)
     return {**res, "modele": {"id": m["id"], "code": m["code"], "libelle": m["libelle"]}}
 
+
+
+# ---------------------------------------------------------------------------
+# RG-EDT-NAV-05 : le menu d'éditions publié dans la navigation
+# ---------------------------------------------------------------------------
+def publier_navigation(db: Session, u: sv.Utilisateur, module: str = "PAIE", avec_etats: bool = True) -> dict:
+    from app.editions import navigation as nav
+    sv.exiger(db, u, "ADMINISTRER")
+    try:
+        bilan = nav.synchroniser(db, arbre(db, u, module), avec_etats)
+    except nav.ErreurNavigation as e:
+        raise sv.Invalide(str(e))
+    sv.auditer(db, u, "NAVIGATION_PUBLICATION", "THEME", None, {"module": module, "avec_etats": avec_etats, **bilan})
+    return bilan
+
+
+def suivre_navigation(db: Session, u: sv.Utilisateur, module: str) -> None:
+    """Menu déjà publié dans la navigation : dossiers et états y suivent les changements (création,
+    renommage, classement, suppression). Jamais bloquant pour l'opération sur le menu."""
+    from app.editions import navigation as nav
+    try:
+        if not nav.disponible(db) or not sv.peut(db, u, "ADMINISTRER"):
+            return
+        publies = db.execute(text("SELECT count(*), count(*) FILTER (WHERE code LIKE 'edt\\_m\\_%') FROM nav_menu_item "
+                                  "WHERE code LIKE 'edt\\_d\\_%' OR code LIKE 'edt\\_m\\_%'")).one()
+        if not publies[0]:
+            return
+        with db.begin_nested():
+            nav.synchroniser(db, arbre(db, u, module), avec_etats=bool(publies[1]))
+    except Exception:                                      # la navigation se republie à la main au besoin
+        pass

@@ -636,3 +636,14 @@ def generer_ecran_navigation(corps: EcranNavigation, u: sv.Utilisateur = Depends
 @router.delete("/navigation")
 def retirer_ecran_navigation(type: str, id: str, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
     return _ecriture(db, sv.retirer_ecran_navigation, u, type.upper(), id)
+
+
+class PublicationNavigation(BaseModel):
+    module: str = "PAIE"
+    avec_etats: bool = True
+
+
+@router.post("/navigation/publier")
+def publier_navigation(corps: PublicationNavigation, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    """RG-EDT-NAV-05 : dossiers (et états) du menu d'éditions → sous-menus de « Éditions de la paie »."""
+    return _ecriture(db, th.publier_navigation, u, corps.module.upper(), corps.avec_etats)

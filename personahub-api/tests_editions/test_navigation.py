@@ -50,3 +50,27 @@ def test_droits_et_etat_non_publie(s):
     m = sv.creer_modele(s, ADMIN, code="BROUILLON_NAV", libelle="Brouillon", categorie="LISTE")
     with pytest.raises(sv.Invalide, match="Publiez"):
         sv.generer_ecran_navigation(s, ADMIN, "MODELE", "BROUILLON_NAV")
+
+
+def test_menu_publie_en_sous_menus_et_suivi(s):
+    """RG-EDT-NAV-05 : dossiers et états sous « Éditions de la paie », dans l'arborescence ; suivi des changements."""
+    from app.editions.navigation import _repere
+    racine = _repere(s)
+    bilan = th.publier_navigation(s, ADMIN, "PAIE", True)
+    assert bilan["crees"] > 0
+    lignes = s.execute(text("SELECT code, label, parent_id, chemin FROM nav_menu_item WHERE code LIKE 'edt%'")).mappings().all()
+    dossiers = {l["label"]: l for l in lignes if l["code"].startswith("edt_d_")}
+    assert "États de synthèse" in dossiers and str(dossiers["États de synthèse"]["parent_id"]) == str(racine["id"])
+    masse = next(l for l in lignes if l["code"] == "edt_m_masse_salariale")
+    assert masse["parent_id"] == s.execute(text("SELECT id FROM nav_menu_item WHERE label = 'États de synthèse' AND code LIKE 'edt_d_%'")).scalar()
+    # idempotent
+    assert th.publier_navigation(s, ADMIN, "PAIE", True)["crees"] == 0
+    # suivi : nouveau dossier, état reclassé
+    t = th.creer_theme(s, ADMIN, libelle="Mes états", module="PAIE")
+    m = next(x for x in sv.lister_modeles(s, ADMIN) if x["code"] == "MASSE_SALARIALE")
+    th.regler_modele(s, ADMIN, m["id"], theme_id=t["id"])
+    nouveau = s.execute(text("SELECT id FROM nav_menu_item WHERE label = 'Mes états'")).scalar()
+    assert nouveau and s.execute(text("SELECT parent_id FROM nav_menu_item WHERE code = 'edt_m_masse_salariale'")).scalar() is not None
+    # dossier supprimé → son écran retiré
+    th.supprimer_theme(s, ADMIN, t["id"])
+    assert not s.execute(text("SELECT 1 FROM nav_menu_item WHERE label = 'Mes états'")).first()
