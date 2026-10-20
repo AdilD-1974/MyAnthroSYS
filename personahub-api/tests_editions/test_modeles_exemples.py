@@ -294,3 +294,32 @@ def test_modeles_livres_publiables_sans_erreur(s):
         if ids:
             erreurs[f.name] = ids[:3]
     assert not erreurs, erreurs
+
+
+def test_transposition_d_une_copie_du_recapitulatif(s):
+    """RG-EDT-EXERCICE-03 : une copie faite avant le « tout paramétrage » (valeurs en dur dans la mise en
+    forme) passe ses valeurs dans les variables et le corps Synthèse, garde ses rubriques, et s'imprime."""
+    import copy
+    import json as _json
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "editions"))
+    from generer_modeles_exemples import transposer_recapitulatif
+    from app.editions import catalogue
+    from app.editions.definition import Definition
+    from app.editions.validation import valider
+    avant = _json.loads((Path(__file__).parent / "donnees" / "recap_avant_transposition.json").read_text(encoding="utf-8"))
+    avant["corps"][0]["affectations"].append({"rubrique": "SALBASE", "cibles": {"MT": "mois"}, "libelle": "Salaire de base (ajout)"})
+    apres = transposer_recapitulatif(copy.deepcopy(avant))
+    assert transposer_recapitulatif(copy.deepcopy(apres)) == apres                      # sans effet la 2e fois
+    assert apres["corps"][0]["affectations"] == avant["corps"][0]["affectations"]       # rubriques de l'utilisateur gardées
+    textes = _json.dumps(apres["bandes"], ensure_ascii=False)
+    for en_dur in ("identite.nom", "affectation.emploi_libelle", '"total_brut"', "[NBJTRV]"):
+        assert en_dur not in textes, en_dur
+    d = Definition.model_validate(apres)
+    r = valider(d, catalogue.charger(s, "11111111-1111-1111-1111-111111111111"))
+    assert not [e for e in r.erreurs if "var." in str(e) or "corps." in str(e) or "Identifiant" in str(e)], r.erreurs
+    from app.editions.moteur import executeur
+    from app.editions.sources import ContexteSecurite
+    docs = executeur.executer(s, d, {"annee": 2026}, ContexteSecurite(None, "11111111-1111-1111-1111-111111111111", frozenset(), True))
+    assert docs and all(not x.anomalies for x in docs), [a for x in docs for a in x.anomalies][:3]

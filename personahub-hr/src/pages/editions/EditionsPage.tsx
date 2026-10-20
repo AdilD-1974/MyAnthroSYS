@@ -12,7 +12,7 @@ import ReturnTrail from "@/components/navigation/ReturnTrail";
 import { useRetour } from "./retour";
 import "./editions.css";
 import {
-  Archive, ArchiveRestore, Copy, Download, ExternalLink, Eye, FileText, Folder, Globe, Building2, LayoutGrid, List, Loader2, Lock,
+  Archive, ArchiveRestore, Copy, Database, Download, ExternalLink, Eye, FileText, Folder, Globe, Building2, LayoutGrid, List, Loader2, Lock,
   Pencil, Play, Plus, Search, ShieldCheck, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -188,7 +188,12 @@ export default function EditionsPage() {
           <h1 className="titre-ecran text-xl font-semibold tracking-tight">Éditions</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">Bulletins, journaux, attestations et états : concevez, publiez et produisez vos documents.</p>
         </div>
-        <Button className="ml-auto" onClick={() => setCreation({ ouvert: true, code: "", libelle: "", categorie: categorie || "LISTE", visibilite: "SOCIETE", origine: "" })}>
+        {/* RG-EDT-DICO : dictionnaire des données (champs, sources, relations) */}
+        <Button variant="outline" className="ml-auto" onClick={() => retour.ouvrir("/editions/dictionnaire", "Éditions")}
+          title="Associer les informations proposées dans le designer : champs, sources, relations">
+          <Database className="mr-1 h-4 w-4" />Dictionnaire des données
+        </Button>
+        <Button onClick={() => setCreation({ ouvert: true, code: "", libelle: "", categorie: categorie || "LISTE", visibilite: "SOCIETE", origine: "" })}>
           <Plus className="mr-1 h-4 w-4" />Nouveau modèle
         </Button>
       </div>

@@ -3,13 +3,13 @@
  * Auteur : Adil DAIA — lot 2 (16/10/2026)
  */
 import { createContext, useContext } from "react";
-import type { Fonction, Masque, SourceCatalogue } from "@/lib/editionsApi";
+import type { Fonction, Masque, RubriqueInfo, SourceCatalogue } from "@/lib/editionsApi";
 import type { Definition } from "@/pages/editions/types";
 
 export interface Referentiels {
   sources: SourceCatalogue[];
   fonctions: Fonction[];
-  rubriques: { code: string; libelle: string }[];
+  rubriques: RubriqueInfo[];
   masques: Masque[];
   definition: Definition | null;
   lectureSeule: boolean;

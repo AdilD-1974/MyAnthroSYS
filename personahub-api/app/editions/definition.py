@@ -334,6 +334,16 @@ class LigneCorps(Strict):
     libelle: str
 
 
+class SectionCorps(Strict):
+    """RG-EDT-SECTION-01 (Adil DAIA) : section d'un corps « lignes » ou « exercice » — titre imprimé,
+    ordre d'impression, sous-total facultatif. Chaque rubrique (affectation) est rangée dans une section."""
+    code: CodeDonnee
+    libelle: str
+    titre: bool = True                        # titre de la section imprimé au-dessus de ses lignes
+    sous_total: bool = False                  # ligne de sous-total (somme des colonnes numériques)
+    libelle_total: Optional[str] = None       # défaut : « Total <libellé> »
+
+
 class Affectation(Strict):
     """Une rubrique (ou une formule) et les colonnes qui reçoivent ses valeurs
     (onglet « Rubriques » du Report Manager). RG-EDT-DONNEES-02 à 05."""
@@ -344,7 +354,8 @@ class Affectation(Strict):
     periode: Literal["MOIS", "CUMUL", "COMPARAISON", "ECART"] = "MOIS"
     cibles: dict[str, str] = {}               # NB|MT|TX|BASE|PAT|VAL → colonne (LIGNES) ou « ligne.colonne » (CASES)
                                               # EXERCICE : un seul attribut → « mois » (ventilé sur m01…m12)
-    groupe: Optional[str] = None              # titre d'impression (corps LIGNES)
+    groupe: Optional[str] = None              # titre d'impression (corps LIGNES) — ancien regroupement libre
+    section: Optional[str] = None             # RG-EDT-SECTION-01 : code d'une section du corps (prime sur groupe)
     libelle: Optional[str] = None
     negatif: bool = False                     # « en – » : soustraite (seule ou dans une ligne fusionnée)
     nulle: bool = False                       # « Nulls » : imprimée même à zéro (jamais sans aucune valeur)
@@ -359,6 +370,7 @@ class Corps(Strict):
     colonnes: list[ColonneCorps] = Field(min_length=1)
     lignes: list[LigneCorps] = []             # CASES
     affectations: list[Affectation] = []
+    sections: list[SectionCorps] = []         # RG-EDT-SECTION-01 (corps LIGNES et EXERCICE)
     tri: Literal["AFFECTATION", "PAIE", "CODE"] = "AFFECTATION"
     afficher_titre: bool = True               # titre du corps imprimé au-dessus de ses lignes sans groupe
     # RG-EDT-DONNEES-07 (Adil DAIA) : emplacement à l'impression, appliqué par le designer à la mise

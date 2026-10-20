@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import {
-  editionsApi, ErreurEdition, type ErreurValidation, type Fonction, type Masque, type SourceCatalogue, type Version,
+  editionsApi, ErreurEdition, type ErreurValidation, type Fonction, type Masque, type RubriqueInfo, type SourceCatalogue, type Version,
 } from "@/lib/editionsApi";
 import { activerForme, cibleErreur, copie, largeurUtile, type Definition, type Element } from "@/pages/editions/types";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
@@ -54,7 +54,7 @@ export default function DesignerPage() {
   // jeton de concurrence : une référence, car « Publier » enregistre puis publie
   // dans le même clic et doit utiliser le jeton renvoyé par l'enregistrement
   const jeton = useRef<string>("");
-  const [ref, setRef] = useState<{ sources: SourceCatalogue[]; fonctions: Fonction[]; rubriques: { code: string; libelle: string }[]; masques: Masque[] }>(
+  const [ref, setRef] = useState<{ sources: SourceCatalogue[]; fonctions: Fonction[]; rubriques: RubriqueInfo[]; masques: Masque[] }>(
     { sources: [], fonctions: [], rubriques: [], masques: [] });
   const [chargement, setChargement] = useState(true);
   const [erreurChargement, setErreurChargement] = useState<string | null>(null);
@@ -99,6 +99,12 @@ export default function DesignerPage() {
   }, [modeleId, recherche]);
 
   useEffect(() => { charger(); }, [charger]);
+  // RG-EDT-DICO : retour d'un onglet « Dictionnaire des données » → champs et sources à jour, sans recharger le modèle
+  useEffect(() => {
+    const rafraichir = () => { if (document.visibilityState === "visible") editionsApi.catalogue().then((sources) => setRef((r) => ({ ...r, sources }))).catch(() => undefined); };
+    document.addEventListener("visibilitychange", rafraichir);
+    return () => document.removeEventListener("visibilitychange", rafraichir);
+  }, []);
 
   // ── quitter sans enregistrer ─────────────────────────────────────────────
   useEffect(() => {

@@ -268,6 +268,14 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
         if c.nature == "EXERCICE" and not set(COLONNES_EXERCICE) <= cols:          # RG-EDT-EXERCICE-01
             rapport.ajouter(f"{base}.colonnes", "Un corps « exercice » a les colonnes m01 à m12 et total")
         cases = {f"{l.code}.{col}" for l in c.lignes for col in cols}
+        # RG-EDT-SECTION-01 : sections uniques, rubriques rangées dans une section existante
+        doublons(((f"{base}.sections[{k}].code", x.code) for k, x in enumerate(c.sections)), "Section")
+        if c.sections and c.nature == "CASES":
+            rapport.ajouter(f"{base}.sections", "Un corps « cases » n'a pas de sections (ses lignes en tiennent lieu)")
+        codes_sections = {x.code for x in c.sections}
+        for k, a in enumerate(c.affectations):
+            if a.section and a.section not in codes_sections:
+                rapport.ajouter(f"{base}.affectations[{k}].section", f"Section inconnue dans ce corps : {a.section}")
         for k, a in enumerate(c.affectations):
             ch = f"{base}.affectations[{k}]"
             # RG-EDT-DONNEES-06 : rubrique avec rubrique (somme), formule avec formule (colonnes de la même ligne)

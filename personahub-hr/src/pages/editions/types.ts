@@ -205,12 +205,21 @@ export interface Affectation {
   formule?: Expr | null;
   periode?: "MOIS" | "CUMUL" | "COMPARAISON" | "ECART";   // COMPARAISON : période de comparaison (M-1 ou choisie) ; ECART : mois − comparaison
   cibles: Partial<Record<AttributAffecte, string>>;   // colonne (LIGNES), « ligne.colonne » (CASES), « mois » (EXERCICE : un seul attribut)
-  groupe?: string | null;
+  groupe?: string | null;           // ancien regroupement libre (remplacé par les sections)
+  section?: string | null;          // RG-EDT-SECTION-01 : code d'une section du corps
   libelle?: string | null;
   negatif?: boolean;                // « en – » : soustraite (seule ou dans une ligne fusionnée)
   nulle?: boolean;                  // imprimée même à zéro (jamais sans aucune valeur)
   fusion?: boolean;                 // s'ajoute à la ligne de l'affectation précédente
   gras?: boolean | null;            // défaut : gras pour une formule
+}
+/** RG-EDT-SECTION-01 : section d'un corps « lignes » ou « exercice » (titre, ordre, sous-total). */
+export interface SectionCorps {
+  code: string;
+  libelle: string;
+  titre?: boolean;                  // titre imprimé (défaut : oui)
+  sous_total?: boolean;             // ligne de sous-total des colonnes numériques
+  libelle_total?: string | null;    // défaut : « Total <libellé> »
 }
 export interface Corps {
   code: string;
@@ -219,6 +228,7 @@ export interface Corps {
   colonnes: ColonneCorps[];
   lignes?: LigneCorps[];
   affectations?: Affectation[];
+  sections?: SectionCorps[];        // RG-EDT-SECTION-01
   tri?: "AFFECTATION" | "PAIE" | "CODE";
   afficher_titre?: boolean;         // titre du corps imprimé (défaut : oui)
   emplacement?: "DETAIL" | "BAS_DE_PAGE" | "MASQUE" | null;   // défaut : DETAIL (lignes), BAS_DE_PAGE (cases)
@@ -552,3 +562,46 @@ export function bandeParDefaut(d: Definition, type: TypeBande): Bande {
 export const ORDRE_BANDES: TypeBande[] = [
   "FOND", "EN_TETE_ETAT", "EN_TETE_PAGE", "EN_TETE_GROUPE", "CORPS", "PIED_GROUPE", "PIED_ETAT", "PIED_PAGE",
 ];
+
+
+/** Code libre d'une section à partir de son libellé. */
+export function codeSection(libelle: string, pris: Set<string>): string {
+  let base = (libelle || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || "section";
+  if (!/^[a-z]/.test(base)) base = `s_${base}`;
+  let code = base; let n = 1;
+  while (pris.has(code)) code = `${base}_${++n}`;
+  pris.add(code);
+  return code;
+}
+
+/** RG-EDT-SECTION-01 : l'ordre des rubriques suit celui des sections (rubriques sans section d'abord), puis, dans
+ *  une section, l'ordre des rubriques. Une ligne fusionnée suit la rubrique au-dessus d'elle. */
+export function rangerParSection(c: Corps): void {
+  if (!c.sections?.length || !c.affectations?.length) return;
+  const rang = new Map(c.sections.map((x, k) => [x.code, k]));
+  const blocs: Affectation[][] = [];
+  for (const a of c.affectations) { if (a.fusion && blocs.length) blocs[blocs.length - 1].push(a); else blocs.push([a]); }
+  const cle = (b: Affectation[]) => (b[0].section ? rang.get(b[0].section) ?? -1 : -1);
+  c.affectations = blocs.map((b, k) => ({ b, k })).sort((x, y) => cle(x.b) - cle(y.b) || x.k - y.k)
+    .flatMap((x) => x.b.map((a, n) => { if (n > 0) { if (x.b[0].section) a.section = x.b[0].section; else delete a.section; } return a; }));
+}
+
+/** RG-EDT-SECTION-01 : les anciens groupes (texte libre) deviennent les sections du corps. */
+export function groupesEnSections(c: Corps): number {
+  if (c.nature === "CASES") return 0;
+  const sections = c.sections ?? [];
+  const parLibelle = new Map(sections.map((x) => [x.libelle, x.code]));
+  const pris = new Set(sections.map((x) => x.code));
+  let n = 0;
+  for (const a of c.affectations ?? []) {
+    const g = (a.groupe ?? "").trim();
+    if (!g || a.section) continue;
+    if (!parLibelle.has(g)) { const code = codeSection(g, pris); parLibelle.set(g, code); sections.push({ code, libelle: g }); }
+    a.section = parLibelle.get(g)!;
+    delete a.groupe;
+    n++;
+  }
+  if (sections.length) { c.sections = sections; rangerParSection(c); }
+  return n;
+}

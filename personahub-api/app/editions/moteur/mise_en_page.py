@@ -482,7 +482,7 @@ class Composeur:
             i0, a0 = bloc[0]
             code0 = (a0.rubrique or "").strip().upper()
             ligne = {"code_rubrique": "+".join((a.rubrique or "").strip().upper() for _, a in bloc if a.rubrique),
-                     "groupe": a0.groupe, "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
+                     **self._section_de(c, a0), "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
                      "libelle": a0.libelle or (self.ctx.libelles_rubriques.get(code0) or code0 if code0 else "")}
             valeurs: dict[int, Any] = {}
             sans_total = False
@@ -529,7 +529,24 @@ class Composeur:
         elif c.tri == "PAIE":
             lignes.sort(key=lambda l: ((rub.get(l["code_rubrique"]) or {}).get("ORDRE") is None,
                                        (rub.get(l["code_rubrique"]) or {}).get("ORDRE") or 0, l["_rang"]))
-        return lignes
+        return self._par_section(c, lignes)
+
+    @staticmethod
+    def _section_de(c: Corps, a) -> dict:
+        """RG-EDT-SECTION-01 : titre d'impression de la ligne = libellé de sa section (sinon l'ancien groupe)."""
+        sec = next((x for x in c.sections if x.code == a.section), None) if a.section else None
+        if sec is None:
+            return {"groupe": a.groupe}
+        return {"groupe": sec.libelle, "_section": sec.code, "_corps": c.code}
+
+    @staticmethod
+    def _par_section(c: Corps, lignes: list[dict]) -> list[dict]:
+        """RG-EDT-SECTION-01 : lignes dans l'ordre des sections (les rubriques hors section d'abord) ;
+        dans une section, l'ordre choisi pour le corps (affectations, paie ou code)."""
+        if not c.sections:
+            return lignes
+        rang = {x.code: k for k, x in enumerate(c.sections)}
+        return sorted(lignes, key=lambda l: rang.get(l.get("_section"), -1))
 
     def _compiler_corps(self, c: Corps, rub: dict, r) -> Any:
         if c.nature == "EXERCICE":
@@ -558,7 +575,7 @@ class Composeur:
             i0, a0 = bloc[0]
             code0 = (a0.rubrique or "").strip().upper()
             ligne = {"code_rubrique": "+".join((a.rubrique or "").strip().upper() for _, a in bloc if a.rubrique),
-                     "groupe": a0.groupe, "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
+                     **self._section_de(c, a0), "_rang": i0, "_gras": a0.gras if a0.gras is not None else bool(a0.formule),
                      "libelle": a0.libelle or (self.ctx.libelles_rubriques.get(code0) or code0 if code0 else "")}
             utile = present = False
             for _, a in bloc:
@@ -599,7 +616,7 @@ class Composeur:
         elif c.tri == "PAIE":
             lignes.sort(key=lambda l: ((rub.get(l["code_rubrique"]) or {}).get("ORDRE") is None,
                                        (rub.get(l["code_rubrique"]) or {}).get("ORDRE") or 0, l["_rang"]))
-        return lignes
+        return self._par_section(c, lignes)
 
     # ---------------------------------------------------------------- bande → tranches
     def _tranches(self, bande: Bande, ligne: Optional[dict], agregats: dict, page: int,
@@ -711,7 +728,7 @@ class Composeur:
         nb_lignes = 0
         imprimees: set[int] = set()
 
-        def imprimer(entrees, sous_totaux: Accumulateur):
+        def imprimer(entrees, sous_totaux: Accumulateur, numeriques: Optional[Accumulateur] = None):
             nonlocal nb_lignes
             for l, lr, origine in entrees:
                 r = self._resolver(ligne, {}, page, nb_pages, l)
@@ -722,6 +739,9 @@ class Composeur:
                     if c.total != "AUCUN" and v not in (ERREUR, None):
                         totaux.ajouter(c.id, v)
                         sous_totaux.ajouter(c.id, v)
+                    if numeriques is not None and c is not colonnes[0] and isinstance(v, (Decimal, int, float)) \
+                            and not isinstance(v, bool):
+                        numeriques.ajouter(c.id, v)                 # RG-EDT-SECTION-01 : sous-total de section
                     t = ERREUR if v == ERREUR else fmt.formater(
                         v, c.affichage.masque, c.affichage.texte_avant, c.affichage.texte_apres,
                         c.affichage.valeur_si_vide if c.affichage.valeur_si_vide is not None else "",
@@ -734,15 +754,29 @@ class Composeur:
                 imprimees.add(id(origine if origine is not None else l))
 
         if tab.corps and not tab.sections and tab.grouper:
-            # un titre par groupe d'affectations, dans l'ordre de première apparition
+            # un titre par groupe d'affectations, dans l'ordre de première apparition ;
+            # RG-EDT-SECTION-01 : une section du corps décide de son titre et de son sous-total
             ordre: list = []
             for l in lignes:
-                if l.get("groupe") not in ordre:
-                    ordre.append(l.get("groupe"))
-            for g in ordre:
-                du_groupe = [(l, None, l) for l in lignes if l.get("groupe") == g]
-                if g:
-                    tranches.append(titre_section(g))
+                cle = (l.get("_corps"), l.get("_section")) if l.get("_section") else l.get("groupe")
+                if cle not in ordre:
+                    ordre.append(cle)
+            for cle in ordre:
+                if isinstance(cle, tuple):
+                    cp = self.d.corps_par_code(cle[0])
+                    sec = next((x for x in (cp.sections if cp else []) if x.code == cle[1]), None)
+                    du_groupe = [(l, None, l) for l in lignes if (l.get("_corps"), l.get("_section")) == cle]
+                    if sec is not None and sec.titre:
+                        tranches.append(titre_section(sec.libelle))
+                    acc = Accumulateur()
+                    imprimer(du_groupe, acc, numeriques=acc)
+                    if sec is not None and sec.sous_total:
+                        tranches.append(rangee(self._ligne_sous_total(colonnes, acc, sec.libelle_total or f"Total {sec.libelle}"),
+                                               gras=True, fond="#F4F4F4", bordures="TOUT" if bord else None))
+                    continue
+                du_groupe = [(l, None, l) for l in lignes if l.get("groupe") == cle and not l.get("_section")]
+                if cle:
+                    tranches.append(titre_section(cle))
                 imprimer(du_groupe, Accumulateur())
             lignes_traitees = True
         else:
@@ -788,6 +822,19 @@ class Composeur:
             tranches.append(rangee(self._ligne_totaux(colonnes, totaux, "Total"), gras=True, fond="#E8E8E8",
                                    bordures="TOUT" if bord else None))
         return tranches
+
+    def _ligne_sous_total(self, colonnes, acc: Accumulateur, libelle: str):
+        """RG-EDT-SECTION-01 : somme des colonnes numériques des lignes de la section."""
+        cellules = []
+        for i, c in enumerate(colonnes):
+            if i == 0:
+                cellules.append((c, libelle))
+            elif c.id in acc.nb:
+                cellules.append((c, fmt.formater(acc.valeur("TOTAL", c.id), c.affichage.masque or "MONTANT", valeur_si_vide="",
+                                                 registre=self.ctx.registre_masques)))
+            else:
+                cellules.append((c, ""))
+        return cellules
 
     def _ligne_totaux(self, colonnes, acc: Accumulateur, libelle: str):
         fonctions = {"SOMME": "TOTAL", "NB": "NB", "MOYENNE": "MOYENNE_SUR"}

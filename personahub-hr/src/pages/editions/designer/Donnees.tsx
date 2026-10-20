@@ -7,16 +7,16 @@
  *   Paramètres et sélection · Sources · Usages · Aperçu des données (tableau brut, sans format).
  * RG-EDT-DONNEES-01 à 05 ; affectations saisies à la main (décision du 16/10/2026).
  */
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowDown, ArrowUp, Copy, Loader2, Play, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { editionsApi, type ApercuDonnees, type ErreurValidation, type Version } from "@/lib/editionsApi";
+import { editionsApi, type ApercuDonnees, type ErreurValidation, type RubriqueInfo, type Version } from "@/lib/editionsApi";
 import ParametresForm, { parametresManquants, type Valeurs } from "@/pages/editions/ParametresForm";
 import {
-  ATTRIBUTS_AFFECTABLES, LIBELLES_NATURE, PERIODES_AFFECTATION, RUBRIQUES_EN_TETE, VARIABLES_BULLETIN, colonnesExercice,
-  type Affectation, type AttributAffecte, type Corps, type Definition, type TypeColonneCorps, type Usages, type Variable,
+  ATTRIBUTS_AFFECTABLES, LIBELLES_NATURE, PERIODES_AFFECTATION, RUBRIQUES_EN_TETE, VARIABLES_BULLETIN, codeSection, colonnesExercice,
+  groupesEnSections, rangerParSection, type Affectation, type SectionCorps, type AttributAffecte, type Corps, type Definition, type TypeColonneCorps, type Usages, type Variable,
 } from "@/pages/editions/types";
 import FormuleInput from "./FormuleInput";
 import Liste from "../Liste";
@@ -264,7 +264,7 @@ function renommerDansCorps(x: Definition, corps: string, genre: "colonne" | "lig
   }
 }
 
-type SousCorps = "rubriques" | "colonnes" | "lignes";
+type SousCorps = "rubriques" | "sections" | "colonnes" | "lignes";
 const LIBELLES_ATTRIBUT: Record<string, string> = {
   MT: "Montant", NB: "Nombre", BASE: "Base", TX: "Taux (dernier du mois)", PAT: "Part patronale", TXP: "Taux patronal",
 };
@@ -340,7 +340,9 @@ function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
           )}
         </div>
         <div className="mb-3 flex gap-1 border-b text-sm">
-          {([["rubriques", `Rubriques (${(c.affectations ?? []).length})`], ["colonnes", `Colonnes (${c.colonnes.length})`],
+          {([["rubriques", `Rubriques (${(c.affectations ?? []).length})`],
+            ...(c.nature !== "CASES" ? [["sections", `Sections (${(c.sections ?? []).length})`]] : []),
+            ["colonnes", `Colonnes (${c.colonnes.length})`],
             ...(c.nature === "CASES" ? [["lignes", `Lignes (${(c.lignes ?? []).length})`]] : [])] as [typeof sous, string][]).map(([k, l]) => (
             <button key={k} type="button" onClick={() => setSous(k)}
               className={`-mb-px border-b-2 px-3 py-1.5 ${sous === k ? "border-primary font-medium" : "border-transparent text-muted-foreground"}`}>{l}
@@ -351,6 +353,7 @@ function OngletCorps({ d, editeur, ro, actif, setActif, sous, setSous }: {
         {sous === "colonnes" && <GrilleColonnes c={c} ci={ci} ro={ro} majC={majC} editeur={editeur} />}
         {sous === "lignes" && c.nature === "CASES" && <GrilleLignes c={c} ci={ci} ro={ro} majC={majC} editeur={editeur} />}
         {sous === "rubriques" && <GrilleAffectations c={c} ci={ci} d={d} ro={ro} majC={majC} editeur={editeur} />}
+        {sous === "sections" && c.nature !== "CASES" && <GrilleSections c={c} ci={ci} ro={ro} majC={majC} />}
       </div>
       <aside className="w-40 shrink-0">
         <div className="rounded border p-2">
@@ -492,14 +495,55 @@ function ciblesDuCorps(c: Corps): { v: string; l: string }[] {
 function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: number; d: Definition; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void; editeur: Editeur }) {
   const { rubriques } = useReferentiels();
   const [q, setQ] = useState("");
+  const [filtreSection, setFiltreSection] = useState("");
   const [ajout, setAjout] = useState(false);
+  // RG-EDT-RUBRIQUES-02 (Adil DAIA) : sélection multiple → rattacher à une section, retirer, supprimer
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const [cibleSection, setCibleSection] = useState("");
   const affs = c.affectations ?? [];
+  const sections = c.sections ?? [];
+  const libSection = (code?: string | null) => sections.find((x) => x.code === code)?.libelle ?? "";
+  const anciensGroupes = c.nature !== "CASES" ? affs.filter((a) => a.groupe && !a.section).length : 0;
   const cibles = ciblesDuCorps(c);
   const nomRub = (code?: string | null) => (code ? rubriques.find((r) => r.code === code)?.libelle ?? RUBRIQUES_EN_TETE.find((r) => r.code === code)?.libelle ?? "?" : "");
   const bas = q.trim().toLowerCase();
-  const visibles = affs.map((a, i) => ({ a, i })).filter(({ a }) => !bas || (a.rubrique ?? "").toLowerCase().includes(bas)
-    || nomRub(a.rubrique).toLowerCase().includes(bas) || (a.groupe ?? "").toLowerCase().includes(bas) || (a.formule ?? "").toLowerCase().includes(bas));
+  const visibles = affs.map((a, i) => ({ a, i }))
+    .filter(({ a }) => !filtreSection || (filtreSection === "__sans__" ? !a.section : a.section === filtreSection))
+    .filter(({ a }) => !bas || (a.rubrique ?? "").toLowerCase().includes(bas)
+    || nomRub(a.rubrique).toLowerCase().includes(bas) || (a.groupe ?? "").toLowerCase().includes(bas)
+    || libSection(a.section).toLowerCase().includes(bas) || (a.formule ?? "").toLowerCase().includes(bas));
+  // RG-EDT-SECTION-01 : nouvelle section créée depuis la liste d'une rubrique
+  const nouvelleSection = (i: number | null): string | null => {
+    const libelle = window.prompt("Nom de la nouvelle section (ex. Éléments de rémunération)")?.trim();
+    if (!libelle) return null;
+    const code = codeSection(libelle, new Set(sections.map((x) => x.code)));
+    majC((z) => { z.sections = [...(z.sections ?? []), { code, libelle }]; if (i !== null) { z.affectations![i].section = code; delete z.affectations![i].groupe; } rangerParSection(z); }, "sadd");
+    return code;
+  };
   const majA = (i: number, fn: (a: Affectation) => void, cle: string) => majC((z) => fn(z.affectations![i]), `${cle}${i}`);
+  useEffect(() => { setSel(new Set()); }, [affs.length, c.code]);
+  const basculerSel = (i: number) => setSel((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const toutesVisiblesCochees = visibles.length > 0 && visibles.every(({ i }) => sel.has(i));
+  const reparerFusions = (y: Affectation[]) => y.forEach((a, k) => { if (a.fusion && (k === 0 || estFormule(a) !== estFormule(y[k - 1]))) delete a.fusion; });
+  const supprimerSelection = () => {
+    if (!sel.size || !window.confirm(`Retirer ${sel.size} rubrique(s) de ce corps ?`)) return;
+    const indices = [...sel].sort((x, y) => y - x);
+    majC((z) => { indices.forEach((k) => z.affectations!.splice(k, 1)); reparerFusions(z.affectations!); }, "asel-sup");
+    setSel(new Set());
+  };
+  const rattacherSelection = (code: string) => {
+    if (!sel.size) return;
+    majC((z) => {
+      const y = z.affectations!;
+      sel.forEach((k) => {
+        // une rubrique emmène les lignes fusionnées sous elle
+        for (let n = k; n < y.length && (n === k || y[n].fusion); n++) { if (code) { y[n].section = code; delete y[n].groupe; } else delete y[n].section; }
+      });
+      rangerParSection(z);
+    }, "asel-sec");
+    setSel(new Set());
+    setCibleSection("");
+  };
   const autres = (d.corps ?? []).filter((z) => z.code !== c.code);
   const erreurs = useContext(CtxErreurs);
   const cible = useContext(CtxCible);
@@ -511,8 +555,14 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
     let nb = 1;
     if (!y[de].fusion) while (de + nb < y.length && y[de + nb].fusion) nb++;
     while (vers < y.length && y[vers]?.fusion && !(vers > de && vers <= de + nb - 1)) vers++;
-    deplacer(y, de, vers, nb);
+    const pos = deplacer(y, de, vers, nb);
+    // RG-EDT-SECTION-01 : déposée parmi les rubriques d'une section, la rubrique y entre
+    if (z.sections?.length) {
+      const voisin = y[pos - 1] ?? y[pos + nb];
+      for (let n = pos; n < pos + nb; n++) { if (voisin?.section) y[n].section = voisin.section; else delete y[n].section; }
+    }
     y.forEach((a, k) => { if (a.fusion && (k === 0 || estFormule(a) !== estFormule(y[k - 1]))) delete a.fusion; });
+    rangerParSection(z);
   }, "ao-dnd"), !ro);
 
   const exo = c.nature === "EXERCICE";              // RG-EDT-EXERCICE-01 : un attribut ventilé sur les mois
@@ -533,6 +583,15 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
           <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
           <input className={`${classeChamp} pl-7`} placeholder="Filtrer les affectations…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
         </div>
+        {c.nature !== "CASES" && sections.length > 0 && (
+          <Liste compact className="w-52" value={filtreSection} onChange={setFiltreSection} vide="Toutes les sections"
+            options={[...sections.map((x) => ({ v: x.code, l: x.libelle })), { v: "__sans__", l: "Sans section" }]} />
+        )}
+        {!ro && anciensGroupes > 0 && (
+          <Button size="sm" variant="outline" title="Chaque groupe saisi en texte libre devient une section du corps (titre, ordre, sous-total)"
+            onClick={() => majC((z) => { const n = groupesEnSections(z); toast({ title: `${n} rubrique(s) rangée(s) dans des sections` }); }, "g2s")}>
+            Convertir les groupes en sections ({anciensGroupes})</Button>
+        )}
         <span className="text-xs text-muted-foreground">{exo
           ? "Chaque rubrique : l'attribut (montant, nombre, base…) imprimé mois par mois, total en fin de ligne. Une rubrique sans aucune valeur n'est jamais imprimée."
           : "Nb, Mt, Tx, Base, Patronal : colonne qui reçoit la valeur. Comparaison / Écart : période de comparaison (mois précédent ou choisie). Une rubrique sans aucune valeur n'est jamais imprimée ; à zéro, seulement si « Nulls »."}</span>
@@ -541,17 +600,38 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
           <Button size="sm" variant="outline" onClick={() => majC((z) => { z.affectations = [...(z.affectations ?? []), { formule: "", cibles: exo ? { VAL: "mois" } : {} }]; }, "fadd")}>Ajouter une formule</Button>
         </div>}
       </div>
+      {!ro && sel.size > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs">
+          <b>{sel.size} rubrique(s) sélectionnée(s)</b>
+          {c.nature !== "CASES" && <>
+            <span className="ml-2 text-muted-foreground">Rattacher à</span>
+            <Liste compact className="w-56" value={cibleSection} onChange={setCibleSection} placeholder="Choisir une section…"
+              options={[...sections.map((x) => ({ v: x.code, l: x.libelle })), { v: "__sans__", l: "Sans section" }]} />
+            <Button size="sm" variant="outline" disabled={!cibleSection} onClick={() => rattacherSelection(cibleSection === "__sans__" ? "" : cibleSection)}>Rattacher</Button>
+          </>}
+          <Button size="sm" variant="outline" className="text-destructive" onClick={supprimerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" />Retirer du corps</Button>
+          <button type="button" className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => setSel(new Set())}>Tout désélectionner</button>
+        </div>
+      )}
       <div className="overflow-auto rounded border">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10"><tr>
-            {["#", "Rubrique", ...(exo ? ["Valeur imprimée chaque mois"] : ["Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`)]), ...(c.nature !== "CASES" ? ["Groupe"] : []), "Libellé imprimé", "en –", "Nulls",
+            <th className={`${th} w-8 text-center`}>{!ro && <Checkbox checked={toutesVisiblesCochees} title="Tout cocher (rubriques affichées)"
+              onCheckedChange={(v) => setSel(v === true ? new Set([...sel, ...visibles.map(({ i }) => i)]) : new Set([...sel].filter((k) => !visibles.some((x) => x.i === k))))} />}</th>
+            {["#", "Rubrique", ...(exo ? ["Valeur imprimée chaque mois"] : ["Période", ...ATTRIBUTS_AFFECTABLES.map((x) => `${x.libelle} →`)]), ...(c.nature !== "CASES" ? ["Section"] : []), "Libellé imprimé", "en –", "Nulls",
               ...(c.nature !== "CASES" ? ["Fusion ↑", "Gras"] : []), ""].map((h) => <th key={h} className={th}
                 title={h === "Nulls" ? "Imprimée même quand ses valeurs sont à zéro. Une rubrique sans aucune valeur n'est jamais imprimée." : h === "Fusion ↑" ? "Même ligne que celle du dessus. Rubriques : valeurs additionnées (« en – » soustrait). Formules : plusieurs formules sur une ligne, chacune dans sa colonne" : h === "Gras" ? "Ligne imprimée en gras (par défaut pour une formule)" : undefined}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {visibles.map(({ a, i }) => { const er = ligneErreur(erreurs, `corps[${ci}].affectations[${i}]`); return (
-              <tr key={i} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title}
-                className={`hover:bg-muted/30 ${a.fusion && !er.rouge ? "bg-primary/5" : ""} ${er.rouge} ${dnd.ligne(i).className}`}>
+            {visibles.map(({ a, i }, k) => { const er = ligneErreur(erreurs, `corps[${ci}].affectations[${i}]`);
+              const entete = sections.length > 0 && !a.fusion && (k === 0 || (visibles[k - 1].a.section ?? "") !== (a.section ?? ""));
+              return (<Fragment key={i}>
+              {entete && <tr className="bg-muted/40"><td colSpan={16} className="px-2 py-1 text-xs font-semibold text-primary">
+                {a.section ? libSection(a.section) || a.section : "Sans section"}
+                <span className="ml-2 font-normal text-muted-foreground">· {affs.filter((x) => (x.section ?? "") === (a.section ?? "") && !x.fusion).length} rubrique(s)</span></td></tr>}
+              <tr {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title}
+                className={`hover:bg-muted/30 ${sel.has(i) ? "bg-primary/10" : a.fusion && !er.rouge ? "bg-primary/5" : ""} ${er.rouge} ${dnd.ligne(i).className}`}>
+                <td className={`${td} w-8 text-center`}>{!ro && <Checkbox checked={sel.has(i)} onCheckedChange={() => basculerSel(i)} />}</td>
                 <td className={`${td} w-12 whitespace-nowrap text-center text-xs text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{a.fusion ? "↳" : i + 1}</td>
                 {a.formule !== undefined && a.formule !== null && !a.rubrique ? (
                   <>
@@ -592,8 +672,20 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                     </>}
                   </>
                 )}
-                {c.nature !== "CASES" && <td className={`${td} w-32`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.groupe ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : "ex. Gains"}
-                  list={`groupes-${c.code}`} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "groupe", e.target.value), "g")} /></td>}
+                {c.nature !== "CASES" && <td className={`${td} w-44`}>
+                  {a.fusion ? <span className="px-1 text-[11px] text-muted-foreground">(ligne au-dessus)</span> : (
+                    <Liste compact disabled={ro} value={a.section ?? ""} vide={a.groupe && !a.section ? `${a.groupe} (groupe)` : "—"}
+                      title={a.groupe && !a.section ? "Ancien groupe en texte libre : « Convertir les groupes en sections »" : undefined}
+                      options={[...sections.map((x) => ({ v: x.code, l: x.libelle })), ...(ro ? [] : [{ v: "__nouvelle__", l: "+ Nouvelle section…" }])]}
+                      onChange={(v) => {
+                        if (v === "__nouvelle__") { nouvelleSection(i); return; }
+                        majC((z) => {
+                          const y = z.affectations!;
+                          for (let n = i; n < y.length && (n === i || y[n].fusion); n++) { poser(y[n], "section", v || null); if (v) delete y[n].groupe; }
+                          rangerParSection(z);
+                        }, `sec${i}`);
+                      }} />
+                  )}</td>}
                 <td className={`${td} min-w-[150px]`}><input className={classeChamp} disabled={ro || !!a.fusion} value={a.fusion ? "" : a.libelle ?? ""} placeholder={a.fusion ? "(ligne au-dessus)" : nomRub(a.rubrique) || "—"}
                   onKeyDown={(e) => e.stopPropagation()} onChange={(e) => majA(i, (z) => poser(z, "libelle", e.target.value), "l")} /></td>
                 <td className={`${td} w-12 text-center`}><Checkbox disabled={ro} checked={!!a.negatif} onCheckedChange={(coche) => majA(i, (z) => poser(z, "negatif", (coche === true) || null), "n")} /></td>
@@ -605,8 +697,10 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                     checked={a.gras ?? !!a.formule} onCheckedChange={(coche) => majA(i, (z) => poser(z, "gras", (coche === true) === !!z.formule ? null : (coche === true)), "gr")} /></td>
                 </>}
                 <td className={`${td} w-28 whitespace-nowrap text-right`}>{!ro && <>
-                  <button type="button" title="Monter" onClick={() => majC((z) => { const y = z.affectations!; if (i > 0) [y[i - 1], y[i]] = [y[i], y[i - 1]]; }, "ao")}><ArrowUp className="inline h-3 w-3" /></button>
-                  <button type="button" title="Descendre" onClick={() => majC((z) => { const y = z.affectations!; if (i < y.length - 1) [y[i + 1], y[i]] = [y[i], y[i + 1]]; }, "ao")}><ArrowDown className="inline h-3 w-3" /></button>
+                  <button type="button" title="Monter (dans sa section)" disabled={i === 0 || (affs[i - 1].section ?? "") !== (a.section ?? "")} className="disabled:opacity-30"
+                    onClick={() => majC((z) => { const y = z.affectations!; if (i > 0) [y[i - 1], y[i]] = [y[i], y[i - 1]]; }, "ao")}><ArrowUp className="inline h-3 w-3" /></button>
+                  <button type="button" title="Descendre (dans sa section)" disabled={i === affs.length - 1 || (affs[i + 1].section ?? "") !== (a.section ?? "")} className="disabled:opacity-30"
+                    onClick={() => majC((z) => { const y = z.affectations!; if (i < y.length - 1) [y[i + 1], y[i]] = [y[i], y[i + 1]]; }, "ao")}><ArrowDown className="inline h-3 w-3" /></button>
                   <button type="button" title="Dupliquer (ex. version Cumul)" onClick={() => majC((z) => { z.affectations!.splice(i + 1, 0, JSON.parse(JSON.stringify(a))); }, "ad")}><Copy className="inline h-3 w-3" /></button>
                   {autres.length > 0 && (
                     <Liste compact className="ml-1 inline-flex h-6 w-9 border-0 bg-transparent px-1 shadow-none" title="Copier vers un autre corps"
@@ -620,22 +714,104 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                   )}
                   <button type="button" className="ml-1" title="Retirer" onClick={() => majC((z) => { z.affectations!.splice(i, 1); }, "as")}><Trash2 className="inline h-3 w-3 text-destructive" /></button>
                 </>}</td>
-              </tr>
+              </tr></Fragment>
             ); })}
-            {!affs.length && <tr><td colSpan={14} className="p-6 text-center text-sm text-muted-foreground">
+            {!affs.length && <tr><td colSpan={16} className="p-6 text-center text-sm text-muted-foreground">
               Aucune rubrique. « Ajouter des rubriques » permet d'en choisir plusieurs et de leur donner la même répartition.</td></tr>}
           </tbody>
         </table>
-        <datalist id={`groupes-${c.code}`}>{[...new Set(affs.map((a) => a.groupe).filter(Boolean))].map((g) => <option key={g!} value={g!} />)}</datalist>
       </div>
       {ajout && <AjoutRubriques c={c} onFermer={() => setAjout(false)}
-        onAjouter={(nouvelles) => { majC((z) => { z.affectations = [...(z.affectations ?? []), ...nouvelles]; }, "radd"); setAjout(false); }} />}
+        onAjouter={(nouvelles, section) => {
+          majC((z) => {
+            if (section && !(z.sections ?? []).some((x) => x.code === section.code)) z.sections = [...(z.sections ?? []), section];
+            z.affectations = [...(z.affectations ?? []), ...nouvelles];
+            rangerParSection(z);
+          }, "radd");
+          setAjout(false);
+        }} />}
+    </>
+  );
+}
+
+/** RG-EDT-SECTION-01 (Adil DAIA) : sections du corps — ordre d'impression, titre, sous-total. Les rubriques
+ *  y sont rangées dans l'onglet Rubriques (colonne Section). */
+function GrilleSections({ c, ci, ro, majC }: { c: Corps; ci: number; ro: boolean; majC: (fn: (c: Corps) => void, cle: string) => void }) {
+  const sections = c.sections ?? [];
+  const affs = c.affectations ?? [];
+  const [nom, setNom] = useState("");
+  const erreurs = useContext(CtxErreurs);
+  const dnd = useGlisser((de, vers) => majC((z) => { deplacer(z.sections!, de, vers); rangerParSection(z); }, "so-dnd"), !ro);
+  const nb = (code: string) => affs.filter((a) => a.section === code).length;
+  const anciens = affs.filter((a) => a.groupe && !a.section).length;
+  const ajouter = () => {
+    const libelle = nom.trim();
+    if (!libelle) return;
+    majC((z) => { z.sections = [...(z.sections ?? []), { code: codeSection(libelle, new Set((z.sections ?? []).map((x) => x.code))), libelle }]; }, "sadd");
+    setNom("");
+  };
+  // les rubriques suivent l'ordre des sections dans la grille (comme à l'impression) ; une ligne fusionnée suit la sienne
+  const ranger = () => majC((z) => { rangerParSection(z); }, "sranger");
+  return (
+    <>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Les sections regroupent les rubriques à l'impression : dans cet ordre, avec leur titre et, si coché, une ligne de sous-total
+        (somme des colonnes numériques). Rangez chaque rubrique dans sa section depuis l'onglet Rubriques (colonne Section) ;
+        les rubriques sans section s'impriment en premier. La grille des rubriques suit toujours cet ordre.
+      </p>
+      {!ro && anciens > 0 && (
+        <div className="mb-2 flex items-center gap-2 rounded border border-dashed p-2 text-xs">
+          {anciens} rubrique(s) ont un ancien groupe en texte libre.
+          <Button size="sm" variant="outline" onClick={() => majC((z) => { groupesEnSections(z); }, "g2s")}>Convertir les groupes en sections</Button>
+        </div>
+      )}
+      <table className="w-full max-w-4xl border text-sm">
+        <thead><tr>{["#", "Section (titre imprimé)", "Code", "Titre", "Sous-total", "Libellé du sous-total", "Rubriques", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+        <tbody>
+          {sections.map((x, i) => { const er = ligneErreur(erreurs, `corps[${ci}].sections[${i}]`); return (
+            <tr key={x.code} {...dnd.ligne(i)} data-chemin={er["data-chemin"]} title={er.title} className={`${er.rouge} ${dnd.ligne(i).className}`}>
+              <td className={`${td} w-12 whitespace-nowrap text-center text-muted-foreground`}>{dnd.poignee(i)} {er.icone}{i + 1}</td>
+              <td className={td}><input className={classeChamp} disabled={ro} value={x.libelle} onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => majC((z) => { z.sections![i].libelle = e.target.value; }, `sl${i}`)} /></td>
+              <td className={`${td} w-40 font-mono text-xs text-muted-foreground`}>{x.code}</td>
+              <td className={`${td} w-14 text-center`}><Checkbox disabled={ro} checked={x.titre ?? true}
+                onCheckedChange={(coche) => majC((z) => poser(z.sections![i], "titre", coche === true ? null : false), `st${i}`)} /></td>
+              <td className={`${td} w-20 text-center`}><Checkbox disabled={ro} checked={!!x.sous_total}
+                onCheckedChange={(coche) => majC((z) => poser(z.sections![i], "sous_total", (coche === true) || null), `ss${i}`)} /></td>
+              <td className={`${td} w-56`}><input className={classeChamp} disabled={ro || !x.sous_total} value={x.libelle_total ?? ""}
+                placeholder={`Total ${x.libelle}`} onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => majC((z) => poser(z.sections![i], "libelle_total", e.target.value || null), `slt${i}`)} /></td>
+              <td className={`${td} w-20 text-center text-xs`}>{nb(x.code)}</td>
+              <td className={`${td} w-20 text-right`}>{!ro && <>
+                <button type="button" title="Monter" onClick={() => majC((z) => { const y = z.sections!; if (i > 0) [y[i - 1], y[i]] = [y[i], y[i - 1]]; rangerParSection(z); }, "so")}><ArrowUp className="inline h-3 w-3" /></button>
+                <button type="button" title="Descendre" onClick={() => majC((z) => { const y = z.sections!; if (i < y.length - 1) [y[i + 1], y[i]] = [y[i], y[i + 1]]; rangerParSection(z); }, "so")}><ArrowDown className="inline h-3 w-3" /></button>
+                <button type="button" title="Supprimer la section (ses rubriques restent, sans section)" onClick={() => majC((z) => {
+                  z.sections!.splice(i, 1);
+                  if (!z.sections!.length) delete z.sections;
+                  (z.affectations ?? []).forEach((a) => { if (a.section === x.code) delete a.section; });
+                }, "ssup")}><Trash2 className="inline h-3 w-3 text-destructive" /></button></>}</td>
+            </tr>
+          ); })}
+          {!sections.length && <tr><td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">Aucune section : les rubriques s'impriment dans l'ordre des affectations, sans titre.</td></tr>}
+        </tbody>
+      </table>
+      {!ro && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input className={`${classeChamp} w-72`} value={nom} placeholder="Nouvelle section (ex. Cotisations et retenues)"
+            onChange={(e) => setNom(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") ajouter(); }} />
+          <Button size="sm" variant="outline" disabled={!nom.trim()} onClick={ajouter}><Plus className="mr-1 h-4 w-4" />Section</Button>
+          {sections.length > 1 && <Button size="sm" variant="outline" className="ml-auto" onClick={ranger}
+            title="Réordonne la grille des rubriques comme à l'impression (fait d'office à chaque changement)">Ranger les rubriques par section</Button>}
+        </div>
+      )}
     </>
   );
 }
 
 /** Choix de plusieurs rubriques avec une répartition commune (saisie manuelle rapide). */
-function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => void; onAjouter: (a: Affectation[]) => void }) {
+function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => void; onAjouter: (a: Affectation[], nouvelleSection?: SectionCorps) => void }) {
+  const [section, setSection] = useState<string>("");
+  const [nomSection, setNomSection] = useState("");
   const { rubriques } = useReferentiels();
   const [q, setQ] = useState("");
   const [choisies, setChoisies] = useState<string[]>([]);
@@ -644,14 +820,34 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
   const [uneLigne, setUneLigne] = useState<{ actif: boolean; libelle: string }>({ actif: false, libelle: "" });
   const cibles = ciblesDuCorps(c);
   const deja = new Set((c.affectations ?? []).map((a) => `${a.rubrique}|${a.periode ?? "MOIS"}`));
-  const toutes = useMemo(() => [...rubriques.map((r) => ({ ...r, total: false })), ...RUBRIQUES_EN_TETE.map((r) => ({ ...r, total: true }))], [rubriques]);
+  const toutes = useMemo(() => [...rubriques.map((r) => ({ ...r, total: false })), ...RUBRIQUES_EN_TETE.map((r) => ({ ...r, total: true }))] as (RubriqueInfo & { total: boolean })[], [rubriques]);
+  // RG-EDT-RUBRIQUES-01 (Adil DAIA) : filtres sur le nom, la famille, la nature, le flux, l'assiette alimentée
+  const [famille, setFamille] = useState("");
+  const [nature, setNature] = useState("");
+  const [flux, setFlux] = useState("");
+  const [assiette, setAssiette] = useState("");
+  const [cacherDeja, setCacherDeja] = useState(false);
+  const valeurs = (cle: "famille" | "type" | "flux") => {
+    const m = new Map<string, string>();
+    rubriques.forEach((r) => { const v = r[cle]; if (v) m.set(v, (r[`${cle}_libelle` as const] as string | null | undefined) || v); });
+    return [...m].sort((x, y) => x[1].localeCompare(y[1])).map(([v, l]) => ({ v, l: l === v ? v : `${l} (${v})` }));
+  };
+  const familles = useMemo(() => valeurs("famille"), [rubriques]); // eslint-disable-line react-hooks/exhaustive-deps
+  const natures = useMemo(() => valeurs("type"), [rubriques]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fluxs = useMemo(() => valeurs("flux"), [rubriques]); // eslint-disable-line react-hooks/exhaustive-deps
+  const assiettes = useMemo(() => [...new Set(rubriques.flatMap((r) => r.assiettes ?? []))].sort()
+    .map((a) => ({ v: a, l: `${rubriques.find((r) => r.code === a)?.libelle ?? a} (${a})` })), [rubriques]);
   const bas = q.trim().toLowerCase();
-  const liste = toutes.filter((r) => !bas || r.code.toLowerCase().includes(bas) || r.libelle.toLowerCase().includes(bas));
+  const liste = toutes.filter((r) => (!bas || r.code.toLowerCase().includes(bas) || r.libelle.toLowerCase().includes(bas))
+    && (!famille || r.famille === famille) && (!nature || r.type === nature) && (!flux || r.flux === flux)
+    && (!assiette || (r.assiettes ?? []).includes(assiette))
+    && (!cacherDeja || !deja.has(`${r.code}|${modele.periode ?? "MOIS"}`)));
+  const nbFiltres = [famille, nature, flux, assiette].filter(Boolean).length + (cacherDeja ? 1 : 0);
   const basculer = (code: string) => setChoisies((s) => (s.includes(code) ? s.filter((x) => x !== code) : [...s, code]));
 
   return (
     <Dialog open onOpenChange={(o) => !o && onFermer()}>
-      <DialogContent className="ecran-editions-texte max-w-3xl">
+      <DialogContent className="ecran-editions-texte max-w-4xl">
         <DialogHeader><DialogTitle>Ajouter des rubriques au corps « {c.libelle} »</DialogTitle></DialogHeader>
         <div className="grid grid-cols-[1fr_260px] gap-4">
           <div>
@@ -659,8 +855,21 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
               <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
               <input autoFocus className={`${classeChamp} py-1.5 pl-8 text-sm`} placeholder="Code ou libellé…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
             </div>
+            <div className="mb-2 grid grid-cols-2 gap-1.5">
+              <Liste compact value={famille} onChange={setFamille} vide="Toutes les familles" options={familles} />
+              <Liste compact value={nature} onChange={setNature} vide="Toutes les natures" options={natures} />
+              <Liste compact value={flux} onChange={setFlux} vide="Tous les flux" options={fluxs} />
+              <Liste compact value={assiette} onChange={setAssiette} vide="Toutes les assiettes" options={assiettes} largeurMenu="min-w-[18rem]"
+                title="Rubriques qui alimentent cette assiette" />
+              <label className="col-span-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Checkbox checked={cacherDeja} onCheckedChange={(v) => setCacherDeja(v === true)} />Masquer les rubriques déjà dans ce corps
+                {nbFiltres > 0 && <button type="button" className="ml-auto text-primary" onClick={() => { setFamille(""); setNature(""); setFlux(""); setAssiette(""); setCacherDeja(false); }}>
+                  Effacer les filtres ({nbFiltres})</button>}
+              </label>
+            </div>
             <div className="mb-1 flex gap-3 text-xs">
               <button type="button" className="text-primary" onClick={() => setChoisies([...new Set([...choisies, ...liste.map((r) => r.code)])])}>Tout cocher ({liste.length})</button>
+              <button type="button" className="text-muted-foreground" onClick={() => setChoisies(choisies.filter((x) => !liste.some((r) => r.code === x)))}>Décocher la liste</button>
               <button type="button" className="text-muted-foreground" onClick={() => setChoisies([])}>Tout décocher</button>
               <span className="ml-auto text-muted-foreground">{choisies.length} choisie(s)</span>
             </div>
@@ -671,7 +880,9 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
                   <label key={r.code} className={`flex cursor-pointer items-center gap-2 border-b px-2 py-1 text-sm hover:bg-muted/40 ${present ? "opacity-50" : ""}`}>
                     <Checkbox checked={choisies.includes(r.code)} onCheckedChange={() => basculer(r.code)} />
                     <span className="w-28 shrink-0 font-mono text-xs">{r.code}</span>
-                    <span className="truncate">{r.libelle}</span>
+                    <span className="min-w-0 flex-1 truncate">{r.libelle}</span>
+                    {(r.type_libelle || r.type) && <span className="shrink-0 rounded bg-muted px-1 text-[10px]" title="Nature">{r.type_libelle || r.type}</span>}
+                    {(r.famille_libelle || r.famille) && <span className="max-w-[8rem] shrink-0 truncate rounded bg-muted px-1 text-[10px] text-muted-foreground" title="Famille">{r.famille_libelle || r.famille}</span>}
                     {r.total && <span className="ml-auto text-[10px] uppercase text-muted-foreground">total</span>}
                     {present && <span className="ml-auto text-[10px] text-muted-foreground">déjà affectée</span>}
                   </label>
@@ -698,7 +909,11 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
               </Ligne>
             ))}
             </>}
-            {c.nature !== "CASES" && <Ligne libelle="Groupe"><Texte value={modele.groupe} placeholder="ex. Retenues" onChange={(v) => setModele((m) => ({ ...m, groupe: v || null }))} /></Ligne>}
+            {c.nature !== "CASES" && <>
+              <Ligne libelle="Section"><Choix value={section} vide="—" options={[...(c.sections ?? []).map((x) => ({ v: x.code, l: x.libelle })), { v: "__nouvelle__", l: "+ Nouvelle section…" }]}
+                onChange={(v) => setSection(v ?? "")} /></Ligne>
+              {section === "__nouvelle__" && <Ligne libelle="Nom"><Texte value={nomSection} placeholder="ex. Retenues" onChange={(v) => setNomSection(v ?? "")} /></Ligne>}
+            </>}
             <Case libelle="en –" value={modele.negatif} onChange={(v) => setModele((m) => ({ ...m, negatif: v || undefined }))} />
             <Case libelle="Nulls" value={modele.nulle} onChange={(v) => setModele((m) => ({ ...m, nulle: v || undefined }))} />
             {c.nature !== "CASES" && (
@@ -711,16 +926,20 @@ function AjoutRubriques({ c, onFermer, onAjouter }: { c: Corps; onFermer: () => 
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onFermer}>Annuler</Button>
-          <Button disabled={!choisies.length} onClick={() => onAjouter(choisies.map((code, k) => {
+          <Button disabled={!choisies.length || (section === "__nouvelle__" && !nomSection.trim())} onClick={() => {
+            const nouvelle = section === "__nouvelle__" ? { code: codeSection(nomSection.trim(), new Set((c.sections ?? []).map((x) => x.code))), libelle: nomSection.trim() } : undefined;
+            const code_section = nouvelle ? nouvelle.code : section || null;
+            onAjouter(choisies.map((code, k) => {
             const a: Affectation = { rubrique: code, cibles: { ...modele.cibles } };
             if (uneLigne.actif && k > 0) a.fusion = true;
             if (uneLigne.actif && k === 0 && uneLigne.libelle) a.libelle = uneLigne.libelle;
             if (modele.periode && modele.periode !== "MOIS" && !exo) a.periode = modele.periode;
-            if (modele.groupe) a.groupe = modele.groupe;
+            if (code_section && !(uneLigne.actif && k > 0)) a.section = code_section;
             if (modele.negatif) a.negatif = true;
             if (modele.nulle) a.nulle = true;
             return a;
-          }))}>Ajouter {choisies.length || ""} rubrique(s)</Button>
+          }), nouvelle);
+          }}>Ajouter {choisies.length || ""} rubrique(s)</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

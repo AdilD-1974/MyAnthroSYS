@@ -240,42 +240,42 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments de rémunération"
+     "section": "elements_de_remuneration"
     },
     {
      "rubrique": "SALCONGE",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments de rémunération"
+     "section": "elements_de_remuneration"
     },
     {
      "rubrique": "PRIM_ANC",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments de rémunération"
+     "section": "elements_de_remuneration"
     },
     {
      "rubrique": "INDTRSP",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments de rémunération"
+     "section": "elements_de_remuneration"
     },
     {
      "rubrique": "INDREPR",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments de rémunération"
+     "section": "elements_de_remuneration"
     },
     {
      "rubrique": "TOTAL_BRUT",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments de rémunération",
+     "section": "elements_de_remuneration",
      "libelle": "Salaire brut",
      "gras": true
     },
@@ -284,21 +284,21 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Cotisations et retenues"
+     "section": "cotisations_et_retenues"
     },
     {
      "rubrique": "CNSS_AMO_SAL",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Cotisations et retenues"
+     "section": "cotisations_et_retenues"
     },
     {
      "rubrique": "RET_IR",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Cotisations et retenues",
+     "section": "cotisations_et_retenues",
      "libelle": "Impôt sur le revenu"
     },
     {
@@ -306,7 +306,7 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Cotisations et retenues",
+     "section": "cotisations_et_retenues",
      "libelle": "Total des retenues",
      "gras": true
     },
@@ -315,7 +315,7 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Net",
+     "section": "net",
      "libelle": "Net à payer",
      "gras": true
     },
@@ -324,7 +324,7 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments fiscaux",
+     "section": "elements_fiscaux",
      "libelle": "Brut imposable"
     },
     {
@@ -332,14 +332,14 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments fiscaux"
+     "section": "elements_fiscaux"
     },
     {
      "rubrique": "NET_IMPOSABLE",
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Éléments fiscaux",
+     "section": "elements_fiscaux",
      "libelle": "Net imposable",
      "gras": true
     },
@@ -348,7 +348,7 @@
      "cibles": {
       "PAT": "mois"
      },
-     "groupe": "Charges patronales",
+     "section": "charges_patronales",
      "libelle": "CNSS — part patronale"
     },
     {
@@ -356,7 +356,7 @@
      "cibles": {
       "PAT": "mois"
      },
-     "groupe": "Charges patronales",
+     "section": "charges_patronales",
      "libelle": "AMO — part patronale"
     },
     {
@@ -364,7 +364,7 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Charges patronales",
+     "section": "charges_patronales",
      "libelle": "Total des charges patronales",
      "gras": true
     },
@@ -373,12 +373,152 @@
      "cibles": {
       "MT": "mois"
      },
-     "groupe": "Charges patronales",
+     "section": "charges_patronales",
      "libelle": "Coût employeur",
      "gras": true
     }
    ],
+   "sections": [
+    {
+     "code": "elements_de_remuneration",
+     "libelle": "Éléments de rémunération"
+    },
+    {
+     "code": "cotisations_et_retenues",
+     "libelle": "Cotisations et retenues"
+    },
+    {
+     "code": "net",
+     "libelle": "Net"
+    },
+    {
+     "code": "elements_fiscaux",
+     "libelle": "Éléments fiscaux"
+    },
+    {
+     "code": "charges_patronales",
+     "libelle": "Charges patronales"
+    }
+   ],
    "afficher_titre": false
+  },
+  {
+   "code": "synthese",
+   "libelle": "Synthèse de l'exercice (cartes)",
+   "nature": "CASES",
+   "colonnes": [
+    {
+     "code": "brut",
+     "libelle": "Salaire brut de l'exercice",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "net_imposable",
+     "libelle": "Net imposable de l'exercice",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "ir",
+     "libelle": "IR retenu de l'exercice",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "net",
+     "libelle": "Net payé de l'exercice",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "cout",
+     "libelle": "Coût employeur de l'exercice",
+     "masque": "MONTANT"
+    }
+   ],
+   "lignes": [
+    {
+     "code": "exercice",
+     "libelle": "Exercice"
+    }
+   ],
+   "affectations": [
+    {
+     "rubrique": "TOTAL_BRUT",
+     "cibles": {
+      "MT": "exercice.brut"
+     },
+     "libelle": "Salaire brut de l'exercice"
+    },
+    {
+     "rubrique": "NET_IMPOSABLE",
+     "cibles": {
+      "MT": "exercice.net_imposable"
+     },
+     "libelle": "Net imposable de l'exercice"
+    },
+    {
+     "rubrique": "RET_IR",
+     "cibles": {
+      "MT": "exercice.ir"
+     },
+     "libelle": "IR retenu de l'exercice"
+    },
+    {
+     "rubrique": "NET_A_PAYER",
+     "cibles": {
+      "MT": "exercice.net"
+     },
+     "libelle": "Net payé de l'exercice"
+    },
+    {
+     "rubrique": "COUT_EMPLOYEUR",
+     "cibles": {
+      "MT": "exercice.cout"
+     },
+     "libelle": "Coût employeur de l'exercice"
+    }
+   ],
+   "emplacement": "MASQUE"
+  }
+ ],
+ "variables": [
+  {
+   "code": "salarie",
+   "libelle": "Nom du salarié",
+   "valeur": "SIVIDE(identite.civilite, \"\") + \" \" + MAJUSCULE(identite.nom) + \" \" + identite.prenom"
+  },
+  {
+   "code": "matricule",
+   "libelle": "Matricule",
+   "valeur": "identite.matricule"
+  },
+  {
+   "code": "emploi",
+   "libelle": "Emploi",
+   "valeur": "SIVIDE(affectation.emploi_libelle, \"—\")"
+  },
+  {
+   "code": "affectation",
+   "libelle": "Affectation",
+   "valeur": "SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, \"—\"))"
+  },
+  {
+   "code": "categorie",
+   "libelle": "Catégorie",
+   "valeur": "SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, \"—\"))"
+  },
+  {
+   "code": "entree",
+   "libelle": "Entrée le",
+   "valeur": "SI(ESTVIDE(contrat.date_embauche), \"—\", FORMAT(contrat.date_embauche, \"DATE_FR\"))"
+  },
+  {
+   "code": "cin_cnss",
+   "libelle": "CIN / CNSS",
+   "valeur": "SIVIDE(identite.cin, \"—\") + \" / \" + SIVIDE(identite.num_cnss, \"—\")"
+  },
+  {
+   "code": "mois_payes",
+   "libelle": "Mois payés",
+   "valeur": "exercice.mois_payes + \" (\" + exercice.nb_bulletins + \" bulletin(s))\""
   }
  ],
  "usages": {
@@ -539,7 +679,7 @@
       "couleur": "#FFFFFF"
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(identite.civilite, \"\") + \" \" + MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "valeur": "var.salarie",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -557,7 +697,7 @@
       "alignement": "DROITE"
      },
      "type": "CHAMP",
-     "valeur": "\"Matricule \" + identite.matricule",
+     "valeur": "\"Matricule \" + var.matricule",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -586,7 +726,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(affectation.emploi_libelle, \"—\")",
+     "valeur": "var.emploi",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -615,7 +755,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, \"—\"))",
+     "valeur": "var.affectation",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -644,7 +784,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, \"—\"))",
+     "valeur": "var.categorie",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -673,7 +813,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SI(ESTVIDE(contrat.date_embauche), \"—\", FORMAT(contrat.date_embauche, \"DATE_FR\"))",
+     "valeur": "var.entree",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -702,7 +842,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE(identite.cin, \"—\") + \" / \" + SIVIDE(identite.num_cnss, \"—\")",
+     "valeur": "var.cin_cnss",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -731,7 +871,7 @@
       "gras": true
      },
      "type": "CHAMP",
-     "valeur": "exercice.mois_payes + \" (\" + exercice.nb_bulletins + \" bulletin(s))\"",
+     "valeur": "var.mois_payes",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -742,7 +882,7 @@
    "id": "activite",
    "type": "CORPS",
    "hauteur": 14.0,
-   "condition": "SIVIDE([NBJTRV].NB, 0) + SIVIDE([NBJCNG].NB, 0) > 0",
+   "condition": "TOTAL_CORPS(\"activite\", \"total\") <> 0",
    "elements": [
     {
      "id": "t_activite",
@@ -1176,7 +1316,7 @@
       "alignement": "CENTRE"
      },
      "type": "CHAMP",
-     "valeur": "total_brut",
+     "valeur": "corps.synthese.exercice.brut",
      "affichage": {
       "masque": "MONTANT"
      }
@@ -1221,7 +1361,7 @@
       "alignement": "CENTRE"
      },
      "type": "CHAMP",
-     "valeur": "net_imposable",
+     "valeur": "corps.synthese.exercice.net_imposable",
      "affichage": {
       "masque": "MONTANT"
      }
@@ -1266,7 +1406,7 @@
       "alignement": "CENTRE"
      },
      "type": "CHAMP",
-     "valeur": "SIVIDE([RET_IR].MT, 0)",
+     "valeur": "corps.synthese.exercice.ir",
      "affichage": {
       "masque": "MONTANT"
      }
@@ -1311,7 +1451,7 @@
       "alignement": "CENTRE"
      },
      "type": "CHAMP",
-     "valeur": "net_a_payer",
+     "valeur": "corps.synthese.exercice.net",
      "affichage": {
       "masque": "MONTANT"
      }
@@ -1356,7 +1496,7 @@
       "alignement": "CENTRE"
      },
      "type": "CHAMP",
-     "valeur": "cout_employeur",
+     "valeur": "corps.synthese.exercice.cout",
      "affichage": {
       "masque": "MONTANT"
      }
@@ -1368,7 +1508,7 @@
      "l": 17.0,
      "h": 17.0,
      "type": "CODE_BARRE",
-     "valeur": "\"REC|\" + SIVIDE(societe.ice, \"\") + \"|\" + identite.matricule + \"|\" + exercice.annee + \"|\" + FORMAT(net_a_payer, \"MONTANT\")"
+     "valeur": "\"REC|\" + SIVIDE(societe.ice, \"\") + \"|\" + identite.matricule + \"|\" + exercice.annee + \"|\" + FORMAT(corps.synthese.exercice.net, \"MONTANT\")"
     },
     {
      "id": "note",

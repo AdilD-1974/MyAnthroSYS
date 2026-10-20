@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter,
   AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ArrowDown, ArrowUp, Copy, MoveHorizontal, MoveVertical,
-  Maximize2, Plus, Trash2, X,
+  Database, ExternalLink, Maximize2, Plus, Trash2, X,
 } from "lucide-react";
 import {
   LIBELLES_BANDE, LIBELLES_ELEMENT, LIBELLES_PARAMETRE, RUBRIQUES_EN_TETE, copie, enLitteral, generateurIds, grilleDepuisCorps, identifiants, largeurUtile, nouvelId, tableauDepuisCorps,
@@ -942,6 +942,14 @@ export function JeuxEditeur({ d, ro, m, sources }: { d: Definition; ro: boolean;
       <p className="mb-2 text-[11px] text-muted-foreground">
         Le jeu PRINCIPAL donne les lignes du document ; un jeu SECONDAIRE (ex. les lignes de bulletin) alimente un tableau.
       </p>
+      {/* RG-EDT-DICO : associer d'autres informations (champs, sources, relations) — nouvel onglet ; le designer
+          recharge le catalogue en revenant sur son onglet */}
+      <a href={`/editions/dictionnaire?source=${encodeURIComponent(d.jeux.find((x) => x.role === "PRINCIPAL")?.source ?? "")}`}
+        target="_blank" rel="noopener noreferrer"
+        className="mb-2 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs font-medium text-primary hover:bg-muted">
+        <Database className="h-3.5 w-3.5" />Dictionnaire des données : ajouter des champs, des sources, des relations
+        <ExternalLink className="h-3 w-3" />
+      </a>
       {d.jeux.map((j, i) => {
         const parent = j.parent ? d.jeux.find((x) => x.code === j.parent) : null;
         const relations = parent ? sources.find((s) => s.code === parent.source)?.relations ?? [] : [];

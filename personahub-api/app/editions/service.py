@@ -868,15 +868,50 @@ def catalogue_sources(db: Session) -> list[dict]:
     return list(par_source.values())
 
 
+def _table_existe(db: Session, table: str, colonnes: tuple[str, ...] = ()) -> bool:
+    n = db.execute(text("""SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema()
+                           AND table_name = :t AND (column_name = ANY(:c) OR cardinality(:c) = 0)"""),
+                   {"t": table, "c": list(colonnes)}).scalar()
+    return bool(n) and (not colonnes or n == len(colonnes))
+
+
 def rubriques(db: Session, u: Utilisateur) -> list[dict]:
-    """Rubriques utilisables dans [CODE].MT… : libellé d'édition de la société en priorité."""
-    rows = db.execute(text("""SELECT code, libelle, libelle_edition, societe_id FROM rubrique_paie
+    """Rubriques utilisables dans [CODE].MT… : libellé d'édition de la société en priorité.
+    RG-EDT-RUBRIQUES-01 (Adil DAIA) : avec de quoi les filtrer dans le designer — famille, nature (type),
+    flux, fréquence (code et intitulé du référentiel), assiettes qu'elles alimentent, ordre de calcul."""
+    cols = ("code_famille", "code_type", "code_flux", "code_frequence", "ordre_calcul")
+    en_plus = [c for c in cols if _table_existe(db, "rubrique_paie", (c,))]
+    rows = db.execute(text(f"""SELECT code, libelle, libelle_edition, societe_id{''.join(', ' + c for c in en_plus)}
+                              FROM rubrique_paie
                               WHERE archive = false AND traiter = true AND (societe_id IS NULL OR societe_id = :s)
                               ORDER BY code, CASE WHEN societe_id IS NULL THEN 1 ELSE 0 END"""),
                       {"s": u.societe_id}).mappings().all()
+    libelles: dict[str, dict[str, str]] = {}
+    for champ, table in (("code_famille", "ref_famille_rubrique"), ("code_type", "ref_type_rubrique"),
+                         ("code_flux", "ref_flux"), ("code_frequence", "ref_frequence")):
+        if champ in en_plus and _table_existe(db, table, ("code", "libelle")):
+            libelles[champ] = {str(r[0]).strip(): r[1] for r in db.execute(text(f"SELECT code, libelle FROM {table}")).all()}
+    assiettes: dict[str, list[str]] = {}
+    if _table_existe(db, "rubrique_paie_assiette", ("code_rubrique", "code_assiette")):
+        for r in db.execute(text("SELECT code_rubrique, code_assiette FROM rubrique_paie_assiette")).all():
+            if r[0] and r[1]:
+                assiettes.setdefault(r[0].strip(), []).append(r[1].strip())
     vues: dict[str, dict] = {}
     for r in rows:
-        vues.setdefault(r["code"], {"code": r["code"], "libelle": r["libelle_edition"] or r["libelle"]})
+        if r["code"] in vues:
+            continue
+        v = {"code": r["code"], "libelle": r["libelle_edition"] or r["libelle"]}
+        for champ in en_plus:
+            valeur = r[champ]
+            if champ == "ordre_calcul":
+                v["ordre_calcul"] = valeur
+                continue
+            code = str(valeur).strip() if valeur not in (None, "") else None
+            nom = champ.replace("code_", "")
+            v[nom] = code
+            v[f"{nom}_libelle"] = libelles.get(champ, {}).get(code) if code else None
+        v["assiettes"] = sorted(set(assiettes.get(r["code"].strip(), [])))
+        vues[r["code"]] = v
     return list(vues.values())
 
 
@@ -1041,3 +1076,71 @@ def fichier_logo(db: Session, u: Utilisateur):
     if not p.is_file() or not autorise(p, _P("storage")):
         raise Introuvable("Logo introuvable")
     return p
+
+
+# ---------------------------------------------------------------------------
+# Dictionnaire des données — RG-EDT-DICO-01..08 (app/editions/dictionnaire.py)
+# ---------------------------------------------------------------------------
+def _dico(fn, *args, **kwargs):
+    from app.editions import dictionnaire as dico
+    try:
+        return fn(*args, **kwargs)
+    except dico.ErreurDictionnaire as e:
+        raise Invalide(e.message, e.details)
+    except ErreurSource as e:
+        raise Invalide(str(e))
+    except SQLAlchemyError as e:
+        raise Invalide(f"Lecture impossible : {str(getattr(e, 'orig', e)).splitlines()[0][:300]}")
+
+
+def dictionnaire(db: Session, u: Utilisateur) -> dict:
+    from app.editions import dictionnaire as dico
+    exiger(db, u, "CONCEVOIR")
+    if not dico.present(db):
+        raise ErreurEdition("Dictionnaire indisponible : passez la migration 081_editions_dictionnaire.sql")
+    sources = dico.consulter(db)
+    return {"sources": sources, "peut_administrer": peut(db, u, "ADMINISTRER")}
+
+
+def dictionnaire_tables(db: Session, u: Utilisateur) -> list[dict]:
+    from app.editions import dictionnaire as dico
+    exiger(db, u, "ADMINISTRER")
+    return dico.tables(db)
+
+
+def dictionnaire_apercu_table(db: Session, u: Utilisateur, table: str, colonnes: list[str]) -> dict:
+    from app.editions import dictionnaire as dico
+    exiger(db, u, "ADMINISTRER")
+    return _dico(dico.apercu_table, db, table, colonnes, contexte_securite(db, u))
+
+
+def dictionnaire_tester_champ(db: Session, u: Utilisateur, source: str, definition: dict, cles: list[str]) -> dict:
+    from app.editions import dictionnaire as dico
+    exiger(db, u, "ADMINISTRER")
+    return _dico(dico.tester_champ, db, source, definition, [str(c) for c in cles if str(c).strip()], contexte_securite(db, u))
+
+
+def dictionnaire_apercu_source(db: Session, u: Utilisateur, source: str) -> dict:
+    from app.editions import dictionnaire as dico
+    exiger(db, u, "ADMINISTRER")
+    return _dico(dico.apercu_source, db, source, contexte_securite(db, u))
+
+
+def dictionnaire_ecrire(db: Session, u: Utilisateur, action: str, *args) -> Any:
+    """Écritures du dictionnaire, tracées dans le journal d'audit."""
+    from app.editions import dictionnaire as dico
+    exiger(db, u, "ADMINISTRER")
+    fonctions = {
+        "creer_champ": lambda s, c: dico.creer_champ(db, s, c, _uuid(u.id)),
+        "modifier_champ": lambda s, code, c: dico.modifier_champ(db, s, code, c, _uuid(u.id)),
+        "supprimer_champ": lambda s, code: dico.supprimer_champ(db, s, code),
+        "creer_source": lambda s: dico.creer_source(db, s, _uuid(u.id)),
+        "modifier_source": lambda code, s: dico.modifier_source(db, code, s),
+        "supprimer_source": lambda code: dico.supprimer_source(db, code),
+        "creer_relation": lambda r: dico.creer_relation(db, r),
+        "supprimer_relation": lambda s, code: dico.supprimer_relation(db, s, code),
+    }
+    res = _dico(fonctions[action], *args)
+    auditer(db, u, "DICTIONNAIRE_" + action.upper(), "SOURCE", None,
+            {"arguments": [a if isinstance(a, str) else {k: v for k, v in a.items() if k != "conditions"} for a in args]})
+    return res if res is not None else {"ok": True}

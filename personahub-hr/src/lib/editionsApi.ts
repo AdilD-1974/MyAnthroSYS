@@ -149,6 +149,18 @@ export interface ChampCatalogue {
   sensible: boolean;
 }
 
+/** RG-EDT-RUBRIQUES-01 : rubrique de paie, avec de quoi la filtrer dans le designer. */
+export interface RubriqueInfo {
+  code: string;
+  libelle: string;
+  famille?: string | null; famille_libelle?: string | null;
+  type?: string | null; type_libelle?: string | null;          // nature
+  flux?: string | null; flux_libelle?: string | null;
+  frequence?: string | null; frequence_libelle?: string | null;
+  ordre_calcul?: number | null;
+  assiettes?: string[];                                          // assiettes qu'elle alimente
+}
+
 export interface SourceCatalogue {
   code: string;
   libelle: string;
@@ -156,6 +168,62 @@ export interface SourceCatalogue {
   contexte_requis: string[];
   champs: ChampCatalogue[];
   relations: { code: string; cible: string; cardinalite: "UN" | "PLUSIEURS" }[];
+}
+
+// ── Dictionnaire des données (RG-EDT-DICO-01..08) ─────────────────────────────
+export type ModeChamp = "COLONNE" | "RECHERCHE";
+export type Agregat = "PREMIER" | "DERNIER" | "NB" | "SOMME" | "LISTE";
+export interface ConditionDico { colonne: string; operateur: string; valeur?: string | null }
+export interface DefinitionChamp {
+  mode: ModeChamp;
+  colonne?: string | null;
+  cle_ligne?: string | null;
+  table_cible?: string | null;
+  colonne_cle?: string | null;
+  colonne_valeur?: string | null;
+  colonne_date_debut?: string | null;
+  colonne_date_fin?: string | null;
+  date_reference?: "PERIODE" | "AUJOURDHUI";
+  agregat?: Agregat;
+  colonne_ordre?: string | null;
+  conditions?: ConditionDico[];
+}
+export interface ChampDico extends ChampCatalogue {
+  visible: boolean;
+  perso: boolean;
+  libelle_modifie: boolean;
+  groupe_modifie: boolean;
+  description: string | null;
+  definition: (DefinitionChamp & { code: string; source_code: string }) | null;
+}
+export interface DefinitionSource {
+  code?: string;
+  libelle?: string;
+  description?: string | null;
+  table_principale: string;
+  colonne_cle?: string | null;
+  colonne_societe?: string | null;
+  colonne_collaborateur?: string | null;
+  conditions?: ConditionDico[];
+  colonnes?: string[];
+}
+export interface RelationDico { code: string; cible: string; cardinalite: "UN" | "PLUSIEURS"; cle_source: string; cle_cible: string; perso: boolean; libelle: string | null }
+export interface SourceDico {
+  code: string;
+  libelle: string;
+  nature: string;
+  perso: boolean;
+  contexte_requis: string[];
+  definition: DefinitionSource | null;
+  champs: ChampDico[];
+  relations: RelationDico[];
+}
+export interface TableDico {
+  nom: string;
+  colonnes: { nom: string; type: string; type_donnee: ChampCatalogue["type_donnee"] }[];
+  a_societe: boolean;
+  a_collaborateur: boolean;
+  referentiel: boolean;
 }
 
 export interface Fonction {
@@ -279,9 +347,28 @@ async function pdfAvecJeton(chemin: string): Promise<Blob> {
 // ── Appels ──────────────────────────────────────────────────────────────────
 export const editionsApi = {
   catalogue: () => appel<{ sources: SourceCatalogue[] }>("GET", "/catalogue").then((r) => r.sources),
+  // dictionnaire des données (RG-EDT-DICO) : consultation (concevoir), configuration (administrer)
+  dictionnaire: () => appel<{ sources: SourceDico[]; peut_administrer: boolean }>("GET", "/dictionnaire"),
+  dicoTables: () => appel<TableDico[]>("GET", "/dictionnaire/tables"),
+  dicoApercuTable: (table: string, colonnes: string[] = []) =>
+    appel<{ colonnes: string[]; lignes: Record<string, unknown>[] }>("GET", `/dictionnaire/tables/${encodeURIComponent(table)}/apercu?colonnes=${encodeURIComponent(colonnes.join(","))}`),
+  dicoCreerSource: (s: DefinitionSource) => appel<{ code: string }>("POST", "/dictionnaire/sources", s),
+  dicoModifierSource: (code: string, s: DefinitionSource) => appel<{ code: string }>("PUT", `/dictionnaire/sources/${code}`, s),
+  dicoSupprimerSource: (code: string) => appel<{ ok: boolean }>("DELETE", `/dictionnaire/sources/${code}`),
+  dicoApercuSource: (code: string) => appel<{ total: number; lignes: Record<string, unknown>[] }>("GET", `/dictionnaire/sources/${code}/apercu`),
+  dicoCreerChamp: (source: string, c: DefinitionChamp & { code: string; libelle: string; groupe?: string; type_donnee?: string; masque_defaut?: string | null; sensible?: boolean; description?: string | null }) =>
+    appel<{ code: string; type_donnee: string }>("POST", `/dictionnaire/sources/${source}/champs`, c),
+  dicoModifierChamp: (source: string, code: string, c: Partial<Pick<ChampDico, "libelle" | "groupe" | "masque_defaut" | "sensible" | "visible" | "description" | "type_donnee">> & { reinitialiser?: boolean; definition?: DefinitionChamp }) =>
+    appel<{ ok: boolean }>("PUT", `/dictionnaire/sources/${source}/champs/${encodeURIComponent(code)}`, c),
+  dicoSupprimerChamp: (source: string, code: string) => appel<{ ok: boolean }>("DELETE", `/dictionnaire/sources/${source}/champs/${encodeURIComponent(code)}`),
+  dicoTesterChamp: (source: string, definition: DefinitionChamp, cles: string[] = []) =>
+    appel<{ resultats: { cle: string; valeur: unknown; nb_lignes: number }[] }>("POST", `/dictionnaire/sources/${source}/tester`, { definition, cles }),
+  dicoCreerRelation: (r: { source: string; cible: string; code?: string; libelle?: string; cle_source: string; cle_cible: string; cardinalite: "UN" | "PLUSIEURS" }) =>
+    appel<{ code: string }>("POST", "/dictionnaire/relations", r),
+  dicoSupprimerRelation: (source: string, code: string) => appel<{ ok: boolean }>("DELETE", `/dictionnaire/relations/${source}/${code}`),
   fonctions: () => appel<Fonction[]>("GET", "/fonctions"),
   masques: () => appel<Masque[]>("GET", "/masques"),
-  rubriques: () => appel<{ code: string; libelle: string }[]>("GET", "/rubriques"),
+  rubriques: () => appel<RubriqueInfo[]>("GET", "/rubriques"),
   analyser: (expression: string, source?: string, parametres: string[] = []) =>
     appel<Analyse>("POST", "/expressions/analyser", { expression, source, parametres }),
   periodes: () => appel<Periode[]>("GET", "/parametres/periodes"),

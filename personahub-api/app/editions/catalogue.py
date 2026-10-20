@@ -26,7 +26,12 @@ def synchroniser(db: Session) -> dict:
     fournisseurs enregistrés. À appeler au démarrage de l'API. Ne valide pas
     la transaction : l'appelant fait commit()."""
     bilan = {"sources": 0, "champs_ajoutes": 0, "champs_mis_a_jour": 0, "champs_desactives": 0, "relations": 0}
-    for code, f in REGISTRE.items():
+    # RG-EDT-DICO-04 (migration 081) : champs ajoutés et groupes modifiés dans le dictionnaire, préservés
+    dico = db.execute(text("""SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema()
+                              AND table_name = 'edt_source_champ' AND column_name IN ('perso', 'groupe_modifie')""")).scalar() == 2
+    for code, f in list(REGISTRE.items()):
+        if getattr(f, "perso", False):                  # source personnalisée : écrite par le dictionnaire
+            continue
         fournisseur = f"{type(f).__module__}.{type(f).__name__}"
         existe = db.execute(text("SELECT 1 FROM edt_source WHERE code = :c"), {"c": code}).first()
         valeurs = {"c": code, "l": f.libelle, "n": f.nature, "f": fournisseur,
@@ -40,8 +45,9 @@ def synchroniser(db: Session) -> dict:
                                VALUES (:c, :l, :n, :f, CAST(:ctx AS jsonb))"""), valeurs)
         bilan["sources"] += 1
 
+        cols = "code, libelle_modifie, perso, groupe_modifie" if dico else "code, libelle_modifie, false AS perso, false AS groupe_modifie"
         actuels = {r["code"]: dict(r) for r in db.execute(text(
-            "SELECT code, libelle_modifie FROM edt_source_champ WHERE source_code = :c"), {"c": code}).mappings()}
+            f"SELECT {cols} FROM edt_source_champ WHERE source_code = :c"), {"c": code}).mappings()}
         declares = {ch.code: (i, ch) for i, ch in enumerate(f.champs())}
         for champ, (ordre, ch) in declares.items():
             v = {"s": code, "c": champ, "l": ch.libelle, "g": ch.groupe, "t": ch.type_donnee,
@@ -51,19 +57,22 @@ def synchroniser(db: Session) -> dict:
                     (source_code, code, libelle, groupe, type_donnee, chemin, masque_defaut, sensible, ordre)
                     VALUES (:s, :c, :l, :g, :t, :ch, :m, :sens, :o)"""), v)
                 bilan["champs_ajoutes"] += 1
+            elif actuels[champ]["perso"]:
+                continue                                # champ ajouté portant le même code : il reste tel quel
             else:
                 maj_libelle = "" if actuels[champ]["libelle_modifie"] else "libelle = :l,"
-                db.execute(text(f"""UPDATE edt_source_champ SET {maj_libelle} groupe = :g, type_donnee = :t,
+                maj_groupe = "" if actuels[champ]["groupe_modifie"] else "groupe = :g,"
+                db.execute(text(f"""UPDATE edt_source_champ SET {maj_libelle} {maj_groupe} type_donnee = :t,
                     chemin = :ch, masque_defaut = COALESCE(masque_defaut, :m), ordre = :o, actif = true
                     WHERE source_code = :s AND code = :c"""), v)
                 bilan["champs_mis_a_jour"] += 1
-        for champ in set(actuels) - set(declares):
+        for champ in {c for c, a in actuels.items() if not a["perso"]} - set(declares):
             db.execute(text("UPDATE edt_source_champ SET actif = false WHERE source_code = :s AND code = :c"),
                        {"s": code, "c": champ})
             bilan["champs_desactives"] += 1
 
     # relations, une fois toutes les sources présentes (clé étrangère cible)
-    for code, f in REGISTRE.items():
+    for code, f in list(REGISTRE.items()):
         for rel in f.relations():
             v = {"s": code, "c": rel.code, "cible": rel.cible, "card": rel.cardinalite,
                  "cs": rel.cle_source, "cc": rel.cle_cible}

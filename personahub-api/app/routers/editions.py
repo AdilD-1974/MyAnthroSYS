@@ -489,3 +489,128 @@ def filtres(u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depen
     """UO de la société (arbre) et valeurs des critères proposés au lancement."""
     from app.editions import population
     return population.valeurs(db, u.societe_id)
+
+
+# ---------------------------------------------------------------- dictionnaire des données (RG-EDT-DICO-01..08)
+class DicoChamp(BaseModel):
+    code: Optional[str] = None
+    libelle: Optional[str] = None
+    groupe: Optional[str] = None
+    type_donnee: Optional[str] = None
+    masque_defaut: Optional[str] = None
+    sensible: Optional[bool] = None
+    visible: Optional[bool] = None
+    description: Optional[str] = None
+    reinitialiser: bool = False
+    definition: Optional[dict] = None          # modification d'un champ ajouté
+    # création : définition à plat
+    mode: Optional[str] = None
+    colonne: Optional[str] = None
+    cle_ligne: Optional[str] = None
+    table_cible: Optional[str] = None
+    colonne_cle: Optional[str] = None
+    colonne_valeur: Optional[str] = None
+    colonne_date_debut: Optional[str] = None
+    colonne_date_fin: Optional[str] = None
+    date_reference: Optional[str] = None
+    agregat: Optional[str] = None
+    colonne_ordre: Optional[str] = None
+    conditions: list[dict] = []
+
+
+class DicoSource(BaseModel):
+    code: Optional[str] = None
+    libelle: Optional[str] = None
+    description: Optional[str] = None
+    table_principale: str
+    colonne_cle: Optional[str] = None
+    colonne_societe: Optional[str] = None
+    colonne_collaborateur: Optional[str] = None
+    conditions: list[dict] = []
+    colonnes: list[str] = []                   # création : colonnes à proposer comme champs
+
+
+class DicoRelation(BaseModel):
+    source: str
+    cible: str
+    code: Optional[str] = None
+    libelle: Optional[str] = None
+    cle_source: str
+    cle_cible: str
+    cardinalite: str = "PLUSIEURS"
+
+
+class DicoTest(BaseModel):
+    definition: dict
+    cles: list[str] = []
+
+
+@router.get("/dictionnaire")
+def dictionnaire(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, sv.dictionnaire, u)
+
+
+@router.get("/dictionnaire/tables")
+def dictionnaire_tables(u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, sv.dictionnaire_tables, u)
+
+
+@router.get("/dictionnaire/tables/{table}/apercu")
+def dictionnaire_apercu_table(table: str, colonnes: str = "", u: sv.Utilisateur = Depends(utilisateur),
+                              db: Session = Depends(get_db)):
+    return _lecture(db, sv.dictionnaire_apercu_table, u, table, [c for c in colonnes.split(",") if c])
+
+
+@router.post("/dictionnaire/sources")
+def dictionnaire_creer_source(corps: DicoSource, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "creer_source", corps.model_dump())
+
+
+@router.put("/dictionnaire/sources/{source}")
+def dictionnaire_modifier_source(source: str, corps: DicoSource, u: sv.Utilisateur = Depends(utilisateur),
+                                 db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "modifier_source", source, corps.model_dump())
+
+
+@router.delete("/dictionnaire/sources/{source}")
+def dictionnaire_supprimer_source(source: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "supprimer_source", source)
+
+
+@router.get("/dictionnaire/sources/{source}/apercu")
+def dictionnaire_apercu_source(source: str, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, sv.dictionnaire_apercu_source, u, source)
+
+
+@router.post("/dictionnaire/sources/{source}/champs")
+def dictionnaire_creer_champ(source: str, corps: DicoChamp, u: sv.Utilisateur = Depends(utilisateur),
+                             db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "creer_champ", source, corps.model_dump(exclude_none=True))
+
+
+@router.post("/dictionnaire/sources/{source}/tester")
+def dictionnaire_tester(source: str, corps: DicoTest, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _lecture(db, sv.dictionnaire_tester_champ, u, source, corps.definition, corps.cles)
+
+
+@router.put("/dictionnaire/sources/{source}/champs/{code}")
+def dictionnaire_modifier_champ(source: str, code: str, corps: DicoChamp, u: sv.Utilisateur = Depends(utilisateur),
+                                db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "modifier_champ", source, code, corps.model_dump(exclude_unset=True))
+
+
+@router.delete("/dictionnaire/sources/{source}/champs/{code}")
+def dictionnaire_supprimer_champ(source: str, code: str, u: sv.Utilisateur = Depends(utilisateur),
+                                 db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "supprimer_champ", source, code)
+
+
+@router.post("/dictionnaire/relations")
+def dictionnaire_creer_relation(corps: DicoRelation, u: sv.Utilisateur = Depends(utilisateur), db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "creer_relation", corps.model_dump())
+
+
+@router.delete("/dictionnaire/relations/{source}/{code}")
+def dictionnaire_supprimer_relation(source: str, code: str, u: sv.Utilisateur = Depends(utilisateur),
+                                    db: Session = Depends(get_db)):
+    return _ecriture(db, sv.dictionnaire_ecrire, u, "supprimer_relation", source, code)

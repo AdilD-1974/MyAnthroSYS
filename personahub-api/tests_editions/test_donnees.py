@@ -371,3 +371,33 @@ def test_total_corps_par_libelle(db):
     total = next(l for l in lignes if l["libelle"] == "Total patronal")
     assert abs(float(total["patronal"]) - sum(float(l.get("patronal") or 0) for l in lignes if l is not total)) < 0.01
     assert float(total["patronal"]) != 0
+
+
+@base_requise
+def test_sections_du_corps_titre_ordre_et_sous_total(db):
+    """RG-EDT-SECTION-01 : les rubriques sont rangées dans des sections du corps ; ordre des sections,
+    titre facultatif, sous-total des colonnes numériques ; TOTAL_CORPS lit une section par son code."""
+    from app.editions.sources import ContexteSecurite
+    from app.editions.moteur.executeur import executer
+    d = definition()
+    corps = d["corps"][0]
+    corps["sections"] = [{"code": "retenues", "libelle": "Cotisations", "sous_total": True, "libelle_total": "Total cotisations"},
+                         {"code": "gains", "libelle": "Rémunération", "sous_total": True}]
+    for a in corps["affectations"]:
+        a["section"] = "gains" if a.pop("groupe") == "Gains" else "retenues"
+    d["bandes"][0]["elements"].append({"id": "tc", "type": "CHAMP", "x": 0, "y": 50, "l": 80, "h": 6,
+                                       "valeur": '"Gains : " + FORMAT(TOTAL_CORPS("detail", "gains", "gains"), "MONTANT")'})
+    defn = Definition.model_validate(d)
+    assert not [e for e in valider(defn, CatalogueValidation(champs={}, rubriques=None)).erreurs if "ection" in str(e)]
+    sec = ContexteSecurite(None, S1, frozenset(), True)
+    t = textes(executer(db, defn, {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)
+    assert t.index("Cotisations") < t.index("CNSS") < t.index("Total cotisations") < t.index("Rémunération") < t.index("Salaire de base")
+    assert "Total Rémunération" in t and "Gains : 10 500,00" in t
+    # section sans titre
+    corps["sections"][0]["titre"] = False
+    t = textes(executer(db, Definition.model_validate(d), {"periode": P_SEP, "bulletin": B_SARA_SEP}, sec)[0].contenu)
+    assert "Cotisations\n" not in t and "Total cotisations" in t
+    # section inconnue refusée
+    corps["affectations"][0]["section"] = "inconnue"
+    r = valider(Definition.model_validate(d), CatalogueValidation(champs={}, rubriques=None))
+    assert any("Section inconnue" in str(e) for e in r.erreurs)

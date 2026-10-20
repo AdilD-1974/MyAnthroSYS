@@ -92,6 +92,7 @@ const EtatsPage               = lazy(() => import("@/pages/configuration/Edition
 const EtatNouveauPage         = lazy(() => import("@/pages/configuration/Editions/EtatNouveauPage"));  // ✅ Assistant de création (4 étapes, §15.5)
 const EditionsPage            = lazy(() => import("@/pages/editions/EditionsPage"));             // ✅ ÉDITIONS UNIFIÉES — bibliothèque et lancement
 const EditionsDesignerPage    = lazy(() => import("@/pages/editions/designer/DesignerPage"));    // ✅ ÉDITIONS UNIFIÉES — designer (lot 2)
+const EditionsDictionnairePage = lazy(() => import("@/pages/editions/DictionnairePage"));     // ✅ ÉDITIONS — dictionnaire des données (RG-EDT-DICO, Adil DAIA)
 const EditionsPaiePage        = lazy(() => import("@/pages/editions/MenuEditions").then(m => ({ default: m.EditionsPaiePage })));  // ✅ Paie › Éditions de la paie, arborescence (RG-EDT-MENU-01, Adil DAIA)
 const ClotureAnnuellePage     = lazy(() => import("@/pages/paie/ClotureAnnuellePage"));  // clôture annuelle (Adil DAIA)
 const LancementPaiePage       = lazy(() => import("@/pages/paie/LancementPaiePage"));    // lancement en masse (Adil DAIA)
@@ -469,6 +470,7 @@ const App = () => (
                   {/* ── ✅ ÉDITIONS UNIFIÉES — accès contrôlé côté serveur par require_menu_access("editions")
                        (menu_role) et par les droits fins edt_droit : pas de liste de rôles figée ici. ── */}
                   <Route path="/editions" element={<EditionsPage />} />
+                  <Route path="/editions/dictionnaire" element={<EditionsDictionnairePage />} />
                   <Route path="/editions/:modeleId/designer" element={<EditionsDesignerPage />} />
                   <Route path="/paie/declarations/ir" element={
                     <ProtectedRoute roles={["administrateur", "gestionnaire_rh", "gestionnaire_paie"]}>

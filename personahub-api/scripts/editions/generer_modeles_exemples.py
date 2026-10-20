@@ -1891,6 +1891,122 @@ def bulletin_recapitulatif() -> dict:
          "eclatement": "collaborateur_id"},
         usages={"confidentialite": 4})
     d["corps"] = corps_donnees
+    return transposer_recapitulatif(d)
+
+
+# RG-EDT-EXERCICE-03 (Adil DAIA) : rien n'est figé dans la mise en forme du récapitulatif. Tout ce qu'il
+# imprime vient du paramétrage (onglet Données) : rubriques dans les corps « Activité » et
+# « Récapitulatif », synthèse de l'exercice dans le corps à cases « Synthèse » (cartes du bas), fiche
+# du salarié dans les Variables. La mise en forme ne fait que placer corps.… et var.… ; la bande
+# « Activité » s'imprime dès que son corps a une valeur.
+RECAP_VARIABLES = [
+    ("salarie", "Nom du salarié", 'SIVIDE(identite.civilite, "") + " " + MAJUSCULE(identite.nom) + " " + identite.prenom'),
+    ("matricule", "Matricule", "identite.matricule"),
+    ("emploi", "Emploi", 'SIVIDE(affectation.emploi_libelle, "—")'),
+    ("affectation", "Affectation", 'SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, "—"))'),
+    ("categorie", "Catégorie", 'SIVIDE(qualification.categorie_professionnelle_libelle, SIVIDE(qualification.classification_libelle, "—"))'),
+    ("entree", "Entrée le", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
+    ("cin_cnss", "CIN / CNSS", 'SIVIDE(identite.cin, "—") + " / " + SIVIDE(identite.num_cnss, "—")'),
+    ("mois_payes", "Mois payés", 'exercice.mois_payes + " (" + exercice.nb_bulletins + " bulletin(s))"'),
+]
+# (colonne du corps « Synthèse », libellé de la carte, affectation : rubrique + attribut, ou formule)
+# RG-EDT-EXERCICE-03 : les cartes lisent des RUBRIQUES (montant de l'exercice), comme les autres corps
+RECAP_SYNTHESE = [
+    ("brut", "Salaire brut de l'exercice", {"rubrique": "TOTAL_BRUT", "attribut": "MT"}),
+    ("net_imposable", "Net imposable de l'exercice", {"rubrique": "NET_IMPOSABLE", "attribut": "MT"}),
+    ("ir", "IR retenu de l'exercice", {"rubrique": "RET_IR", "attribut": "MT"}),
+    ("net", "Net payé de l'exercice", {"rubrique": "NET_A_PAYER", "attribut": "MT"}),
+    ("cout", "Coût employeur de l'exercice", {"rubrique": "COUT_EMPLOYEUR", "attribut": "MT"}),
+]
+ANCIENNES_FORMULES_SYNTHESE = {"total_brut", "net_imposable", "net_a_payer", "cout_employeur"}
+
+
+def code_section(libelle: str, pris: set) -> str:
+    import re
+    import unicodedata
+    t = unicodedata.normalize("NFKD", libelle or "").encode("ascii", "ignore").decode().lower()
+    base = re.sub(r"[^a-z0-9]+", "_", t).strip("_")[:30] or "section"
+    if not base[0].isalpha():
+        base = "s_" + base
+    code, n = base, 1
+    while code in pris:
+        n += 1
+        code = f"{base}_{n}"
+    pris.add(code)
+    return code
+
+
+def groupes_en_sections(c: dict) -> dict:
+    """RG-EDT-SECTION-01 : les anciens « groupes » (texte libre par rubrique) deviennent les sections du corps,
+    dans l'ordre de première apparition ; chaque rubrique est rangée dans la sienne."""
+    if c.get("nature") == "CASES":
+        return c
+    sections = c.setdefault("sections", [])
+    par_libelle = {x["libelle"]: x["code"] for x in sections}
+    pris = set(par_libelle.values())
+    for a in c.get("affectations", []):
+        g = (a.get("groupe") or "").strip()
+        if not g or a.get("section"):
+            continue
+        if g not in par_libelle:
+            par_libelle[g] = code_section(g, pris)
+            sections.append({"code": par_libelle[g], "libelle": g})
+        a["section"] = par_libelle[g]
+        a.pop("groupe", None)
+    if not sections:
+        c.pop("sections", None)
+    return c
+
+
+def transposer_recapitulatif(d: dict) -> dict:
+    """Passe un bulletin récapitulatif (modèle livré ou copie) en « tout paramétrage » ; sans effet s'il l'est déjà.
+    Les identifiants des éléments du modèle livré servent de repères : une copie retouchée garde ses rubriques,
+    ses libellés et sa mise en page, seules les valeurs écrites en dur sont remplacées."""
+    variables = d.setdefault("variables", [])
+    vus = {v["code"] for v in variables}
+    anciennes = {}
+    for code, lib, expr in RECAP_VARIABLES:
+        anciennes[expr] = f"var.{code}"
+        if code not in vus:
+            variables.append({"code": code, "libelle": lib, "type": "TEXTE", "valeur": expr})
+    corps = d.setdefault("corps", [])
+    for c in corps:
+        groupes_en_sections(c)
+    for c in corps:                                    # cartes passées en formules par une 1re transposition
+        if c["code"] == "synthese":
+            for a in c.get("affectations", []):
+                if a.get("formule") in ANCIENNES_FORMULES_SYNTHESE:
+                    col = (a.get("cibles") or {}).get("VAL", "")
+                    ref = next((x for x in RECAP_SYNTHESE if f"exercice.{x[0]}" == col), None)
+                    if ref and "rubrique" in ref[2]:
+                        a.pop("formule")
+                        a["rubrique"] = ref[2]["rubrique"]
+                        a["cibles"] = {ref[2]["attribut"]: col}
+    if not any(c["code"] == "synthese" for c in corps):
+        affectations = []
+        for col_code, _lib, a in RECAP_SYNTHESE:
+            if "formule" in a:
+                affectations.append({"formule": a["formule"], "cibles": {"VAL": f"exercice.{col_code}"}, "libelle": _lib})
+            else:
+                affectations.append({"rubrique": a["rubrique"], "cibles": {a["attribut"]: f"exercice.{col_code}"}, "libelle": _lib})
+        corps.append({"code": "synthese", "libelle": "Synthèse de l'exercice (cartes)", "nature": "CASES",
+                      "emplacement": "MASQUE",          # imprimé par les cartes du pied (formules corps.synthese…)
+                      "colonnes": [{"code": c, "libelle": lib, "type": "MONTANT", "masque": "MONTANT"} for c, lib, _ in RECAP_SYNTHESE],
+                      "lignes": [{"code": "exercice", "libelle": "Exercice"}], "affectations": affectations})
+    cartes = {f"k{k}_v": f"corps.synthese.exercice.{c}" for k, (c, _l, _a) in enumerate(RECAP_SYNTHESE)}
+    for b in d.get("bandes", []):
+        if b.get("id") == "activite" and "[NBJTRV]" in (b.get("condition") or ""):
+            b["condition"] = 'TOTAL_CORPS("activite", "total") <> 0'
+        for el in b.get("elements", []):
+            v = el.get("valeur")
+            if el.get("id") in cartes and isinstance(v, str) and not v.startswith("corps."):
+                el["valeur"] = cartes[el["id"]]
+            elif el.get("id") == "qr" and isinstance(v, str):
+                el["valeur"] = v.replace('FORMAT(net_a_payer, "MONTANT")', 'FORMAT(corps.synthese.exercice.net, "MONTANT")')
+            elif isinstance(v, str) and v in anciennes:
+                el["valeur"] = anciennes[v]
+            elif el.get("id") == "sal_mat" and v == '"Matricule " + identite.matricule':
+                el["valeur"] = '"Matricule " + var.matricule'
     return d
 
 
@@ -1921,7 +2037,10 @@ if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from app.editions.definition import Definition
     for nom, fn in MODELES.items():
-        d = Definition.model_validate(fn())                    # validation stricte avant d'écrire
+        brut = fn()
+        for c in brut.get("corps", []):                      # RG-EDT-SECTION-01 : groupes → sections du corps
+            groupes_en_sections(c)
+        d = Definition.model_validate(brut)                    # validation stricte avant d'écrire
         (DOSSIER / nom).write_text(json.dumps(d.model_dump(mode="json", exclude_defaults=True), ensure_ascii=False, indent=1),
                                    encoding="utf-8")
         print("écrit", nom)

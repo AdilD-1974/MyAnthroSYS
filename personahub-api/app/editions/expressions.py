@@ -421,7 +421,7 @@ def _total_corps(a: list, r: "ResolverEdition") -> Any:
     if isinstance(corps, dict):
         lignes = [corps.get(filtre) or {}] if filtre else list(corps.values())
     elif isinstance(corps, list):
-        lignes = [l for l in corps if filtre is None or l.get("groupe") == filtre]
+        lignes = [l for l in corps if filtre is None or l.get("groupe") == filtre or l.get("_section") == filtre]
     else:
         r.manquant(f"corps {code}")
         return VIDE

@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.editions import expressions as ex
+from app.editions import dictionnaire as dico
 from app.editions import format as fmt
 from app.editions.definition import Definition, Jeu, Tableau
 from app.editions.images import chemins_assets
@@ -221,12 +222,15 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
     if comparaison_detaillee(d):                     # RG-EDT-COMPARAISON-04 : écarts lus seulement si l'état s'en sert
         parametres["_comparaison_detaillee"] = True
     principal = d.jeu_principal()
+    dico.actualiser_registre(db)                     # RG-EDT-DICO-02 : sources personnalisées
     if principal is None or principal.source not in REGISTRE:
         raise ErreurSource("Jeu principal absent ou source inconnue")
 
     societe = REGISTRE["SOCIETE"].lire(db, None, sec)[0]
     f = REGISTRE[principal.source]
     lignes = f.lire(db, parametres, sec)
+    if not getattr(f, "perso", False):              # RG-EDT-DICO-01 : champs ajoutés (une source perso les lit elle-même)
+        dico.completer(db, principal.source, lignes, parametres, sec)
     f.masquer(lignes, sec, _sensibles(db, principal.source))
     lignes = _appliquer_jeu(principal, lignes, parametres, societe)
 
@@ -235,13 +239,21 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
         if jeu.role != "SECONDAIRE" or jeu.source not in REGISTRE:
             continue
         fe = REGISTRE[jeu.source]
-        if getattr(fe, "avec_parents", False):
+        parent_jeu = next((j for j in d.jeux if j.code == jeu.parent), principal)
+        rel = dico.relation(db, parent_jeu.source, jeu.relation)
+        cle_parent = (lambda l: l["id"])
+        if getattr(fe, "perso", False) and rel and rel.get("perso"):          # RG-EDT-DICO-03
+            cle_parent = (lambda l, c=rel["cle_source"]: None if _lire(l, c) is None else str(_lire(l, c)))
+            groupes = fe.lire_par(db, rel["cle_cible"], [cle_parent(l) for l in lignes], sec, parametres)
+        elif getattr(fe, "avec_parents", False):
             groupes = fe.lire_enfants(db, [l["id"] for l in lignes], sec, parametres, parents=lignes)
         else:
             groupes = fe.lire_enfants(db, [l["id"] for l in lignes], sec, parametres)
+        if not getattr(fe, "perso", False):
+            dico.completer(db, jeu.source, [x for lot in groupes.values() for x in lot], parametres, sec)
         par_parent = {}
         for l in lignes:
-            lot = groupes.get(l["id"], [])
+            lot = [dict(x) for x in groupes.get(cle_parent(l), [])] if getattr(fe, "perso", False) else groupes.get(l["id"], [])
             fe.masquer(lot, sec, _sensibles(db, jeu.source))
             par_parent[l["id"]] = _appliquer_jeu(jeu, lot, parametres, societe, parent=l)
         enfants[jeu.code] = par_parent
