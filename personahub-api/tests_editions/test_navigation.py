@@ -104,3 +104,36 @@ def test_acces_aux_etats_par_les_roles_des_ecrans(s):
         th.lancer(s, PAIE, "PAIE", fiche["id"], {"periode": "2026-09"})
     with pytest.raises(sv.Interdit):
         th.regler_acces_menu(s, PAIE, "MODELE", "JOURNAL_PAIE", ["gestionnaire_paie"])
+
+
+def test_publication_automatique_a_la_premiere_ouverture(s):
+    assert not th.publier_si_jamais(s, PAIE, "PAIE")                       # pas administrateur : rien
+    assert th.publier_si_jamais(s, ADMIN, "PAIE")
+    assert s.execute(text("SELECT count(*) FROM nav_menu_item WHERE code LIKE 'edt_d_%'")).scalar() > 0
+    assert not th.publier_si_jamais(s, ADMIN, "PAIE")                      # une seule fois
+    # un état inactif garde son écran (et ses rôles)
+    m = next(x for x in sv.lister_modeles(s, ADMIN) if x["code"] == "JOURNAL_PAIE")
+    th.regler_modele(s, ADMIN, m["id"], actif=False)
+    th.publier_navigation(s, ADMIN, "PAIE", True)
+    assert s.execute(text("SELECT 1 FROM nav_menu_item WHERE code = 'edt_m_journal_paie'")).first()
+
+
+def test_navigation_suit_publication_archivage_suppression(s):
+    """RG-EDT-NAV-06 : sans manipulation — publier crée l'écran, renommer le renomme, archiver le retire,
+    désarchiver le rétablit."""
+    th.publier_navigation(s, ADMIN, "PAIE", True)
+    ecran = lambda: s.execute(text("SELECT label FROM nav_menu_item WHERE code = 'edt_m_etat_nav'")).scalar()
+    r = sv.creer_modele(s, ADMIN, code="ETAT_NAV", libelle="État de test", categorie="LISTE", visibilite="SOCIETE")
+    assert ecran() is None                                                  # brouillon : pas d'écran
+    v = sv.lire_version(s, ADMIN, r["version_id"])[0]
+    sv.publier(s, ADMIN, r["version_id"], v["jeton_concurrence"])
+    assert ecran() == "État de test"
+    parent = s.execute(text("""SELECT p.label FROM nav_menu_item i JOIN nav_menu_item p ON p.id = i.parent_id
+                               WHERE i.code = 'edt_m_etat_nav'""")).scalar()
+    assert parent == "États standard"                                       # dossier de sa catégorie
+    sv.modifier_modele(s, ADMIN, r["modele_id"], libelle="État de test renommé")
+    assert ecran() == "État de test renommé"
+    sv.archiver_modele(s, ADMIN, r["modele_id"], True)
+    assert ecran() is None
+    sv.archiver_modele(s, ADMIN, r["modele_id"], False)
+    assert ecran() == "État de test renommé"

@@ -183,14 +183,13 @@ def synchroniser(db: Session, arbre: dict, avec_etats: bool = True) -> dict:
             for j, m in enumerate(t["modeles"]):
                 chemin = f"/editions/etat/{m['code']}" + ("" if module == "PAIE" else f"?module={module}")
                 poser(_code_ecran("MODELE", m["code"]), m["libelle"], "FileText", chemin, n, j + 1)
-    # écrans générés dont le dossier ou l'état a disparu du menu (dans ce module)
-    prefixe = f"{base}?dossier=" 
+    # écrans générés dont le dossier ou l'état N'EXISTE PLUS (supprimé, archivé). Un dossier d'une autre société,
+    # un état inactif ou masqué ici gardent leur écran (et ses rôles d'accès).
+    dossiers = {_code_ecran("DOSSIER", str(r[0])) for r in db.execute(text("SELECT id FROM edt_theme")).all()}
+    etats = {_code_ecran("MODELE", r[0]) for r in db.execute(text(
+        "SELECT code FROM edt_modele WHERE COALESCE(archive, false) = false")).all()}
     for r in db.execute(text("""SELECT id, code, chemin FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' OR code LIKE 'edt\\_m\\_%'""")).mappings():
-        du_module = (r["chemin"] or "").startswith(prefixe) or ((r["chemin"] or "").startswith("/editions/etat/")
-                     and (("?module=" not in r["chemin"]) if module == "PAIE" else f"?module={module}" in r["chemin"]))
-        if not du_module or r["code"] in voulus:
-            continue
-        if r["code"].startswith("edt_m_") and not avec_etats:
+        if r["code"] in voulus or r["code"] in dossiers or r["code"] in etats:
             continue
         if db.execute(text("SELECT 1 FROM nav_menu_item WHERE parent_id = :i AND code NOT LIKE 'edt\\_%'"), {"i": r["id"]}).first():
             continue                                                     # l'administrateur y a rangé d'autres écrans

@@ -474,7 +474,10 @@ def regler_modele(modele_id: str, corps: Reglage, u: sv.Utilisateur = Depends(ut
 def menu_module(module: str, tout: bool = Query(False), u: sv.Utilisateur = Depends(utilisateur_metier),
                 db: Session = Depends(get_db)):
     """Arborescence des états d'un module (Paie › Éditions de la paie)."""
-    return _lecture(db, th.arbre, u, module.upper(), tout)
+    res = _lecture(db, th.arbre, u, module.upper(), tout)
+    if not tout and th.publier_si_jamais(db, u, module.upper()):   # RG-EDT-NAV-05 : première ouverture
+        db.commit()
+    return res
 
 
 @router.post("/menus/{module}/demandes", status_code=201)

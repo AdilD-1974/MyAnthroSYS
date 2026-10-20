@@ -425,6 +425,7 @@ def modifier_modele(db: Session, u: Utilisateur, modele_id: str, *, libelle: Opt
     if champs:
         db.execute(text(f"UPDATE edt_modele SET {', '.join(champs)}, modifie_le = CURRENT_TIMESTAMP WHERE id = :id"), val)
         auditer(db, u, "MODIFICATION", "MODELE", m["id"], {k: v for k, v in val.items() if k != "id"})
+        _suivre_navigation(db, u)                      # RG-EDT-NAV-06 : libellé, catégorie (dossier), visibilité
     return lire_modele(db, u, m["id"])
 
 
@@ -441,6 +442,7 @@ def archiver_modele(db: Session, u: Utilisateur, modele_id: str, archive: bool =
     db.execute(text("UPDATE edt_modele SET archive = :a, modifie_le = CURRENT_TIMESTAMP WHERE id = :id"),
                {"a": bool(archive), "id": m["id"]})
     auditer(db, u, "ARCHIVAGE" if archive else "DESARCHIVAGE", "MODELE", m["id"], {"code": m["code"]})
+    _suivre_navigation(db, u)                          # RG-EDT-NAV-06 : archivé → écran retiré ; désarchivé → rétabli
     return lire_modele(db, u, m["id"])
 
 
@@ -461,6 +463,7 @@ def supprimer_modele(db: Session, u: Utilisateur, modele_id: str) -> None:
     db.execute(text("DELETE FROM edt_modele_version WHERE modele_id = :m"), {"m": m["id"]})
     db.execute(text("DELETE FROM edt_modele WHERE id = :m"), {"m": m["id"]})
     auditer(db, u, "SUPPRESSION", "MODELE", None, {"modele_id": m["id"], "code": m["code"], "libelle": m["libelle"]})
+    _suivre_navigation(db, u)
 
 
 def ouvrir_brouillon(db: Session, u: Utilisateur, modele_id: str) -> dict:
@@ -555,6 +558,7 @@ def publier(db: Session, u: Utilisateur, version_id: str, jeton: Optional[str] =
     _figer(db, m["id"], version_id, rapport, _uuid(u.id), empreinte)
     auditer(db, u, "PUBLICATION", "VERSION", version_id,
             {"modele": m["code"], "numero": v["numero"], "empreinte": empreinte})
+    _suivre_navigation(db, u)                          # RG-EDT-NAV-06 : l'état publié a son écran
     return {"version_id": version_id, "numero": v["numero"], "empreinte": empreinte}
 
 
@@ -600,6 +604,16 @@ def initialiser(db: Session) -> dict:
     """Démarrage de l'API : catalogue des sources puis modèles système."""
     bilan = cat.synchroniser(db)
     bilan["modeles_systeme"] = installer_modeles_systeme(db)
+    # RG-EDT-NAV-06 : modèles livrés nouveaux ou renommés → écrans de la navigation (si le menu y est publié)
+    try:
+        publie = db.execute(text("""SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema()
+                                    AND table_name = 'nav_menu_item'""")).first() and \
+            db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' LIMIT 1")).first()
+        if publie:
+            for (sid,) in db.execute(text("SELECT id FROM societes")).all():
+                _suivre_navigation(db, Utilisateur(None, str(sid), frozenset({"administrateur"})))
+    except Exception:
+        log.exception("Suivi de la navigation au démarrage")
     return bilan
 
 
@@ -1175,3 +1189,9 @@ def retirer_ecran_navigation(db: Session, u: Utilisateur, type_: str, ident: str
         raise Invalide(str(e))
     auditer(db, u, "ECRAN_NAVIGATION_RETRAIT", type_, None, {"element": ident})
     return {"ok": True}
+
+
+def _suivre_navigation(db: Session, u: Optional[Utilisateur]) -> None:
+    """RG-EDT-NAV-06 : la navigation suit le cycle de vie des états (voir themes.suivre_navigation)."""
+    from app.editions import themes
+    themes.suivre_navigation(db, u, "PAIE")

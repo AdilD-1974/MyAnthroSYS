@@ -17,6 +17,7 @@ Auteur : Adil DAIA — 19/10/2026 (migration 078)
 from __future__ import annotations
 
 import re
+import logging
 import uuid
 from typing import Optional
 
@@ -174,8 +175,7 @@ def regler_modele(db: Session, u: sv.Utilisateur, modele_id: str, *, actif: Opti
         db.execute(text("""INSERT INTO edt_modele_reglage (modele_id, societe_id, actif, theme_id, ordre)
                            VALUES (:m, :s, :a, :t, :o)"""), params)
     sv.auditer(db, u, "REGLAGE", "MODELE", m["id"], nouveau)
-    for module in MODULES:
-        suivre_navigation(db, u, module)
+    suivre_navigation(db, u, "PAIE")
     return sv.lire_modele(db, u, m["id"])
 
 
@@ -261,21 +261,26 @@ def publier_navigation(db: Session, u: sv.Utilisateur, module: str = "PAIE", ave
     return bilan
 
 
-def suivre_navigation(db: Session, u: sv.Utilisateur, module: str) -> None:
-    """Menu déjà publié dans la navigation : dossiers et états y suivent les changements (création,
-    renommage, classement, suppression). Jamais bloquant pour l'opération sur le menu."""
+def suivre_navigation(db: Session, u: Optional[sv.Utilisateur], module: str = "PAIE") -> None:
+    """RG-EDT-NAV-06 (Adil DAIA) : la navigation suit le menu d'éditions SANS manipulation : à chaque
+    publication, archivage, désarchivage, suppression, renommage ou reclassement d'un état, et à chaque
+    création, renommage, déplacement ou suppression d'un dossier, les écrans sous « Éditions de la paie »
+    sont mis à jour (créés, renommés, rangés, retirés). L'état est lu comme un administrateur de la société
+    (le droit de celui qui agit ne compte pas). Seul le menu de la paie a son écran repère. Jamais bloquant :
+    une erreur est journalisée et l'opération sur l'état ou le dossier aboutit."""
     from app.editions import navigation as nav
+    if module != "PAIE" or u is None:
+        return
     try:
-        if not nav.disponible(db) or not sv.peut(db, u, "ADMINISTRER"):
+        if not nav.disponible(db) or not nav._repere(db):
             return
-        publies = db.execute(text("SELECT count(*), count(*) FILTER (WHERE code LIKE 'edt\\_m\\_%') FROM nav_menu_item "
-                                  "WHERE code LIKE 'edt\\_d\\_%' OR code LIKE 'edt\\_m\\_%'")).one()
-        if not publies[0]:
-            return
+        dossiers = db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' LIMIT 1")).first()
+        etats = db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_m\\_%' LIMIT 1")).first()
+        admin = sv.Utilisateur(u.id, u.societe_id, frozenset({"administrateur"}))
         with db.begin_nested():
-            nav.synchroniser(db, arbre(db, u, module), avec_etats=bool(publies[1]))
+            nav.synchroniser(db, arbre(db, admin, module), avec_etats=bool(etats) or not dossiers)
     except Exception:                                      # la navigation se republie à la main au besoin
-        pass
+        logging.getLogger(__name__).exception("Suivi du menu %s dans la navigation", module)
 
 
 def acces_menu(db: Session, u: sv.Utilisateur, type_: str, ident: str) -> dict:
@@ -308,3 +313,21 @@ def _theme_de(db: Session, u: sv.Utilisateur, type_: str, ident: str) -> Optiona
         return db.execute(text("SELECT CAST(parent_id AS text) FROM edt_theme WHERE CAST(id AS text) = :i"), {"i": ident}).scalar()
     m = next((x for x in avec_theme(db, u, sv.lister_modeles(db, u)) if x["code"] == ident or x["id"] == ident), None)
     return m.get("theme_effectif_id") if m else None
+
+
+def publier_si_jamais(db: Session, u: sv.Utilisateur, module: str) -> bool:
+    """RG-EDT-NAV-05 : à la première ouverture du menu d'éditions par un administrateur, ses dossiers et ses
+    états sont publiés dans la navigation (sous « Éditions de la paie ») s'ils ne l'ont jamais été."""
+    from app.editions import navigation as nav
+    try:
+        if not nav.disponible(db) or not sv.peut(db, u, "ADMINISTRER"):
+            return False
+        if db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' LIMIT 1")).first():
+            return False
+        with db.begin_nested():
+            bilan = nav.synchroniser(db, arbre(db, u, module), avec_etats=True)
+            sv.auditer(db, u, "NAVIGATION_PUBLICATION", "THEME", None, {"module": module, "automatique": True, **bilan})
+        return bilan["crees"] > 0
+    except Exception:
+        logging.getLogger(__name__).exception("Publication automatique du menu %s dans la navigation", module)
+        return False
