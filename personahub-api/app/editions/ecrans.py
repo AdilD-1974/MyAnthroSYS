@@ -212,6 +212,7 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
         candidats = _modeles_categorie(db, u, e["categorie_edition"])
     else:
         candidats = []
+    candidats = _filtrer_acces_navigation(db, u, candidats)                # RG-EDT-ACCES-01/02
     sortie = []
     for m in candidats:
         if not m.get("actif", True) or not sv.peut(db, u, "LANCER", m):     # RG-EDT-ACTIF-01
@@ -224,6 +225,44 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
     # RG-EDT-ECRAN-04 : défaut, puis modèles de la société avant les modèles système
     sortie.sort(key=lambda x: (not x["par_defaut"], x["est_systeme"], x["ordre"], x["libelle"].lower()))
     return {"ecran": e, "modeles": sortie, "defaut": sortie[0]["id"] if sortie else None}
+
+
+def _filtrer_acces_navigation(db: Session, u: sv.Utilisateur, modeles: list[dict]) -> list[dict]:
+    """RG-EDT-ACCES-01/02 sur les boutons « Imprimer » des écrans : mêmes rôles que dans le menu d'éditions
+    (écran de l'état, sinon de son dossier et de ses parents)."""
+    from app.editions import navigation as nav
+    from app.editions import themes as th
+    if u.admin or not modeles or not nav.disponible(db):
+        return modeles
+    avec = th.avec_theme(db, u, [dict(m) for m in modeles])
+    parents = {str(r[0]): (str(r[1]) if r[1] else None) for r in db.execute(text("SELECT id, parent_id FROM edt_theme")).all()}
+    themes: dict[str, dict] = {tid: {"id": tid, "parent_id": p, "modeles": []} for tid, p in parents.items()}
+    sans_theme = []
+    for m in avec:
+        tid = m.get("theme_effectif_id")
+        (themes[tid]["modeles"] if tid in themes else sans_theme).append(m)
+    gardes = {m["id"] for t in nav.filtrer_acces(db, u.roles, u.admin, list(themes.values())) for m in t["modeles"]}
+    ecrans = nav._ecrans_generes(db)
+    for m in sans_theme:                                   # sans dossier : seul l'écran de l'état compte
+        e = ecrans.get(nav._code_ecran("MODELE", m["code"]))
+        if e is None or (e["actif"] and e["roles"] & set(u.roles)):
+            gardes.add(m["id"])
+    return [m for m in modeles if m["id"] in gardes]
+
+
+def _dernier_mois_paye(db: Session, societe_id: str, collaborateurs: list[str]) -> Optional[str]:
+    """RG-EDT-ECRAN-08 : période du dernier bulletin du (des) collaborateur(s) dans la société."""
+    for table in ("bulletin", "bulletin_historique"):
+        try:
+            with db.begin_nested():
+                r = db.execute(text(f"""SELECT CAST(c.id AS text) FROM {table} b JOIN calendrier_paie c ON c.id = b.periode_id
+                                        WHERE CAST(b.collaborateur_id AS text) = ANY(:ids) AND CAST(c.societe_id AS text) = :s
+                                        ORDER BY c.date_fin DESC LIMIT 1"""), {"ids": collaborateurs, "s": societe_id}).scalar()
+            if r:
+                return r
+        except Exception:
+            continue
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +309,17 @@ def lancer(db: Session, u: sv.Utilisateur, code_ecran: str, modele_id: Optional[
     v, _ = sv.lire_version(db, u, m["version_publiee_id"])
     d = Definition.model_validate(v["definition"])
     bruts = parametres_depuis_contexte(d, contexte, parametres)
+    # RG-EDT-ECRAN-08 (Adil DAIA) : depuis la fiche d'un collaborateur (attestation…), un mois ou une période de paie
+    # obligatoire et non fourni = celui de son dernier bulletin
+    collabs = [str(x) for x in ((contexte or {}).get("collaborateur_ids") or
+                                ([contexte["collaborateur_id"]] if (contexte or {}).get("collaborateur_id") else []))]
+    manquants = [p for p in d.parametres if p.type in ("MOIS", "PERIODE") and p.obligatoire and not bruts.get(p.code) and not p.defaut]
+    if manquants and collabs:
+        dernier = _dernier_mois_paye(db, u.societe_id, collabs)
+        if not dernier:
+            raise sv.ErreurEdition("Aucun bulletin de paie pour ce collaborateur : l'attestation reprend le salaire du dernier mois payé")
+        for p in manquants:
+            bruts[p.code] = dernier
     res = sv.lancer(db, u, choisi, bruts, forme)
     if not res["documents"]:
         raise sv.ErreurEdition("Aucun document : pas de bulletin définitif pour ce choix "

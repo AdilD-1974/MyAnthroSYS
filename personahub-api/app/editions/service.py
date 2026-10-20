@@ -1194,4 +1194,5 @@ def retirer_ecran_navigation(db: Session, u: Utilisateur, type_: str, ident: str
 def _suivre_navigation(db: Session, u: Optional[Utilisateur]) -> None:
     """RG-EDT-NAV-06 : la navigation suit le cycle de vie des états (voir themes.suivre_navigation)."""
     from app.editions import themes
-    themes.suivre_navigation(db, u, "PAIE")
+    for module in themes.MODULES:
+        themes.suivre_navigation(db, u, module)

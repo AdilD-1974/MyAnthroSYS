@@ -137,3 +137,35 @@ def test_navigation_suit_publication_archivage_suppression(s):
     assert ecran() is None
     sv.archiver_modele(s, ADMIN, r["modele_id"], False)
     assert ecran() == "État de test renommé"
+
+
+def test_editions_rh_attestations(s):
+    """RG-EDT-NAV-07 : le menu RH (attestations, courriers) a son écran « Éditions RH » et ses sous-menus."""
+    assert th.publier_si_jamais(s, ADMIN, "RH")
+    racine = s.execute(text("SELECT id, label FROM nav_menu_item WHERE chemin = '/editions/menu/rh'")).one()
+    assert racine[1] == "Éditions RH"
+    roles = {r[0] for r in s.execute(text("SELECT role_code FROM nav_role_visibilite WHERE item_id = :i"), {"i": racine[0]}).all()}
+    assert roles == {"administrateur", "gestionnaire_rh"}
+    att = s.execute(text("""SELECT i.chemin, p.label FROM nav_menu_item i JOIN nav_menu_item p ON p.id = i.parent_id
+                            WHERE i.code = 'edt_m_attestation_travail_salaire'""")).one()
+    assert att[0] == "/editions/etat/ATTESTATION_TRAVAIL_SALAIRE?module=RH" and att[1] == "Attestations"
+    # un écran d'état RH créé à l'unité va aussi sous « Éditions RH »
+    assert sv.ecran_navigation(s, ADMIN, "MODELE", "NOTIFICATION_REMUNERATION")["chemin"].endswith("?module=RH")
+
+
+def test_attestation_depuis_la_fiche_collaborateur(s):
+    """RG-EDT-ECRAN-07/08 : bouton Imprimer de la fiche collaborateur : attestations proposées, mois = dernier payé ;
+    RG-EDT-ACCES : un rôle exclu de l'écran de l'attestation ne la voit plus sur la fiche."""
+    from app.editions import ecrans as ec
+    from tests_editions.recette import SARA
+    s.execute(text("""INSERT INTO ecran_lancement (code_ecran, libelle, contexte_disponible, chemin_route, categorie_edition)
+                      VALUES ('fiche_collaborateur', 'Fiche collaborateur', '["collaborateur_id"]', :ch, 'ATTESTATION')"""),
+              {"ch": "/collaborateurs/:id"})
+    RH = sv.Utilisateur(ADMIN_ID, PAIE.societe_id, frozenset({"gestionnaire_rh"}))
+    codes = {m["code"] for m in ec.modeles_ecran(s, RH, "fiche_collaborateur")["modeles"]}
+    assert "ATTESTATION_TRAVAIL_SALAIRE" in codes
+    att = next(m for m in sv.lister_modeles(s, ADMIN) if m["code"] == "ATTESTATION_TRAVAIL_SALAIRE")
+    r = ec.lancer(s, RH, "fiche_collaborateur", att["id"], {"collaborateur_id": SARA})
+    assert len(r["documents"]) == 1                                         # septembre 2026, dernier mois payé
+    th.regler_acces_menu(s, ADMIN, "MODELE", "ATTESTATION_TRAVAIL_SALAIRE", ["administrateur"])
+    assert "ATTESTATION_TRAVAIL_SALAIRE" not in {m["code"] for m in ec.modeles_ecran(s, RH, "fiche_collaborateur")["modeles"]}

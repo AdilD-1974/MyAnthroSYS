@@ -175,7 +175,8 @@ def regler_modele(db: Session, u: sv.Utilisateur, modele_id: str, *, actif: Opti
         db.execute(text("""INSERT INTO edt_modele_reglage (modele_id, societe_id, actif, theme_id, ordre)
                            VALUES (:m, :s, :a, :t, :o)"""), params)
     sv.auditer(db, u, "REGLAGE", "MODELE", m["id"], nouveau)
-    suivre_navigation(db, u, "PAIE")
+    for module in MODULES:
+        suivre_navigation(db, u, module)
     return sv.lire_modele(db, u, m["id"])
 
 
@@ -269,10 +270,10 @@ def suivre_navigation(db: Session, u: Optional[sv.Utilisateur], module: str = "P
     (le droit de celui qui agit ne compte pas). Seul le menu de la paie a son écran repère. Jamais bloquant :
     une erreur est journalisée et l'opération sur l'état ou le dossier aboutit."""
     from app.editions import navigation as nav
-    if module != "PAIE" or u is None:
+    if u is None or module not in MODULES:
         return
     try:
-        if not nav.disponible(db) or not nav._repere(db):
+        if not nav.disponible(db) or (module == "PAIE" and not nav._repere(db)):
             return
         dossiers = db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' LIMIT 1")).first()
         etats = db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_m\\_%' LIMIT 1")).first()
@@ -322,7 +323,9 @@ def publier_si_jamais(db: Session, u: sv.Utilisateur, module: str) -> bool:
     try:
         if not nav.disponible(db) or not sv.peut(db, u, "ADMINISTRER"):
             return False
-        if db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' LIMIT 1")).first():
+        base = nav.CHEMIN_MODULE.get(module, f"/editions/menu/{module.lower()}")
+        if db.execute(text("SELECT 1 FROM nav_menu_item WHERE code LIKE 'edt\\_d\\_%' AND chemin LIKE :b LIMIT 1"),
+                      {"b": base + "?dossier=%"}).first():
             return False
         with db.begin_nested():
             bilan = nav.synchroniser(db, arbre(db, u, module), avec_etats=True)

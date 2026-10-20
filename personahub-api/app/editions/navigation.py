@@ -28,6 +28,10 @@ from sqlalchemy.orm import Session
 
 ROLES_DEFAUT = ("administrateur", "gestionnaire_paie", "gestionnaire_rh")
 REPERES = ("/paie/editions-paie", "/paie/edition-bulletins", "/paie/editions/bulletins", "/paie/editions", "/editions")
+# RG-EDT-NAV-07 (Adil DAIA) : chaque module a son écran repère ; celui des éditions RH (attestations, courriers) est
+# créé au besoin, à côté de la fiche collaborateur, pour l'administrateur et le gestionnaire RH.
+CHEMIN_MODULE = {"PAIE": "/paie/editions-paie", "RH": "/editions/menu/rh"}
+ANCRES_RH = ("/collaborateurs", "/rh/collaborateurs", "/collaborateurs/liste", "/rh")
 
 
 class ErreurNavigation(Exception):
@@ -44,9 +48,21 @@ def _code_ecran(type_: str, ident: str) -> str:
     return (f"edt_m_{base}" if type_ == "MODELE" else f"edt_d_{base[:36]}")[:80]
 
 
+def module_modele(db: Session, modele_id: str, categorie: str, societe_id: str) -> str:
+    """Module du menu d'éditions où figure l'état : celui de son dossier choisi pour la société, sinon RH pour une
+    attestation ou un courrier, PAIE pour le reste (dossiers livrés par catégorie)."""
+    try:
+        m = db.execute(text("""SELECT t.module FROM edt_modele_reglage r JOIN edt_theme t ON t.id = r.theme_id
+                               WHERE r.modele_id = :m AND CAST(r.societe_id AS text) = :s"""),
+                       {"m": modele_id, "s": societe_id}).scalar()
+    except Exception:
+        m = None
+    return (m or ("RH" if categorie in ("ATTESTATION", "COURRIER") else "PAIE")).upper()
+
+
 def _cible(db: Session, type_: str, ident: str, societe_id: str) -> dict:
     if type_ == "MODELE":
-        r = db.execute(text("""SELECT m.id, m.code, m.libelle, m.version_publiee_id, m.societe_id FROM edt_modele m
+        r = db.execute(text("""SELECT m.id, m.code, m.libelle, m.version_publiee_id, m.societe_id, m.categorie FROM edt_modele m
                                WHERE (CAST(m.id AS text) = :i OR m.code = :i) AND (m.societe_id IS NULL OR CAST(m.societe_id AS text) = :s)
                                ORDER BY CASE WHEN m.societe_id IS NULL THEN 1 ELSE 0 END LIMIT 1"""),
                        {"i": ident, "s": societe_id}).mappings().first()
@@ -54,8 +70,9 @@ def _cible(db: Session, type_: str, ident: str, societe_id: str) -> dict:
             raise ErreurNavigation("État introuvable dans la société active")
         if not r["version_publiee_id"]:
             raise ErreurNavigation("Publiez l'état avant d'en faire un écran")
-        return {"code": _code_ecran("MODELE", r["code"]), "libelle": r["libelle"], "icone": "FileText",
-                "chemin": f"/editions/etat/{r['code']}"}
+        module = module_modele(db, r["id"], r["categorie"], societe_id)
+        return {"code": _code_ecran("MODELE", r["code"]), "libelle": r["libelle"], "icone": "FileText", "module": module,
+                "chemin": f"/editions/etat/{r['code']}" + ("" if module == "PAIE" else f"?module={module}")}
     r = db.execute(text("""SELECT id, libelle, module FROM edt_theme WHERE CAST(id AS text) = :i
                            AND (societe_id IS NULL OR CAST(societe_id AS text) = :s)"""),
                    {"i": ident, "s": societe_id}).mappings().first()
@@ -63,17 +80,35 @@ def _cible(db: Session, type_: str, ident: str, societe_id: str) -> dict:
         raise ErreurNavigation("Dossier introuvable dans la société active")
     module = (r.get("module") or "PAIE").upper()
     base = "/paie/editions-paie" if module == "PAIE" else f"/editions/menu/{module.lower()}"
-    return {"code": _code_ecran("DOSSIER", str(r["id"])), "libelle": r["libelle"], "icone": "FolderOpen",
+    return {"code": _code_ecran("DOSSIER", str(r["id"])), "libelle": r["libelle"], "icone": "FolderOpen", "module": module,
             "chemin": f"{base}?dossier={r['id']}"}
 
 
-def _repere(db: Session) -> Optional[dict]:
-    for chemin in REPERES:
+def _repere(db: Session, module: str = "PAIE", creer: bool = False) -> Optional[dict]:
+    chemins = REPERES if module == "PAIE" else (CHEMIN_MODULE.get(module, f"/editions/menu/{module.lower()}"),)
+    for chemin in chemins:
         r = db.execute(text("""SELECT id, section_id, parent_id, ordre, module_code FROM nav_menu_item
                                WHERE chemin = :c ORDER BY actif DESC LIMIT 1"""), {"c": chemin}).mappings().first()
         if r:
             return dict(r)
-    return None
+    if module == "PAIE" or not creer:
+        return None
+    # RG-EDT-NAV-07 : « Éditions RH » créé à côté de la fiche collaborateur (sinon dans la section de la paie)
+    ancre = None
+    for chemin in ANCRES_RH:
+        ancre = db.execute(text("""SELECT id, section_id, parent_id, ordre, module_code FROM nav_menu_item
+                                   WHERE chemin = :c ORDER BY actif DESC LIMIT 1"""), {"c": chemin}).mappings().first()
+        if ancre:
+            break
+    ancre = dict(ancre) if ancre else (_repere(db, "PAIE") or {})
+    code = f"{module.lower()}_editions"
+    if db.execute(text("SELECT 1 FROM nav_menu_item WHERE code = :c"), {"c": code}).first():
+        code = f"edt_racine_{module.lower()}"
+    nid = _creer(db, code, "Éditions RH" if module == "RH" else f"Éditions {module}", "FileText",
+                 CHEMIN_MODULE.get(module, f"/editions/menu/{module.lower()}"),
+                 {"section_id": ancre.get("section_id"), "id": ancre.get("parent_id"), "module_code": ancre.get("module_code")},
+                 (ancre.get("ordre") or 0) + 1, ["administrateur", "gestionnaire_rh"])
+    return _repere(db, module)
 
 
 def etat(db: Session, type_: str, ident: str, societe_id: str) -> dict:
@@ -101,7 +136,7 @@ def generer(db: Session, type_: str, ident: str, societe_id: str, libelle: Optio
         db.execute(text("UPDATE nav_menu_item SET label = :l, chemin = :ch, actif = true WHERE id = :id"),
                    {"l": label, "ch": c["chemin"], "id": existe})
         return {"id": str(existe), "code": c["code"], "chemin": c["chemin"], "libelle": label, "cree": False}
-    ref = _repere(db) or {}
+    ref = _repere(db, c.get("module", "PAIE"), creer=True) or {}
     ordre = db.execute(text("SELECT COALESCE(max(ordre), 0) + 1 FROM nav_menu_item WHERE parent_id = :p"), {"p": ref.get("id")}).scalar() \
         if ref.get("id") else 1
     # RG-EDT-NAV-05 : sous-menu de « Éditions de la paie »
@@ -140,7 +175,7 @@ def synchroniser(db: Session, arbre: dict, avec_etats: bool = True) -> dict:
     """RG-EDT-NAV-05 : arborescence du menu d'éditions (themes.arbre) → sous-menus de « Éditions de la paie »."""
     if not disponible(db):
         raise ErreurNavigation("Navigation configurable absente (tables nav_menu_item, nav_role_visibilite)")
-    racine = _repere(db)
+    racine = _repere(db, arbre.get("module", "PAIE"), creer=True)
     if not racine:
         raise ErreurNavigation("Écran « Éditions de la paie » introuvable dans la navigation")
     roles = _roles(db, racine["id"])

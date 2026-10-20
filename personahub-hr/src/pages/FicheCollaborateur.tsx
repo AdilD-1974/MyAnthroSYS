@@ -36,6 +36,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useChainCollaborateurIds } from "@/hooks/useChainCollaborateurIds";
 import { useFormatMasks, fmtDate } from "@/hooks/useFormatMasks";
 import { useListNavigationContext } from "@/hooks/useListNavigationContext";
+import { BoutonImprimer } from "@/pages/editions/LanceurEcran";
 import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 
 /* ──────────────── Types ──────────────── */
@@ -2088,6 +2089,8 @@ const CollabHeader: React.FC<{
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: statutStyle.color }} />
               {statutLabel}
             </span>
+            {/* RG-EDT-ECRAN-07 (Adil DAIA) : attestations et courriers du collaborateur (modèles rattachés à cet écran) */}
+            <span className="ml-auto"><BoutonImprimer ecran="fiche_collaborateur" contexte={{ collaborateur_id: collab.id }} /></span>
           </div>
 
           <div className="flex items-center gap-2 mt-3.5 flex-wrap text-[12.5px]" style={{ color: "hsl(var(--muted-foreground))" }}>
