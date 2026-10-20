@@ -9,8 +9,8 @@ from app.editions import variantes as va
 from app.editions.definition import Definition
 from app.editions.validation import CatalogueValidation, valider
 
-BULLETIN = json.loads((Path(__file__).resolve().parents[1] / "app" / "editions" / "modeles_systeme"
-                       / "bulletin_classique.json").read_text(encoding="utf-8"))
+# bulletin à lignes lues directement (jeu « lignes ») : sert à tester le moteur ; le bulletin livré est en corps
+BULLETIN = json.loads((Path(__file__).resolve().parent / "donnees" / "bulletin_lignes.json").read_text(encoding="utf-8"))
 
 CATALOGUE = CatalogueValidation(
     champs={

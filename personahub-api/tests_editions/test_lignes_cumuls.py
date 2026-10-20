@@ -13,7 +13,7 @@ from app.editions.validation import CatalogueValidation, valider
 from tests_editions.recette import B_OMAR_SEP, B_SARA_SEP, P_SEP, S1, base_requise
 
 RACINE = Path(__file__).resolve().parents[1]
-BULLETIN = json.loads((RACINE / "app/editions/modeles_systeme/bulletin_classique.json").read_text(encoding="utf-8"))
+BULLETIN = json.loads((RACINE / "tests_editions/donnees/bulletin_lignes.json").read_text(encoding="utf-8"))
 
 
 def textes(pdf: bytes) -> list[str]:

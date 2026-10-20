@@ -9,6 +9,8 @@ Auteur : Adil DAIA — 20/10/2026
 Le modèle d'origine (copié depuis) décide de la mise à jour :
     attestation de travail et de salaire → date, objet, contenu « travail seulement » (RG-EDT-ATTESTATION-01)
     bulletin récapitulatif de l'exercice → tout paramétrage, sections, synthèse sur rubriques (RG-EDT-EXERCICE-03)
+    bulletins (classique, détaillé, moderne, formulaire) → corps « Rubriques » (rubriques du plan de la société,
+        rangées en sections) et « Totaux » ; la mise en forme ne lit plus que ces corps (RG-EDT-BULLETIN-CORPS-01)
 Vos libellés, rubriques et mise en page ne bougent pas. Travaille sur le BROUILLON : enregistrez et fermez le
 designer avant (un brouillon est créé depuis la version publiée s'il n'y en a pas).
 """
@@ -27,10 +29,15 @@ from sqlalchemy import text  # noqa: E402
 
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.editions.definition import Definition  # noqa: E402
-from generer_modeles_exemples import completer_attestation, transposer_recapitulatif  # noqa: E402
+from app.editions import bulletins as bul  # noqa: E402
+from app.editions import catalogue  # noqa: E402
+from app.editions.validation import valider  # noqa: E402
+from generer_modeles_exemples import completer_attestation, transposer_bulletin, transposer_recapitulatif  # noqa: E402
 
 engine.echo = False
-MISES_A_JOUR = {"ATTESTATION_TRAVAIL_SALAIRE": completer_attestation, "BULLETIN_RECAP_EXERCICE": transposer_recapitulatif}
+MISES_A_JOUR = {"ATTESTATION_TRAVAIL_SALAIRE": completer_attestation, "BULLETIN_RECAP_EXERCICE": transposer_recapitulatif,
+                **{c: transposer_bulletin for c in ("BULLETIN_CLASSIQUE", "BULLETIN_DETAILLE", "BULLETIN_MODERNE",
+                                                    "BULLETIN_FORMULAIRE")}}
 
 
 def origine(db, modele_id) -> str | None:
@@ -49,14 +56,14 @@ def origine(db, modele_id) -> str | None:
 def main(code: str, appliquer: bool) -> int:
     db = SessionLocal()
     try:
-        m = db.execute(text("SELECT id, code, libelle FROM edt_modele WHERE code = :c"), {"c": code}).mappings().all()
+        m = db.execute(text("SELECT id, code, libelle, societe_id FROM edt_modele WHERE code = :c"), {"c": code}).mappings().all()
         if len(m) != 1:
             print(f"Modèle {code} : {len(m)} trouvé(s)")
             return 1
         m = m[0]
         src = origine(db, m["id"])
         if not src:
-            print("Ce modèle n'est pas une copie d'un modèle livré qui a une mise à jour (attestation, récapitulatif).")
+            print("Ce modèle n'est pas une copie d'un modèle livré qui a une mise à jour (attestation, récapitulatif, bulletins).")
             return 1
         v = db.execute(text("""SELECT id, numero, statut, definition FROM edt_modele_version WHERE modele_id = :m
                                AND statut IN ('BROUILLON', 'EN_REVUE') ORDER BY numero DESC LIMIT 1"""), {"m": m["id"]}).mappings().first()
@@ -66,7 +73,15 @@ def main(code: str, appliquer: bool) -> int:
                                    ORDER BY numero DESC LIMIT 1"""), {"m": m["id"]}).mappings().first()
         avant = v["definition"] if isinstance(v["definition"], dict) else json.loads(v["definition"])
         apres = MISES_A_JOUR[src](copy.deepcopy(avant))
+        societe = str(m["societe_id"]) if m["societe_id"] else None
+        if src.startswith("BULLETIN_") and src != "BULLETIN_RECAP_EXERCICE":
+            apres = bul.garder_rubriques_de(bul.instancier(apres, db), catalogue.charger(db, societe).rubriques)
+            nb = next((len(c["affectations"]) for c in apres["corps"] if c["code"] == bul.CORPS_RUBRIQUES), 0)
+            print(f"  corps « Rubriques » : {nb} rubrique(s) affectée(s) ; corps « Totaux » : mois, cumul, part du coût")
         Definition.model_validate(apres)
+        reste = valider(apres, catalogue.charger(db, societe))
+        for e in reste.erreurs[:15]:                       # retouches de la copie à reprendre dans le designer
+            print(f"  à reprendre : {e.chemin} — {e.message}")
         print(f"{m['libelle']} ({m['code']}) — copie de {src}")
         if apres == avant:
             print("  déjà à jour : rien à faire")

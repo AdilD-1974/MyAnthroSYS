@@ -384,6 +384,9 @@ def creer_modele(db: Session, u: Utilisateur, *, code: str, libelle: str, catego
             raise Conflit("Le modèle d'origine n'a aucune version")
         definition = v[0] if isinstance(v[0], dict) else json.loads(v[0])
         categorie = categorie if categorie != "AUTRE" else origine["categorie"]
+        if origine.get("est_systeme"):                  # RG-EDT-BULLETIN-CORPS-02 : rubriques d'une autre société
+            from app.editions import bulletins as _bul
+            definition = _bul.garder_rubriques_de(definition, cat.charger(db, u.societe_id).rubriques)
     definition = definition or definition_vierge()
     if not isinstance(definition, dict):
         raise Invalide("La définition est un objet JSON")
@@ -580,7 +583,14 @@ def installer_modeles_systeme(db: Session, dossier: Path = DOSSIER_SYSTEME) -> l
         chemin = dossier / fichier
         if not chemin.exists():
             continue
-        d = Definition.model_validate(json.loads(chemin.read_text(encoding="utf-8")))
+        livre = json.loads(chemin.read_text(encoding="utf-8"))
+        try:                                    # RG-EDT-BULLETIN-CORPS-02 : rubriques du plan de l'installation
+            from app.editions import bulletins as _bul
+            with db.begin_nested():
+                livre = _bul.instancier(livre, db)
+        except Exception:
+            log.exception("Rubriques du plan dans le bulletin livré %s", fichier)
+        d = Definition.model_validate(livre)
         brut = d.model_dump(mode="json")
         empreinte = d.empreinte()
         m = db.execute(text("""SELECT id FROM edt_modele WHERE code = :c AND societe_id IS NULL
@@ -600,6 +610,8 @@ def installer_modeles_systeme(db: Session, dossier: Path = DOSSIER_SYSTEME) -> l
         vid = _inserer_version(db, mid, numero, brut, None, note=f"Livré avec l'application ({fichier})")
         rapport = Rapport(definition=d)
         rapport.dependances = {("SOURCE", j.source) for j in d.jeux}
+        if any(a.rubrique for c in d.corps for a in c.affectations) and ("SOURCE", "BULLETIN") in rapport.dependances:
+            rapport.dependances.add(("SOURCE", "BULLETIN_LIGNE"))      # corps : rubriques lues dans les lignes
         _figer(db, mid, vid, rapport, None, empreinte)
         auditer(db, None, "INSTALLATION", "VERSION", vid, {"modele": code, "numero": numero})
         actions.append(f"{code} v{numero}")

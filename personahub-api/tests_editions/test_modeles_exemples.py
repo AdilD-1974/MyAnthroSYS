@@ -95,7 +95,7 @@ def test_qr_de_controle_sur_tous_les_bulletins(s):                        # RG-E
             continue
         d = Definition.model_validate(sv.lire_version(s, PAIE, m["version_publiee_id"])[0]["definition"])
         qr = [e for b in d.bandes for e in b.elements if isinstance(e, CodeBarre)]
-        assert qr and "net_a_payer" in qr[0].valeur, m["code"]
+        assert qr and "corps.totaux.mois.net" in qr[0].valeur, m["code"]          # RG-EDT-BULLETIN-CORPS-01
 
 
 def test_journal_grille_et_forme_synthetique(s):
@@ -426,3 +426,57 @@ def test_attestations_salaire_annuelle_et_domiciliation(s):
 def test_documents_de_sortie_dans_le_dossier_departs(s):
     assert s.execute(text("SELECT module FROM edt_theme WHERE code = 'RH_DEPARTS'")).scalar() == "RH"
     assert th.THEMES_MODELES_SYSTEME["RECU_SOLDE_TOUT_COMPTE"] == "RH_DEPARTS"
+
+
+def test_bulletins_tout_en_corps(s):
+    """RG-EDT-BULLETIN-CORPS-01/02 : les bulletins livrés n'impriment que leurs corps « Rubriques » et « Totaux » ;
+    les rubriques du plan de l'installation y sont affectées, chacune dans sa section."""
+    import io
+    import json
+    import re
+    from pypdf import PdfReader
+    vus = 0
+    for m in sv.lister_modeles(s, PAIE):
+        if m["categorie"] != "BULLETIN" or not m["est_systeme"]:
+            continue
+        vus += 1
+        d = sv.lire_version(s, PAIE, m["version_publiee_id"])[0]["definition"]
+        assert not [j for j in d["jeux"] if j["source"] == "BULLETIN_LIGNE"], m["code"]
+        bandes = json.dumps(d["bandes"])
+        assert not re.findall(r"(?<![\w.])(?:total_brut|total_cot_\w+|total_retenues|net_a_payer|cout_employeur|net_imposable)\b",
+                              bandes), m["code"]
+        corps = {c["code"]: c for c in d["corps"]}
+        sections = {a["rubrique"]: a["section"] for a in corps["rubriques"]["affectations"]}
+        assert sections["SALBASE"] == sections["PRIM_ANC"] == "gains", m["code"]
+        assert sections["CNSS_SAL"] == sections["ATRISK"] == "cotisations" and sections["AVANCE"] == "retenues"
+        assert "BRUT_INTER" not in sections                       # rubrique neutre : jamais imprimée
+    assert vus == 4
+    m = next(x for x in sv.lister_modeles(s, PAIE) if x["code"] == "BULLETIN_CLASSIQUE")
+    r = sv.lancer(s, PAIE, m["id"], {"periode": P_SEP})
+    p, _ = sv.fichier_document(s, PAIE, r["documents"][0]["id"])
+    t = "\n".join(x.extract_text() for x in PdfReader(io.BytesIO(p.read_bytes())).pages).replace("\u202f", " ").replace("\xa0", " ")
+    assert "Salaire de base" in t and "Cotisations sociales" in t and "8 450,50" in t and "10 500,00" in t
+
+
+def test_copie_d_un_bulletin_passee_en_corps(s):
+    """RG-EDT-BULLETIN-CORPS-02 : une copie faite avant (lignes lues directement) passe en corps ; idempotent."""
+    import copy
+    import json
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "editions"))
+    from generer_modeles_exemples import transposer_bulletin
+    from app.editions import bulletins as bul
+    from app.editions import catalogue
+    from app.editions.definition import Definition
+    from app.editions.moteur import executeur
+    from app.editions.sources import ContexteSecurite
+    from app.editions.validation import valider
+    S1 = "11111111-1111-1111-1111-111111111111"
+    avant = json.loads((Path(__file__).parent / "donnees" / "bulletin_lignes.json").read_text(encoding="utf-8"))
+    apres = bul.garder_rubriques_de(bul.instancier(transposer_bulletin(copy.deepcopy(avant)), s), catalogue.charger(s, S1).rubriques)
+    assert transposer_bulletin(copy.deepcopy(apres)) == apres
+    r = valider(apres, catalogue.charger(s, S1))
+    assert r.valide, [(e.chemin, e.message) for e in r.erreurs]
+    docs = executeur.executer(s, Definition.model_validate(apres), {"periode": P_SEP}, ContexteSecurite(None, S1, frozenset(), True))
+    assert docs and not docs[0].anomalies and "Salaire de base" in _texte_pdf(docs[0])

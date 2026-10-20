@@ -21,7 +21,12 @@ client n'est supposé.
 from __future__ import annotations
 
 import json
+import re
+import sys
 from pathlib import Path
+
+if str(Path(__file__).resolve().parents[2]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 DOSSIER = Path(__file__).resolve().parents[2] / "app" / "editions" / "modeles_systeme"
 
@@ -2314,6 +2319,64 @@ def transposer_recapitulatif(d: dict) -> dict:
     return d
 
 
+# =============================================================================
+# BULLETINS : TOUT LE CALCUL DANS DES CORPS (RG-EDT-BULLETIN-CORPS-01)
+# =============================================================================
+from app.editions import bulletins as _bul  # noqa: E402
+
+COLONNES_LIGNES_BULLETIN = {
+    'SI(sens = "GAIN", montant)': "gain", 'SI(sens = "RETENUE", montant)': "retenue",
+    "montant_patronal": "patronal", "taux_patronal": "taux_patronal",
+    'SI(sens = "RETENUE", 0 - montant, montant)': "SIVIDE(gain, 0) - SIVIDE(retenue, 0)",
+}
+PARTS_BULLETIN = {f"SI(SIVIDE(cout_employeur, 0) = 0, 0, {champ} / cout_employeur * 100)": f"corps.totaux.part.{code}"
+                  for code, _l, _r, champ in _bul.TOTAUX if code in _bul.PARTS}
+
+
+def _vers_corps(v: str) -> str:
+    """Champs de paie du bulletin → cases du corps « Totaux » (mois ou cumul)."""
+    if v in PARTS_BULLETIN:
+        return PARTS_BULLETIN[v]
+    for code, _l, _r, champ in _bul.TOTAUX:
+        v = re.sub(rf"(?<![\w.@])cumul\.{champ}\b", f"corps.totaux.cumul.{code}", v)
+    for code, _l, _r, champ in _bul.TOTAUX:
+        v = re.sub(rf"(?<![\w.@]){champ}\b", f"corps.totaux.mois.{code}", v)
+    return v
+
+
+def transposer_bulletin(d: dict) -> dict:
+    """Bulletin (livré ou copie) → corps « Rubriques » et « Totaux » ; idempotent. Les lignes du bulletin ne sont
+    plus lues directement (jeu « lignes ») : le tableau imprime le corps, les totaux lisent corps.totaux.…"""
+    corps = d.setdefault("corps", [])
+    jeux_lignes = {j["code"] for j in d.get("jeux", []) if j.get("source") == "BULLETIN_LIGNE"}
+    if not any(c["code"] == _bul.CORPS_RUBRIQUES for c in corps):
+        corps.append(_bul.corps_rubriques())
+    if not any(c["code"] == _bul.CORPS_TOTAUX for c in corps):
+        corps.append(_bul.corps_totaux())
+
+    def expr(v):
+        return _vers_corps(v) if isinstance(v, str) else v
+    for b in d.get("bandes", []):
+        if b.get("condition"):
+            b["condition"] = expr(b["condition"])
+        for el in b.get("elements", []):
+            if el.get("type") == "TABLEAU" and el.get("jeu") in jeux_lignes:
+                el["jeu"], el["corps"] = "", _bul.CORPS_RUBRIQUES
+                el.pop("sections", None)                   # filtres sur le sens → sections du corps
+                el.pop("section_autres", None)
+                for c in el["colonnes"]:
+                    c["valeur"] = COLONNES_LIGNES_BULLETIN.get(c["valeur"], c["valeur"])
+                continue
+            if "valeur" in el:
+                el["valeur"] = expr(el["valeur"])
+            if isinstance(el.get("condition"), dict) and el["condition"].get("expression"):
+                el["condition"]["expression"] = expr(el["condition"]["expression"])
+            for l in el.get("lignes", []) if el.get("type") == "GRILLE" else []:
+                l["valeurs"] = {k: expr(v) for k, v in (l.get("valeurs") or {}).items()}
+    d["jeux"] = [j for j in d.get("jeux", []) if j["code"] not in jeux_lignes]
+    return d
+
+
 MODELES = {
     "journal_paie.json": journal_paie,
     "ordre_virement.json": ordre_virement,
@@ -2347,9 +2410,17 @@ if __name__ == "__main__":
     from app.editions.definition import Definition
     for nom, fn in MODELES.items():
         brut = fn()
+        if nom.startswith("bulletin_") and nom != "bulletin_recapitulatif.json":
+            transposer_bulletin(brut)                          # RG-EDT-BULLETIN-CORPS-01
         for c in brut.get("corps", []):                      # RG-EDT-SECTION-01 : groupes → sections du corps
             groupes_en_sections(c)
         d = Definition.model_validate(brut)                    # validation stricte avant d'écrire
         (DOSSIER / nom).write_text(json.dumps(d.model_dump(mode="json", exclude_defaults=True), ensure_ascii=False, indent=1),
                                    encoding="utf-8")
         print("écrit", nom)
+    # bulletin classique : fichier livré écrit à la main, passé en corps lui aussi (RG-EDT-BULLETIN-CORPS-01)
+    classique = DOSSIER / "bulletin_classique.json"
+    brut = transposer_bulletin(json.loads(classique.read_text(encoding="utf-8")))
+    Definition.model_validate(brut)
+    classique.write_text(json.dumps(brut, ensure_ascii=False, indent=1), encoding="utf-8")
+    print("écrit bulletin_classique.json (corps)")

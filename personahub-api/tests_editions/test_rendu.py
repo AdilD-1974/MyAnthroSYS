@@ -18,7 +18,7 @@ from app.editions.moteur.rendu_pdf import RenduPDF
 from recette import B_SARA_SEP, P_S2, P_SEP, S1, S2, base_requise
 
 RACINE = Path(__file__).resolve().parents[1]
-BULLETIN = json.loads((RACINE / "app/editions/modeles_systeme/bulletin_classique.json").read_text(encoding="utf-8"))
+BULLETIN = json.loads((RACINE / "tests_editions/donnees/bulletin_lignes.json").read_text(encoding="utf-8"))
 
 
 def textes(pdf: bytes) -> list[str]:

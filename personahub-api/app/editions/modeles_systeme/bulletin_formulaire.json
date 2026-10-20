@@ -32,22 +32,270 @@
      "champ": "identite.prenom"
     }
    ]
+  }
+ ],
+ "corps": [
+  {
+   "code": "rubriques",
+   "libelle": "Rubriques du bulletin",
+   "nature": "LIGNES",
+   "colonnes": [
+    {
+     "code": "nombre",
+     "libelle": "Nombre",
+     "type": "NOMBRE"
+    },
+    {
+     "code": "base",
+     "libelle": "Base"
+    },
+    {
+     "code": "taux",
+     "libelle": "Taux",
+     "type": "TAUX"
+    },
+    {
+     "code": "gain",
+     "libelle": "À payer",
+     "total": true
+    },
+    {
+     "code": "retenue",
+     "libelle": "À retenir",
+     "total": true
+    },
+    {
+     "code": "taux_patronal",
+     "libelle": "Taux patronal",
+     "type": "TAUX"
+    },
+    {
+     "code": "patronal",
+     "libelle": "Part patronale",
+     "total": true
+    }
+   ],
+   "sections": [
+    {
+     "code": "gains",
+     "libelle": "Éléments de rémunération"
+    },
+    {
+     "code": "cotisations",
+     "libelle": "Cotisations sociales"
+    },
+    {
+     "code": "retenues",
+     "libelle": "Autres retenues"
+    }
+   ],
+   "tri": "PAIE",
+   "emplacement": "DETAIL"
   },
   {
-   "code": "l",
-   "source": "BULLETIN_LIGNE",
-   "role": "SECONDAIRE",
-   "parent": "b",
-   "relation": "lignes",
-   "filtres": [
-    "sens = \"GAIN\" OU sens = \"RETENUE\"",
-    "COALESCE(montant, 0) <> 0 OU COALESCE(montant_patronal, 0) <> 0"
-   ],
-   "tri": [
+   "code": "totaux",
+   "libelle": "Totaux du bulletin",
+   "nature": "CASES",
+   "colonnes": [
     {
-     "champ": "ordre_affichage"
+     "code": "brut",
+     "libelle": "Salaire brut",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "brut_imposable",
+     "libelle": "Brut imposable",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "cot_sal",
+     "libelle": "Cotisations salariales",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "net_imposable",
+     "libelle": "Net imposable",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "cot_pat",
+     "libelle": "Cotisations patronales",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "retenues",
+     "libelle": "Total des retenues",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "net",
+     "libelle": "Net à payer",
+     "masque": "MONTANT"
+    },
+    {
+     "code": "cout",
+     "libelle": "Coût employeur",
+     "masque": "MONTANT"
     }
-   ]
+   ],
+   "lignes": [
+    {
+     "code": "mois",
+     "libelle": "Mois"
+    },
+    {
+     "code": "cumul",
+     "libelle": "Cumul de l'année"
+    },
+    {
+     "code": "part",
+     "libelle": "Part du coût employeur (%)"
+    }
+   ],
+   "affectations": [
+    {
+     "rubrique": "TOTAL_BRUT",
+     "cibles": {
+      "MT": "mois.brut"
+     },
+     "libelle": "Salaire brut"
+    },
+    {
+     "rubrique": "TOTAL_BRUT",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.brut"
+     },
+     "libelle": "Salaire brut (cumul)"
+    },
+    {
+     "rubrique": "BRUT_IMPOSABLE",
+     "cibles": {
+      "MT": "mois.brut_imposable"
+     },
+     "libelle": "Brut imposable"
+    },
+    {
+     "rubrique": "BRUT_IMPOSABLE",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.brut_imposable"
+     },
+     "libelle": "Brut imposable (cumul)"
+    },
+    {
+     "rubrique": "COT_SALARIALES",
+     "cibles": {
+      "MT": "mois.cot_sal"
+     },
+     "libelle": "Cotisations salariales"
+    },
+    {
+     "rubrique": "COT_SALARIALES",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.cot_sal"
+     },
+     "libelle": "Cotisations salariales (cumul)"
+    },
+    {
+     "rubrique": "NET_IMPOSABLE",
+     "cibles": {
+      "MT": "mois.net_imposable"
+     },
+     "libelle": "Net imposable"
+    },
+    {
+     "rubrique": "NET_IMPOSABLE",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.net_imposable"
+     },
+     "libelle": "Net imposable (cumul)"
+    },
+    {
+     "rubrique": "COT_PATRONALES",
+     "cibles": {
+      "MT": "mois.cot_pat"
+     },
+     "libelle": "Cotisations patronales"
+    },
+    {
+     "rubrique": "COT_PATRONALES",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.cot_pat"
+     },
+     "libelle": "Cotisations patronales (cumul)"
+    },
+    {
+     "rubrique": "TOTAL_RETENUES",
+     "cibles": {
+      "MT": "mois.retenues"
+     },
+     "libelle": "Total des retenues"
+    },
+    {
+     "rubrique": "TOTAL_RETENUES",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.retenues"
+     },
+     "libelle": "Total des retenues (cumul)"
+    },
+    {
+     "rubrique": "NET_A_PAYER",
+     "cibles": {
+      "MT": "mois.net"
+     },
+     "libelle": "Net à payer"
+    },
+    {
+     "rubrique": "NET_A_PAYER",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.net"
+     },
+     "libelle": "Net à payer (cumul)"
+    },
+    {
+     "rubrique": "COUT_EMPLOYEUR",
+     "cibles": {
+      "MT": "mois.cout"
+     },
+     "libelle": "Coût employeur"
+    },
+    {
+     "rubrique": "COUT_EMPLOYEUR",
+     "periode": "CUMUL",
+     "cibles": {
+      "MT": "cumul.cout"
+     },
+     "libelle": "Coût employeur (cumul)"
+    },
+    {
+     "formule": "SI(SIVIDE([COUT_EMPLOYEUR].MT, 0) = 0, 0, SIVIDE([NET_A_PAYER].MT, 0) / [COUT_EMPLOYEUR].MT * 100)",
+     "cibles": {
+      "VAL": "part.net"
+     },
+     "libelle": "Part du coût employeur — net"
+    },
+    {
+     "formule": "SI(SIVIDE([COUT_EMPLOYEUR].MT, 0) = 0, 0, SIVIDE([TOTAL_RETENUES].MT, 0) / [COUT_EMPLOYEUR].MT * 100)",
+     "cibles": {
+      "VAL": "part.retenues"
+     },
+     "libelle": "Part du coût employeur — retenues"
+    },
+    {
+     "formule": "SI(SIVIDE([COUT_EMPLOYEUR].MT, 0) = 0, 0, SIVIDE([COT_PATRONALES].MT, 0) / [COUT_EMPLOYEUR].MT * 100)",
+     "cibles": {
+      "VAL": "part.cot_pat"
+     },
+     "libelle": "Part du coût employeur — cot_pat"
+    }
+   ],
+   "emplacement": "MASQUE"
   }
  ],
  "usages": {
@@ -352,7 +600,7 @@
       "alignement": "DROITE"
      },
      "type": "CHAMP",
-     "valeur": "net_a_payer",
+     "valeur": "corps.totaux.mois.net",
      "affichage": {
       "masque": "MONTANT"
      }
@@ -369,7 +617,7 @@
       "couleur": "#6B7C88"
      },
      "type": "CHAMP",
-     "valeur": "MONTANT_EN_LETTRES(net_a_payer)",
+     "valeur": "MONTANT_EN_LETTRES(corps.totaux.mois.net)",
      "affichage": {
       "valeur_si_vide": ""
      }
@@ -412,64 +660,64 @@
        "id": "brut",
        "titre": "Brut",
        "valeurs": {
-        "m": "total_brut",
-        "c": "cumul.total_brut"
+        "m": "corps.totaux.mois.brut",
+        "c": "corps.totaux.cumul.brut"
        }
       },
       {
        "id": "imp",
        "titre": "Brut imposable",
        "valeurs": {
-        "m": "total_brut_imposable",
-        "c": "cumul.total_brut_imposable"
+        "m": "corps.totaux.mois.brut_imposable",
+        "c": "corps.totaux.cumul.brut_imposable"
        }
       },
       {
        "id": "cot",
        "titre": "Cot. salariales",
        "valeurs": {
-        "m": "total_cot_salariale",
-        "c": "cumul.total_cot_salariale"
+        "m": "corps.totaux.mois.cot_sal",
+        "c": "corps.totaux.cumul.cot_sal"
        }
       },
       {
        "id": "netimp",
        "titre": "Net imposable",
        "valeurs": {
-        "m": "net_imposable",
-        "c": "cumul.net_imposable"
+        "m": "corps.totaux.mois.net_imposable",
+        "c": "corps.totaux.cumul.net_imposable"
        }
       },
       {
        "id": "ret",
        "titre": "Retenues",
        "valeurs": {
-        "m": "total_retenues",
-        "c": "cumul.total_retenues"
+        "m": "corps.totaux.mois.retenues",
+        "c": "corps.totaux.cumul.retenues"
        }
       },
       {
        "id": "net",
        "titre": "Net payé",
        "valeurs": {
-        "m": "net_a_payer",
-        "c": "cumul.net_a_payer"
+        "m": "corps.totaux.mois.net",
+        "c": "corps.totaux.cumul.net"
        }
       },
       {
        "id": "pat",
        "titre": "Cot. patronales",
        "valeurs": {
-        "m": "total_cot_patronale",
-        "c": "cumul.total_cot_patronale"
+        "m": "corps.totaux.mois.cot_pat",
+        "c": "corps.totaux.cumul.cot_pat"
        }
       },
       {
        "id": "cout",
        "titre": "Coût employeur",
        "valeurs": {
-        "m": "cout_employeur",
-        "c": "cumul.cout_employeur"
+        "m": "corps.totaux.mois.cout",
+        "c": "corps.totaux.cumul.cout"
        }
       }
      ],
@@ -492,7 +740,7 @@
      "l": 18.0,
      "h": 18.0,
      "type": "CODE_BARRE",
-     "valeur": "\"BUL|\" + SIVIDE(societe.ice, \"\") + \"|\" + identite.matricule + \"|\" + @periode.code + \"|\" + FORMAT(net_a_payer, \"MONTANT\")"
+     "valeur": "\"BUL|\" + SIVIDE(societe.ice, \"\") + \"|\" + identite.matricule + \"|\" + @periode.code + \"|\" + FORMAT(corps.totaux.mois.net, \"MONTANT\")"
     },
     {
      "id": "pay_l0",
@@ -736,7 +984,7 @@
       "couleur_bordure": "#D5DEE3"
      },
      "type": "TABLEAU",
-     "jeu": "l",
+     "corps": "rubriques",
      "colonnes": [
       {
        "id": "lib",
@@ -794,7 +1042,7 @@
        "id": "gain",
        "titre": "À payer",
        "largeur": 22.0,
-       "valeur": "SI(sens = \"GAIN\", montant)",
+       "valeur": "gain",
        "affichage": {
         "masque": "MONTANT_SANS_ZERO"
        },
@@ -807,7 +1055,7 @@
        "id": "ret",
        "titre": "À retenir",
        "largeur": 22.0,
-       "valeur": "SI(sens = \"RETENUE\", montant)",
+       "valeur": "retenue",
        "affichage": {
         "masque": "MONTANT_SANS_ZERO"
        },
@@ -833,7 +1081,7 @@
        "id": "pat",
        "titre": "Part pat.",
        "largeur": 16.0,
-       "valeur": "montant_patronal",
+       "valeur": "patronal",
        "affichage": {
         "masque": "MONTANT_SANS_ZERO"
        },
@@ -842,20 +1090,6 @@
         "couleur": "#6B7C88",
         "alignement": "DROITE"
        }
-      }
-     ],
-     "sections": [
-      {
-       "id": "sec_gains",
-       "titre": "Éléments de rémunération",
-       "filtre": "sens = \"GAIN\"",
-       "sous_total": true
-      },
-      {
-       "id": "sec_retenues",
-       "titre": "Cotisations et retenues",
-       "filtre": "sens = \"RETENUE\"",
-       "sous_total": true
       }
      ],
      "quadrillage": "COMPLET",
