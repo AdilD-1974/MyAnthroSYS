@@ -82,8 +82,10 @@ function useModelesEcran(ecran: string, actif = true) {
 // ════════════════════════════════════════════════════════════════════════════
 // Bouton « Imprimer » d'un écran métier
 // ════════════════════════════════════════════════════════════════════════════
-export function BoutonImprimer({ ecran, contexte, desactive, className }: {
+export function BoutonImprimer({ ecran, contexte, desactive, className, libelle }: {
   ecran: string;
+  /** Texte du bouton (défaut : « Imprimer »). */
+  libelle?: string;
   contexte: ContexteEcran;
   /** Raison pour laquelle l'impression n'est pas possible (affichée en info-bulle). */
   desactive?: string | null;
@@ -122,7 +124,7 @@ export function BoutonImprimer({ ecran, contexte, desactive, className }: {
       <button type="button" onClick={() => imprimer()} disabled={!!desactive || occupe}
         title={desactive ?? "Imprimer avec le modèle d'édition de ce menu (flèche : choisir un autre modèle)"}
         className={`${base} rounded-l-md`}>
-        {occupe ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />} Imprimer
+        {occupe ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />} {libelle ?? "Imprimer"}
       </button>
       <Popover open={ouvert} onOpenChange={setOuvert}>
         <PopoverTrigger asChild>

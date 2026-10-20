@@ -120,3 +120,25 @@ def test_ecran_des_departs_propose_les_documents_de_sortie(db, tmp_path, monkeyp
     assert res["modele"]["code"] == "RECU_SOLDE_TOUT_COMPTE" and len(res["documents"]) == 1
     assert not res["documents"][0]["anomalies"]
     db.rollback()
+
+
+def test_fiche_collaborateur_attestation_de_travail_en_premier(db, tmp_path, monkeypatch):    # RG-EDT-ECRAN-10
+    from tests_editions.test_modeles_exemples import SQL_DEPARTS
+    monkeypatch.setattr(sv, "racine_documents", lambda: tmp_path)
+    for uid in (ADMIN_ID, PAIE_ID, COLLAB_ID):
+        db.execute(text("INSERT INTO users (id, email) VALUES (:id, :e)"), {"id": uid, "e": f"{uid}@x.ma"})
+    sv.initialiser(db)
+    db.execute(text(SQL_DEPARTS))
+    db.execute(text("""INSERT INTO ecran_lancement (code_ecran, libelle, contexte_disponible, chemin_route, categorie_edition)
+                       SELECT 'fiche_collaborateur', 'Fiche collaborateur', '["collaborateur_id"]'::jsonb, :chemin, 'ATTESTATION'
+                       WHERE NOT EXISTS (SELECT 1 FROM ecran_lancement WHERE code_ecran = 'fiche_collaborateur')"""),
+               {"chemin": "/collaborateurs/:id"})
+    db.execute(text("UPDATE ecran_lancement SET categorie_edition = 'ATTESTATION' WHERE code_ecran = 'fiche_collaborateur'"))
+    codes = [m["code"] for m in ec.modeles_ecran(db, PAIE, "fiche_collaborateur")["modeles"]]
+    assert codes[:2] == ["ATTESTATION_TRAVAIL_SALAIRE", "ATTESTATION_SALAIRE_ANNUELLE"] and "CERTIFICAT_TRAVAIL" in codes
+    ids = {m["code"]: m["id"] for m in ec.modeles_ecran(db, PAIE, "fiche_collaborateur")["modeles"]}
+    # sans mois ni année : le dernier mois payé / l'année de ce mois ; le certificat suit le départ du salarié
+    for code in ("ATTESTATION_TRAVAIL_SALAIRE", "ATTESTATION_SALAIRE_ANNUELLE", "CERTIFICAT_TRAVAIL", "RECU_SOLDE_TOUT_COMPTE"):
+        r = ec.lancer(db, PAIE, "fiche_collaborateur", ids[code], {"collaborateur_id": SARA})
+        assert len(r["documents"]) == 1 and not r["documents"][0]["anomalies"], code
+    db.rollback()

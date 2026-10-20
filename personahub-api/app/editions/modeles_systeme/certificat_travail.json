@@ -3,7 +3,8 @@
   {
    "code": "periode",
    "libelle": "Mois de sortie",
-   "type": "MOIS"
+   "type": "MOIS",
+   "obligatoire": false
   },
   {
    "code": "collaborateurs",

@@ -205,6 +205,20 @@ MODELES_ECRAN_SYSTEME = {
 }
 
 
+# RG-EDT-ECRAN-10 (Adil DAIA) : ordre des modèles livrés sur un écran (le premier est imprimé d'un clic)
+PRIORITE_ECRAN = {
+    "fiche_collaborateur": ("ATTESTATION_TRAVAIL_SALAIRE", "ATTESTATION_SALAIRE_ANNUELLE", "DOMICILIATION_SALAIRE",
+                            "CERTIFICAT_TRAVAIL", "RECU_SOLDE_TOUT_COMPTE"),
+    **MODELES_ECRAN_SYSTEME,
+}
+
+
+def _rang(code_ecran: str, m: dict, codes_systeme: dict) -> int:
+    ordre = PRIORITE_ECRAN.get(code_ecran) or ()
+    code = m["code"] if m.get("est_systeme") else codes_systeme.get(str(m.get("modele_origine_id") or ""), "")
+    return ordre.index(code) if code in ordre else len(ordre)
+
+
 def _modeles_livres(db: Session, u: sv.Utilisateur, codes: tuple) -> list[dict]:
     tous = [m for m in sv.lister_modeles(db, u) if m["version_publiee_id"]]
     systeme = {m["id"]: m["code"] for m in tous if m["est_systeme"] and m["code"] in codes}
@@ -230,6 +244,7 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
     else:
         candidats = []
     candidats = _filtrer_acces_navigation(db, u, candidats)                # RG-EDT-ACCES-01/02
+    codes_systeme = {m["id"]: m["code"] for m in sv.lister_modeles(db, u) if m["est_systeme"]} if code_ecran in PRIORITE_ECRAN else {}
     sortie = []
     for m in candidats:
         if not m.get("actif", True) or not sv.peut(db, u, "LANCER", m):     # RG-EDT-ACTIF-01
@@ -238,9 +253,10 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
         if f is None:
             continue
         r = infos.get(m["id"])
-        sortie.append({**f, "par_defaut": bool(r and r["par_defaut"]), "ordre": int(r["ordre"]) if r else len(sortie)})
-    # RG-EDT-ECRAN-04 : défaut, puis modèles de la société avant les modèles système
-    sortie.sort(key=lambda x: (not x["par_defaut"], x["est_systeme"], x["ordre"], x["libelle"].lower()))
+        sortie.append({**f, "par_defaut": bool(r and r["par_defaut"]), "ordre": int(r["ordre"]) if r else 0,
+                       "_rang": _rang(code_ecran, m, codes_systeme)})
+    # RG-EDT-ECRAN-04 : défaut, puis (RG-EDT-ECRAN-10) l'ordre livré de l'écran, puis la société avant le système
+    sortie.sort(key=lambda x: (not x["par_defaut"], x.pop("_rang"), x["est_systeme"], x["ordre"], x["libelle"].lower()))
     return {"ecran": e, "modeles": sortie, "defaut": sortie[0]["id"] if sortie else None}
 
 
@@ -331,12 +347,18 @@ def lancer(db: Session, u: sv.Utilisateur, code_ecran: str, modele_id: Optional[
     collabs = [str(x) for x in ((contexte or {}).get("collaborateur_ids") or
                                 ([contexte["collaborateur_id"]] if (contexte or {}).get("collaborateur_id") else []))]
     manquants = [p for p in d.parametres if p.type in ("MOIS", "PERIODE") and p.obligatoire and not bruts.get(p.code) and not p.defaut]
+    # même règle pour une année obligatoire (attestation de salaire annuelle) : l'année du dernier mois payé
+    manquants += [p for p in d.parametres if p.type == "ANNEE" and p.obligatoire and not bruts.get(p.code) and not p.defaut]
     if manquants and collabs:
         dernier = _dernier_mois_paye(db, u.societe_id, collabs)
         if not dernier:
             raise sv.ErreurEdition("Aucun bulletin de paie pour ce collaborateur : l'attestation reprend le salaire du dernier mois payé")
         for p in manquants:
-            bruts[p.code] = dernier
+            if p.type == "ANNEE":
+                bruts[p.code] = int(db.execute(text("SELECT annee FROM calendrier_paie WHERE CAST(id AS text) = :p"),
+                                               {"p": dernier}).scalar())
+            else:
+                bruts[p.code] = dernier
     res = sv.lancer(db, u, choisi, bruts, forme)
     if not res["documents"]:
         raise sv.ErreurEdition("Aucun document : pas de bulletin définitif pour ce choix "

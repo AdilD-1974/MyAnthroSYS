@@ -1947,7 +1947,8 @@ def bulletin_recapitulatif() -> dict:
 # =============================================================================
 # DOCUMENTS RH ADMINISTRATIFS — sortie du salarié, salaire annuel, domiciliation (RG-EDT-RH-01..05)
 # =============================================================================
-PARAM_MOIS_SORTIE = {"code": "periode", "libelle": "Mois de sortie", "type": "MOIS"}
+# facultatif : depuis la fiche d'un collaborateur, son départ suffit (RG-EDT-ECRAN-08 ne s'applique pas)
+PARAM_MOIS_SORTIE = {"code": "periode", "libelle": "Mois de sortie", "type": "MOIS", "obligatoire": False}
 PARAM_DATE_DOC = {"code": "date_document", "libelle": "Date du document", "type": "DATE", "obligatoire": False, "defaut": "DATEJOUR()"}
 DATE_DOC = "SIVIDE(@date_document, DATEJOUR())"
 SALARIE = 'SIVIDE(identite.civilite, "") + " " + MAJUSCULE(identite.nom) + " " + identite.prenom'
