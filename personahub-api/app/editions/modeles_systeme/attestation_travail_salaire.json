@@ -11,6 +11,44 @@
    "type": "COLLABORATEUR",
    "obligatoire": false,
    "multiple": true
+  },
+  {
+   "code": "contenu",
+   "libelle": "Contenu",
+   "type": "LISTE",
+   "obligatoire": false,
+   "defaut": "\"Travail et salaire\"",
+   "valeurs": [
+    "Travail et salaire",
+    "Travail seulement"
+   ]
+  },
+  {
+   "code": "date_attestation",
+   "libelle": "Date de l'attestation",
+   "type": "DATE",
+   "obligatoire": false,
+   "defaut": "DATEJOUR()"
+  },
+  {
+   "code": "objet",
+   "libelle": "Objet",
+   "type": "LISTE",
+   "obligatoire": false,
+   "defaut": "\"pour servir et valoir ce que de droit\"",
+   "valeurs": [
+    "pour servir et valoir ce que de droit",
+    "pour la constitution d'un dossier de crédit bancaire",
+    "pour la constitution d'un dossier de visa",
+    "pour la constitution d'un dossier administratif",
+    "pour la constitution d'un dossier de location"
+   ]
+  },
+  {
+   "code": "objet_libre",
+   "libelle": "Autre objet (remplace la liste, ex. pour la constitution d'un dossier de bourse)",
+   "type": "TEXTE",
+   "obligatoire": false
   }
  ],
  "jeux": [
@@ -170,7 +208,7 @@
       "alignement": "CENTRE"
      },
      "type": "TEXTE",
-     "valeur": "\"Attestation de travail et de salaire\""
+     "valeur": "SI(@contenu = \"Travail seulement\", \"Attestation de travail\", \"Attestation de travail et de salaire\")"
     },
     {
      "id": "titre_filet",
@@ -220,7 +258,7 @@
      },
      "extensible": true,
      "type": "TEXTE_RICHE",
-     "contenu": "Nous soussignés, {societe.raison_sociale}{SI(ESTVIDE(societe.forme_juridique), \"\", \", \" + societe.forme_juridique)}, dont le siège est situé {SIVIDE(societe.adresse, \"\")}{SI(ESTVIDE(societe.ville), \"\", \" à \" + societe.ville)}, immatriculée à la CNSS sous le n° {SIVIDE(societe.numero_cnss, \"—\")}, attestons par la présente que :\n\n{SIVIDE(identite.civilite, \"\")} {MAJUSCULE(identite.nom)} {identite.prenom}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, immatriculé(e) à la CNSS sous le n° {SIVIDE(identite.num_cnss, \"—\")}, matricule {identite.matricule}, fait partie de notre personnel depuis le {SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} en qualité de {SIVIDE(affectation.emploi_libelle, \"salarié(e)\")}{SI(ESTVIDE(contrat.code_type_contrat), \"\", \", sous contrat \" + SIVIDE(contrat.type_contrat_libelle, contrat.code_type_contrat))}.\n\nSa rémunération pour la période de {FORMAT(@periode.date_fin, \"MOIS_ANNEE\")} et le cumul depuis le début de l'année s'établissent comme suit :"
+     "contenu": "Nous soussignés, {societe.raison_sociale}{SI(ESTVIDE(societe.forme_juridique), \"\", \", \" + societe.forme_juridique)}, dont le siège est situé {SIVIDE(societe.adresse, \"\")}{SI(ESTVIDE(societe.ville), \"\", \" à \" + societe.ville)}, immatriculée à la CNSS sous le n° {SIVIDE(societe.numero_cnss, \"—\")}, attestons par la présente que :\n\n{SIVIDE(identite.civilite, \"\")} {MAJUSCULE(identite.nom)} {identite.prenom}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, immatriculé(e) à la CNSS sous le n° {SIVIDE(identite.num_cnss, \"—\")}, matricule {identite.matricule}, fait partie de notre personnel depuis le {SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} en qualité de {SIVIDE(affectation.emploi_libelle, \"salarié(e)\")}{SI(ESTVIDE(contrat.code_type_contrat), \"\", \", sous contrat \" + SIVIDE(contrat.type_contrat_libelle, contrat.code_type_contrat))}.\n\n{SI(@contenu <> \"Travail seulement\", \"Sa rémunération pour la période de \" + FORMAT(@periode.date_fin, \"MOIS_ANNEE\") + \" et le cumul depuis le début de l'année s'établissent comme suit :\", \"\")}"
     }
    ]
   },
@@ -229,6 +267,7 @@
    "type": "CORPS",
    "hauteur": 52.0,
    "insecable": true,
+   "condition": "@contenu <> \"Travail seulement\"",
    "elements": [
     {
      "id": "rem_titre",
@@ -355,6 +394,9 @@
       "taille": 10.0,
       "italique": true
      },
+     "condition": {
+      "expression": "@contenu <> \"Travail seulement\""
+     },
      "extensible": true,
      "type": "TEXTE_RICHE",
      "contenu": "Soit un net à payer de {FORMAT(net_a_payer, \"MONTANT\")} DH pour le mois ({MONTANT_EN_LETTRES(net_a_payer)})."
@@ -370,7 +412,7 @@
      },
      "extensible": true,
      "type": "TEXTE_RICHE",
-     "contenu": "La présente attestation est délivrée à l'intéressé(e), sur sa demande, pour servir et valoir ce que de droit."
+     "contenu": "La présente attestation est délivrée à l'intéressé(e), sur sa demande, {SI(ESTVIDE(@objet_libre), SIVIDE(@objet, \"pour servir et valoir ce que de droit\"), @objet_libre)}."
     },
     {
      "id": "fait_a",
@@ -382,7 +424,7 @@
       "taille": 10.0
      },
      "type": "CHAMP",
-     "valeur": "\"Fait à \" + SIVIDE(societe.ville, \"………\") + \", le \" + FORMAT(DATEJOUR(), \"DATE_LONGUE\")",
+     "valeur": "\"Fait à \" + SIVIDE(societe.ville, \"………\") + \", le \" + FORMAT(SIVIDE(@date_attestation, DATEJOUR()), \"DATE_LONGUE\")",
      "affichage": {
       "valeur_si_vide": ""
      }

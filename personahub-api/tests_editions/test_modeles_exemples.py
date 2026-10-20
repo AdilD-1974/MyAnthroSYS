@@ -323,3 +323,28 @@ def test_transposition_d_une_copie_du_recapitulatif(s):
     from app.editions.sources import ContexteSecurite
     docs = executeur.executer(s, d, {"annee": 2026}, ContexteSecurite(None, "11111111-1111-1111-1111-111111111111", frozenset(), True))
     assert docs and all(not x.anomalies for x in docs), [a for x in docs for a in x.anomalies][:3]
+
+
+def test_attestation_reglable_au_lancement_et_copie_actualisee(s):
+    """RG-EDT-ATTESTATION-01 : contenu (travail seul), date, objet ; une copie faite avant reçoit ces réglages."""
+    import copy
+    import json as _json
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "editions"))
+    from generer_modeles_exemples import completer_attestation
+    from app.editions.definition import Definition
+    from app.editions.moteur import executeur
+    from app.editions.sources import ContexteSecurite
+    avant = _json.loads((Path(__file__).parent / "donnees" / "attestation_avant.json").read_text(encoding="utf-8"))
+    apres = completer_attestation(copy.deepcopy(avant))
+    assert completer_attestation(copy.deepcopy(apres)) == apres
+    assert {"contenu", "date_attestation", "objet", "objet_libre"} <= {p["code"] for p in apres["parametres"]}
+    sec = ContexteSecurite(None, "11111111-1111-1111-1111-111111111111", frozenset(), True)
+    import io
+    from pypdf import PdfReader
+    docs = executeur.executer(s, Definition.model_validate(apres), {"periode": P_SEP, "contenu": "Travail seulement",
+                              "objet_libre": "pour la constitution d'un dossier de bourse", "date_attestation": "2026-10-15"}, sec)
+    t = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(docs[0].contenu)).pages)
+    assert "TRAVAIL ET DE SALAIRE" not in t.upper().replace("\n", " ") and "Rémunération" not in t
+    assert "dossier de bourse" in t and "15 octobre 2026" in t and not docs[0].anomalies

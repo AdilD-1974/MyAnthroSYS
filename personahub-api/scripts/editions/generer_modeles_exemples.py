@@ -513,7 +513,7 @@ def attestation() -> dict:
         {**texte("qr_t", 26, 52, 55, 10, "Code de contrôle : référence, salarié, période et net attestés", taille=6.5,
                  italique=True, couleur=GRIS), "extensible": True},
     ]
-    return definition(
+    d = definition(
         [PARAM_MOIS, PARAM_COLLABS],
         [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "filtres": [],
           "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
@@ -527,6 +527,56 @@ def attestation() -> dict:
         {"formats": ["PDF"], "nom_fichier": '"Attestation_" + identite.matricule + "_" + @periode.code',
          "eclatement": "collaborateur_id", "qr_verification": True},
         usages={"confidentialite": 3, "duplicata": True})
+    return completer_attestation(d)
+
+
+# RG-EDT-ATTESTATION-01 (Adil DAIA) : l'attestation se règle au lancement — date, objet (liste, ou texte libre
+# qui la remplace), contenu « travail et salaire » ou « travail seulement » (sans rémunération ni montant en lettres).
+OBJETS_ATTESTATION = [
+    "pour servir et valoir ce que de droit",
+    "pour la constitution d'un dossier de crédit bancaire",
+    "pour la constitution d'un dossier de visa",
+    "pour la constitution d'un dossier administratif",
+    "pour la constitution d'un dossier de location",
+]
+PARAMS_ATTESTATION = [
+    {"code": "contenu", "libelle": "Contenu", "type": "LISTE", "obligatoire": False,
+     "valeurs": ["Travail et salaire", "Travail seulement"], "defaut": '"Travail et salaire"'},
+    {"code": "date_attestation", "libelle": "Date de l'attestation", "type": "DATE", "obligatoire": False, "defaut": "DATEJOUR()"},
+    {"code": "objet", "libelle": "Objet", "type": "LISTE", "obligatoire": False, "valeurs": OBJETS_ATTESTATION,
+     "defaut": '"' + OBJETS_ATTESTATION[0] + '"'},
+    {"code": "objet_libre", "libelle": "Autre objet (remplace la liste, ex. pour la constitution d'un dossier de bourse)",
+     "type": "TEXTE", "obligatoire": False},
+]
+SALAIRE = '@contenu <> "Travail seulement"'
+
+
+def completer_attestation(d: dict) -> dict:
+    """Ajoute les réglages de lancement à une attestation (modèle livré ou copie) ; sans effet s'ils y sont.
+    Les éléments du modèle livré servent de repères (identifiants) ; le reste de la mise en page ne bouge pas."""
+    codes = {p["code"] for p in d.get("parametres", [])}
+    d["parametres"] = d.get("parametres", []) + [dict(p) for p in PARAMS_ATTESTATION if p["code"] not in codes]
+    objet = 'SI(ESTVIDE(@objet_libre), SIVIDE(@objet, "pour servir et valoir ce que de droit"), @objet_libre)'
+    queue = ("Sa rémunération pour la période de {FORMAT(@periode.date_fin, \"MOIS_ANNEE\")} et le cumul depuis le début de "
+             "l'année s'établissent comme suit :")
+    queue_cond = ('{SI(' + SALAIRE + ', "Sa rémunération pour la période de " + FORMAT(@periode.date_fin, "MOIS_ANNEE") + '
+                  '" et le cumul depuis le début de l\'année s\'établissent comme suit :", "")}')
+    for b in d.get("bandes", []):
+        if b.get("id") == "tableau" and not b.get("condition"):
+            b["condition"] = SALAIRE
+        for el in b.get("elements", []):
+            i = el.get("id")
+            if i == "titre" and el.get("type") == "TEXTE" and "@contenu" not in (el.get("valeur") or ""):
+                el["valeur"] = 'SI(@contenu = "Travail seulement", "Attestation de travail", "Attestation de travail et de salaire")'
+            elif i == "paragraphe" and queue in (el.get("contenu") or ""):
+                el["contenu"] = el["contenu"].replace(queue, queue_cond)
+            elif i == "en_lettres" and not el.get("condition"):
+                el["condition"] = {"expression": SALAIRE}
+            elif i == "usage" and "@objet" not in (el.get("contenu") or ""):
+                el["contenu"] = "La présente attestation est délivrée à l'intéressé(e), sur sa demande, {" + objet + "}."
+            elif i == "fait_a" and "DATEJOUR()" in (el.get("valeur") or "") and "@date_attestation" not in el["valeur"]:
+                el["valeur"] = el["valeur"].replace("DATEJOUR()", "SIVIDE(@date_attestation, DATEJOUR())")
+    return d
 
 
 # =============================================================================
