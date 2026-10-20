@@ -275,3 +275,22 @@ def test_situation_figee_completee_depuis_la_fiche_rh(s):
     # le filtre de population voit la catégorie complétée
     assert [l["matricule"] for l in FournisseurBulletin().lire(s, {"periode": {"id": P_SEP}, "_filtres": {"categories": ["EMP"]}},
                                                                 sv.contexte_securite(s, PAIE))] == ["M002"]
+
+
+def test_modeles_livres_publiables_sans_erreur(s):
+    """Chaque modèle livré passe la validation de publication (une copie aussi : identifiants des
+    colonnes uniques dans leur tableau, RG-EDT-FORME-03)."""
+    import json as _json
+    from pathlib import Path
+    from app.editions import catalogue
+    from app.editions.definition import Definition
+    from app.editions.validation import valider
+    cat = catalogue.charger(s, "11111111-1111-1111-1111-111111111111")
+    dossier = Path(sv.__file__).resolve().parent / "modeles_systeme"
+    erreurs = {}
+    for f in sorted(dossier.glob("*.json")):
+        r = valider(Definition.model_validate(_json.loads(f.read_text(encoding="utf-8"))), cat)
+        ids = [e for e in r.erreurs if "Identifiant" in str(e)]
+        if ids:
+            erreurs[f.name] = ids[:3]
+    assert not erreurs, erreurs

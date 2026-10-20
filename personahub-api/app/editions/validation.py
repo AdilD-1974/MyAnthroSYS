@@ -200,20 +200,22 @@ def valider(brut: Any, cat: CatalogueValidation) -> Rapport:
     doublons(((f"parametres[{i}].code", p.code) for i, p in enumerate(d.parametres)), "Paramètre")
     doublons(((f"jeux[{i}].code", j.code) for i, j in enumerate(d.jeux)), "Jeu")
     doublons(((f"bandes[{i}].id", b.id) for i, b in enumerate(d.bandes)), "Identifiant de bande")
+    # RG-EDT-FORME-03 (Adil DAIA) : bandes et éléments uniques dans tout l'état ; colonnes, sections et
+    # lignes uniques DANS leur tableau ou leur grille (deux tableaux ont chacun leur colonne « total »,
+    # leurs colonnes « m01…m12 » : un corps ventilé sur l'exercice imprimé deux fois reste valide)
     ids_elements = []
     for b, bande in enumerate(d.bandes):
         for e, el in enumerate(bande.elements):
             ids_elements.append((f"bandes[{b}].elements[{e}].id", el.id))
+            interne = []
             if isinstance(el, Tableau):
-                ids_elements += [(f"bandes[{b}].elements[{e}].colonnes[{c}].id", col.id)
-                                 for c, col in enumerate(el.colonnes)]
-                ids_elements += [(f"bandes[{b}].elements[{e}].sections[{s}].id", sec.id)
-                                 for s, sec in enumerate(el.sections)]
+                interne += [(f"bandes[{b}].elements[{e}].colonnes[{c}].id", col.id) for c, col in enumerate(el.colonnes)]
+                interne += [(f"bandes[{b}].elements[{e}].sections[{s}].id", sec.id) for s, sec in enumerate(el.sections)]
             if isinstance(el, Grille):
-                ids_elements += [(f"bandes[{b}].elements[{e}].colonnes[{c}].id", col.id)
-                                 for c, col in enumerate(el.colonnes)]
-                ids_elements += [(f"bandes[{b}].elements[{e}].lignes[{k}].id", lg.id)
-                                 for k, lg in enumerate(el.lignes)]
+                interne += [(f"bandes[{b}].elements[{e}].colonnes[{c}].id", col.id) for c, col in enumerate(el.colonnes)]
+                interne += [(f"bandes[{b}].elements[{e}].lignes[{k}].id", lg.id) for k, lg in enumerate(el.lignes)]
+            if interne:
+                doublons(interne, f"Identifiant dans « {el.id} »")
     doublons(ids_elements, "Identifiant d'élément")
 
     # 3) Jeux de données
