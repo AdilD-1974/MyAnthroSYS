@@ -20,3 +20,5 @@ Thumbs.db
 # Éditions : documents produits (données personnelles) — jamais dans git
 personahub-api/donnees_privees/
 personahub-api/storage/editions_essai/
+
+Claude outputs/
