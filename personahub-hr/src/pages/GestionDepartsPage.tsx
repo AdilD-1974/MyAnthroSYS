@@ -17,6 +17,7 @@ import { format, parseISO, differenceInDays } from "date-fns";
 import { fr } from "date-fns/locale";
 import DepartForm from "@/components/depart/DepartForm";
 import SuiviDemandeWorkflow from "@/pages/espaces/SuiviDemandeWorkflow";
+import { BoutonImprimer } from "@/pages/editions/LanceurEcran";
 import * as XLSX from "xlsx";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -35,6 +36,14 @@ interface Depart {
     statut_collaborateur: string; photo_path?: string;
   };
 }
+
+// ─── Documents de sortie (Éditions) ──────────────────────────────────────────
+// Reçu pour solde de tout compte, certificat de travail, fiche de sortie : le salarié et le mois de son départ.
+const ImprimerDepart: React.FC<{ dep: Depart }> = ({ dep }) => {
+  if (dep.statut === "ANNULE" || !dep.date_depart) return null;
+  const [annee, mois] = dep.date_depart.slice(0, 7).split("-").map(Number);
+  return <BoutonImprimer ecran="departs" contexte={{ collaborateur_id: dep.collaborateur_id, annee, mois }} />;
+};
 
 // ─── Config statuts ──────────────────────────────────────────────────────────
 const STATUT_CFG: Record<string, { label: string; bg: string; color: string; border: string; icon: React.ReactNode }> = {
@@ -345,7 +354,10 @@ const DetailDepartModal: React.FC<{ dep: Depart; onClose: () => void; onNavigate
               <X size={12} /> Annuler ce départ
             </button>
           ) : <div />}
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
+          <div className="flex items-center gap-2">
+            <ImprimerDepart dep={dep} />
+            <Button variant="outline" onClick={onClose}>Fermer</Button>
+          </div>
         </div>
       </div>
     </div>
@@ -942,6 +954,7 @@ const GestionDepartsPage: React.FC = () => {
                         title="Voir le détail">
                         <Eye size={13} />
                       </button>
+                      <ImprimerDepart dep={dep} />
                       {!isReadOnly && dep.statut === "TRAITE" && (
                         <button onClick={() => setEditTarget(dep)}
                           className="p-1.5 rounded-lg hover:opacity-70 transition-opacity"

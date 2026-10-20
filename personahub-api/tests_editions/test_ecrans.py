@@ -101,3 +101,22 @@ def test_impression_depuis_le_traitement_et_en_serie(s):                     # R
     # pas de bulletin définitif : message clair
     with pytest.raises(sv.ErreurEdition):
         ec.lancer(s, PAIE, "consultation_bulletin", None, {"periode_id": P_SEP, "collaborateur_id": "c0000000-0000-0000-0000-000000000009"})
+
+
+def test_ecran_des_departs_propose_les_documents_de_sortie(db, tmp_path, monkeypatch):     # RG-EDT-ECRAN-09
+    from tests_editions.test_modeles_exemples import SQL_DEPARTS
+    monkeypatch.setattr(sv, "racine_documents", lambda: tmp_path)
+    for uid in (ADMIN_ID, PAIE_ID, COLLAB_ID):
+        db.execute(text("INSERT INTO users (id, email) VALUES (:id, :e)"), {"id": uid, "e": f"{uid}@x.ma"})
+    sv.initialiser(db)
+    db.execute(text(SQL_DEPARTS))
+    db.execute(text("""INSERT INTO ecran_lancement (code_ecran, libelle, contexte_disponible, chemin_route)
+                       SELECT 'departs', 'Module départs', '["collaborateur_id"]'::jsonb, '/departs'
+                       WHERE NOT EXISTS (SELECT 1 FROM ecran_lancement WHERE code_ecran = 'departs')"""))
+    r = ec.modeles_ecran(db, PAIE, "departs")
+    assert [m["code"] for m in r["modeles"]] == ["RECU_SOLDE_TOUT_COMPTE", "CERTIFICAT_TRAVAIL", "FICHE_SORTIE"]
+    # contexte de la ligne du départ : le salarié et le mois de sa date de départ
+    res = ec.lancer(db, PAIE, "departs", None, {"collaborateur_id": SARA, "annee": 2026, "mois": 9})
+    assert res["modele"]["code"] == "RECU_SOLDE_TOUT_COMPTE" and len(res["documents"]) == 1
+    assert not res["documents"][0]["anomalies"]
+    db.rollback()

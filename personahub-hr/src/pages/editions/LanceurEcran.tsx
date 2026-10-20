@@ -120,7 +120,7 @@ export function BoutonImprimer({ ecran, contexte, desactive, className }: {
   return (
     <div className={`inline-flex ${className ?? ""}`}>
       <button type="button" onClick={() => imprimer()} disabled={!!desactive || occupe}
-        title={desactive ?? "Imprimer le bulletin avec le modèle d'édition de ce menu"}
+        title={desactive ?? "Imprimer avec le modèle d'édition de ce menu (flèche : choisir un autre modèle)"}
         className={`${base} rounded-l-md`}>
         {occupe ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />} Imprimer
       </button>

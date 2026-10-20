@@ -342,6 +342,8 @@ export interface ContexteEcran {
   collaborateur_ids?: string[];
   bulletin_id?: string | null;
   annee?: number | null;
+  /** Mois (1-12) : avec l'année, donne le paramètre MOIS (ex. mois de sortie d'un départ). */
+  mois?: number | null;
 }
 
 async function pdfAvecJeton(chemin: string): Promise<Blob> {

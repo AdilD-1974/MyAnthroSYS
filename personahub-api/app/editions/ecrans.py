@@ -198,6 +198,21 @@ def fiche_lancement(db: Session, m: dict) -> Optional[dict]:
     }
 
 
+# RG-EDT-ECRAN-09 (Adil DAIA) : écrans métier qui proposent d'office des modèles livrés précis
+# (tant qu'aucun modèle n'y est rattaché par le bouton Classement) — les copies de ces modèles aussi.
+MODELES_ECRAN_SYSTEME = {
+    "departs": ("RECU_SOLDE_TOUT_COMPTE", "CERTIFICAT_TRAVAIL", "FICHE_SORTIE"),
+}
+
+
+def _modeles_livres(db: Session, u: sv.Utilisateur, codes: tuple) -> list[dict]:
+    tous = [m for m in sv.lister_modeles(db, u) if m["version_publiee_id"]]
+    systeme = {m["id"]: m["code"] for m in tous if m["est_systeme"] and m["code"] in codes}
+    rang = {c: i for i, c in enumerate(codes)}
+    retenus = [m for m in tous if m["id"] in systeme or str(m.get("modele_origine_id") or "") in systeme]
+    return sorted(retenus, key=lambda m: rang.get(systeme.get(m["id"]) or systeme.get(str(m.get("modele_origine_id") or "")), 99))
+
+
 def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
     """Modèles lançables sur l'écran (publiés, visibles, droit LANCER), le défaut en tête,
     avec leurs paramètres et leurs mises en forme au choix."""
@@ -208,6 +223,8 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
     infos = {str(r["modele_id"]): r for r in rattaches}
     if rattaches:
         candidats = [m for m in sv.lister_modeles(db, u) if m["id"] in infos and m["version_publiee_id"]]
+    elif code_ecran in MODELES_ECRAN_SYSTEME:                                 # RG-EDT-ECRAN-09
+        candidats = _modeles_livres(db, u, MODELES_ECRAN_SYSTEME[code_ecran])
     elif e["categorie_edition"]:                                              # RG-EDT-ECRAN-03
         candidats = _modeles_categorie(db, u, e["categorie_edition"])
     else:
@@ -221,7 +238,7 @@ def modeles_ecran(db: Session, u: sv.Utilisateur, code_ecran: str) -> dict:
         if f is None:
             continue
         r = infos.get(m["id"])
-        sortie.append({**f, "par_defaut": bool(r and r["par_defaut"]), "ordre": int(r["ordre"]) if r else 0})
+        sortie.append({**f, "par_defaut": bool(r and r["par_defaut"]), "ordre": int(r["ordre"]) if r else len(sortie)})
     # RG-EDT-ECRAN-04 : défaut, puis modèles de la société avant les modèles système
     sortie.sort(key=lambda x: (not x["par_defaut"], x["est_systeme"], x["ordre"], x["libelle"].lower()))
     return {"ecran": e, "modeles": sortie, "defaut": sortie[0]["id"] if sortie else None}
