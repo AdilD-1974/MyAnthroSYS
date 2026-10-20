@@ -20,7 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { editionsApi, type ArbreMenu, type ModeleEcran, type ThemeMenu } from "@/lib/editionsApi";
 import { PanneauProduction } from "./LanceurEcran";
-import { BoutonEcranNavigation } from "./EcranNavigation";
+import { BoutonAcces, BoutonEcranNavigation } from "./EcranNavigation";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useRetour } from "./retour";
 import "./editions.css";
@@ -150,6 +150,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
           {organiser && (
             <span className="ml-1 hidden items-center gap-0.5 group-hover:inline-flex" onClick={(e) => e.stopPropagation()}>
               <button type="button" title="Nouveau sous-dossier" className="rounded p-0.5 hover:bg-background" onClick={() => nouveauDossier(t)}><FolderPlus className="h-3.5 w-3.5" /></button>
+              <BoutonAcces type="DOSSIER" id={t.id} libelle={t.libelle} compact onChange={charger} />
               <BoutonEcranNavigation type="DOSSIER" id={t.id} libelle={t.libelle} compact />
               {!t.est_systeme && <>
                 <button type="button" title="Renommer" className="rounded p-0.5 hover:bg-background" onClick={() => renommer(t)}><Pencil className="h-3.5 w-3.5" /></button>
@@ -244,7 +245,8 @@ export default function MenuEditions({ module, titre, description }: { module: s
                       {selection.m.est_systeme && <span className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"><ShieldCheck className="h-2.5 w-2.5" />Système</span>}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{selection.m.code} · version {selection.m.numero_publie}
-                      <span className="ml-auto"><BoutonEcranNavigation type="MODELE" id={selection.m.code} libelle={selection.m.libelle} /></span></div>
+                      <span className="ml-auto flex items-center gap-1.5"><BoutonAcces type="MODELE" id={selection.m.code} libelle={selection.m.libelle} onChange={charger} />
+                        <BoutonEcranNavigation key={`${selection.m.code}`} type="MODELE" id={selection.m.code} libelle={selection.m.libelle} /></span></div>
                     {selection.m.description && <p className="mt-1 text-xs text-muted-foreground">{selection.m.description}</p>}
                   </div>
                 } />

@@ -647,3 +647,21 @@ class PublicationNavigation(BaseModel):
 def publier_navigation(corps: PublicationNavigation, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
     """RG-EDT-NAV-05 : dossiers (et états) du menu d'éditions → sous-menus de « Éditions de la paie »."""
     return _ecriture(db, th.publier_navigation, u, corps.module.upper(), corps.avec_etats)
+
+
+
+# ---------------------------------------------------------------- accès aux états par les rôles (RG-EDT-ACCES-01..03)
+class AccesEtat(BaseModel):
+    type: str                                  # MODELE | DOSSIER
+    id: str
+    roles: list[str] = []
+
+
+@router.get("/acces")
+def acces_etat(type: str, id: str, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    return _lecture(db, th.acces_menu, u, type.upper(), id)
+
+
+@router.put("/acces")
+def regler_acces_etat(corps: AccesEtat, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    return _ecriture(db, th.regler_acces_menu, u, corps.type.upper(), corps.id, corps.roles)

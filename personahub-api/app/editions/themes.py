@@ -227,6 +227,9 @@ def arbre(db: Session, u: sv.Utilisateur, module: str = "PAIE", tout: bool = Fal
                 garnis.add(p)
                 p = parents.get(p)
         sortie = [t for t in sortie if t["id"] in garnis]
+    if not tout:                                        # RG-EDT-ACCES-01/02 : rôles des écrans de la navigation
+        from app.editions import navigation as nav
+        sortie = nav.filtrer_acces(db, u.roles, u.admin, sortie)
     return {"module": module, "libelle": MODULES[module], "themes": sortie}
 
 
@@ -273,3 +276,35 @@ def suivre_navigation(db: Session, u: sv.Utilisateur, module: str) -> None:
             nav.synchroniser(db, arbre(db, u, module), avec_etats=bool(publies[1]))
     except Exception:                                      # la navigation se republie à la main au besoin
         pass
+
+
+def acces_menu(db: Session, u: sv.Utilisateur, type_: str, ident: str) -> dict:
+    """RG-EDT-ACCES : rôles qui voient un état ou un dossier du menu d'éditions."""
+    from app.editions import navigation as nav
+    sv.exiger(db, u, "VOIR")
+    if not nav.disponible(db):
+        raise sv.Invalide("Navigation configurable absente (tables nav_menu_item, nav_role_visibilite)")
+    try:
+        return {**nav.acces(db, type_, ident, u.societe_id, _theme_de(db, u, type_, ident)),
+                "peut_regler": sv.peut(db, u, "ADMINISTRER")}
+    except nav.ErreurNavigation as e:
+        raise sv.Invalide(str(e))
+
+
+def regler_acces_menu(db: Session, u: sv.Utilisateur, type_: str, ident: str, roles: list[str]) -> dict:
+    from app.editions import navigation as nav
+    sv.exiger(db, u, "ADMINISTRER")
+    try:
+        res = nav.regler_acces(db, type_, ident, u.societe_id, roles, _theme_de(db, u, type_, ident))
+    except nav.ErreurNavigation as e:
+        raise sv.Invalide(str(e))
+    sv.auditer(db, u, "ACCES_ETAT", type_, None, {"element": ident, "roles": sorted(set(roles))})
+    return {**res, "peut_regler": True}
+
+
+def _theme_de(db: Session, u: sv.Utilisateur, type_: str, ident: str) -> Optional[str]:
+    """Dossier dont hérite l'élément : le dossier parent (DOSSIER) ou le dossier effectif de l'état (MODELE)."""
+    if type_ == "DOSSIER":
+        return db.execute(text("SELECT CAST(parent_id AS text) FROM edt_theme WHERE CAST(id AS text) = :i"), {"i": ident}).scalar()
+    m = next((x for x in avec_theme(db, u, sv.lister_modeles(db, u)) if x["code"] == ident or x["id"] == ident), None)
+    return m.get("theme_effectif_id") if m else None

@@ -199,3 +199,115 @@ def synchroniser(db: Session, arbre: dict, avec_etats: bool = True) -> dict:
         db.execute(text("DELETE FROM nav_menu_item WHERE id = :i"), {"i": r["id"]})
         bilan["retires"] += 1
     return bilan
+
+
+# ---------------------------------------------------------------------------
+# RG-EDT-ACCES-01..03 : accès aux états par les rôles des écrans de la navigation
+# ---------------------------------------------------------------------------
+# RG-EDT-ACCES-01 (Adil DAIA) : quand un état ou un dossier a son écran dans la navigation, les rôles cochés
+#   sur cet écran (Configuration › Navigation, ou bouton « Accès » du menu d'éditions) décident qui VOIT et
+#   LANCE l'état dans le menu d'éditions, l'écran direct et l'API de lancement du menu.
+# RG-EDT-ACCES-02 (Adil DAIA) : l'écran de l'état prime ; sinon celui de son dossier, puis des dossiers parents ;
+#   sans aucun écran, l'accès reste celui des droits des éditions (aucun changement). Un écran désactivé ferme
+#   l'accès. L'administrateur voit tout.
+# RG-EDT-ACCES-03 (Adil DAIA) : régler l'accès d'un état ou d'un dossier sans écran crée l'écran (sous son dossier).
+LIBELLES_ROLES = {"collaborateur": "Collaborateur", "manager": "Manager", "gestionnaire_rh": "Gestionnaire RH",
+                  "gestionnaire_paie": "Gestionnaire paie", "administrateur": "Administrateur"}
+
+
+def _ecrans_generes(db: Session) -> dict[str, dict]:
+    """code d'écran edt_* → {actif, roles}"""
+    res: dict[str, dict] = {}
+    for r in db.execute(text("""SELECT i.code, i.actif, v.role_code FROM nav_menu_item i
+                                LEFT JOIN nav_role_visibilite v ON v.item_id = i.id
+                                WHERE i.code LIKE 'edt\\_d\\_%' OR i.code LIKE 'edt\\_m\\_%'""")).mappings():
+        e = res.setdefault(r["code"], {"actif": bool(r["actif"]), "roles": set()})
+        if r["role_code"]:
+            e["roles"].add(r["role_code"])
+    return res
+
+
+def filtrer_acces(db: Session, roles: frozenset, admin: bool, themes: list[dict]) -> list[dict]:
+    """RG-EDT-ACCES-01/02 : retire des thèmes (arbre du menu) les états que ces rôles ne peuvent pas voir."""
+    if admin or not disponible(db):
+        return themes
+    ecrans = _ecrans_generes(db)
+    if not ecrans:
+        return themes
+    par_id = {t["id"]: t for t in themes}
+
+    def regle(theme_id: Optional[str]) -> Optional[dict]:
+        while theme_id:
+            e = ecrans.get(_code_ecran("DOSSIER", str(theme_id)))
+            if e:
+                return e
+            theme_id = (par_id.get(theme_id) or {}).get("parent_id")
+        return None
+
+    def ouvert(e: Optional[dict]) -> bool:
+        return e is None or (e["actif"] and bool(e["roles"] & set(roles)))
+
+    sortie = []
+    for t in themes:
+        du_dossier = regle(t["id"])
+        modeles = [m for m in t["modeles"] if ouvert(ecrans.get(_code_ecran("MODELE", m["code"])) or du_dossier)]
+        sortie.append({**t, "modeles": modeles})
+    # dossiers devenus vides (et sans descendant garni) masqués
+    garnis = {t["id"] for t in sortie if t["modeles"]}
+    parents = {t["id"]: t.get("parent_id") for t in sortie}
+    for tid in list(garnis):
+        p = parents.get(tid)
+        while p:
+            garnis.add(p)
+            p = parents.get(p)
+    return [t for t in sortie if t["id"] in garnis]
+
+
+def roles_disponibles(db: Session) -> list[dict]:
+    codes = set(LIBELLES_ROLES)
+    if disponible(db):
+        codes |= {r[0] for r in db.execute(text("SELECT DISTINCT role_code FROM nav_role_visibilite")).all() if r[0]}
+    ordre = list(LIBELLES_ROLES)
+    return [{"code": c, "libelle": LIBELLES_ROLES.get(c, c.replace("_", " ").capitalize())}
+            for c in sorted(codes, key=lambda c: (ordre.index(c) if c in ordre else 99, c))]
+
+
+def acces(db: Session, type_: str, ident: str, societe_id: str, theme_parent: Optional[str] = None) -> dict:
+    """Rôles de l'écran de l'état ou du dossier ; à défaut, ceux dont il hérite (dossier, « Éditions de la paie »)."""
+    c = _cible(db, type_, ident, societe_id)
+    ecrans = _ecrans_generes(db) if disponible(db) else {}
+    propre = ecrans.get(c["code"])
+    herite_de, roles = None, None
+    if propre is None:
+        t = theme_parent
+        while t:
+            e = ecrans.get(_code_ecran("DOSSIER", str(t)))
+            if e:
+                herite_de, roles = "dossier", sorted(e["roles"])
+                break
+            t = db.execute(text("SELECT CAST(parent_id AS text) FROM edt_theme WHERE CAST(id AS text) = :t"), {"t": t}).scalar()
+    return {"code": c["code"], "existe": propre is not None, "actif": propre["actif"] if propre else None,
+            "roles": sorted(propre["roles"]) if propre else (roles or []), "herite_de": herite_de if propre is None else None,
+            "roles_disponibles": roles_disponibles(db)}
+
+
+def regler_acces(db: Session, type_: str, ident: str, societe_id: str, roles: list[str], parent_theme: Optional[str] = None) -> dict:
+    """RG-EDT-ACCES-03 : écrit les rôles de l'écran (créé au besoin, sous l'écran de son dossier s'il existe)."""
+    c = _cible(db, type_, ident, societe_id)
+    item = db.execute(text("SELECT id FROM nav_menu_item WHERE code = :c"), {"c": c["code"]}).scalar()
+    if not item:
+        generer(db, type_, ident, societe_id)
+        item = db.execute(text("SELECT id FROM nav_menu_item WHERE code = :c"), {"c": c["code"]}).scalar()
+        parent = None
+        t = parent_theme
+        while t and not parent:                    # sous l'écran du dossier (ou d'un dossier parent) s'il existe
+            parent = db.execute(text("SELECT id FROM nav_menu_item WHERE code = :c"), {"c": _code_ecran("DOSSIER", str(t))}).scalar()
+            if not parent:
+                t = db.execute(text("SELECT CAST(parent_id AS text) FROM edt_theme WHERE CAST(id AS text) = :t"), {"t": t}).scalar()
+        if parent and parent != item:
+            db.execute(text("UPDATE nav_menu_item SET parent_id = :p WHERE id = :i"), {"p": parent, "i": item})
+    db.execute(text("DELETE FROM nav_role_visibilite WHERE item_id = :i"), {"i": item})
+    for role in sorted(set(r for r in roles if r)):
+        db.execute(text("INSERT INTO nav_role_visibilite (id, item_id, role_code) VALUES (:id, :i, :r)"),
+                   {"id": str(uuid.uuid4()), "i": item, "r": role})
+    return acces(db, type_, ident, societe_id, parent_theme)

@@ -74,3 +74,33 @@ def test_menu_publie_en_sous_menus_et_suivi(s):
     # dossier supprimé → son écran retiré
     th.supprimer_theme(s, ADMIN, t["id"])
     assert not s.execute(text("SELECT 1 FROM nav_menu_item WHERE label = 'Mes états'")).first()
+
+
+def test_acces_aux_etats_par_les_roles_des_ecrans(s):
+    """RG-EDT-ACCES-01..03 : écran de l'état > écran du dossier > droits des éditions ; l'administrateur voit tout."""
+    def visibles(u):
+        return {m["code"] for t in th.arbre(s, u, "PAIE")["themes"] for m in t["modeles"]}
+    tous = visibles(PAIE)
+    assert "MASSE_SALARIALE" in tous and "JOURNAL_PAIE" in tous
+    synthese = next(t for t in th.arbre(s, ADMIN, "PAIE")["themes"] if t["libelle"] == "États de synthèse")
+    # dossier réservé à l'administrateur → ses états disparaissent pour la paie
+    th.regler_acces_menu(s, ADMIN, "DOSSIER", synthese["id"], ["administrateur"])
+    v = visibles(PAIE)
+    assert "MASSE_SALARIALE" not in v and "FICHE_SYNTHESE_ANNUELLE" not in v and "JOURNAL_PAIE" in v
+    assert "MASSE_SALARIALE" in visibles(ADMIN)
+    # l'écran de l'état prime sur celui du dossier
+    a = th.regler_acces_menu(s, ADMIN, "MODELE", "MASSE_SALARIALE", ["gestionnaire_paie"])
+    assert a["existe"] and a["roles"] == ["gestionnaire_paie"]
+    assert "MASSE_SALARIALE" in visibles(PAIE) and "FICHE_SYNTHESE_ANNUELLE" not in visibles(PAIE)
+    # rangé sous l'écran de son dossier
+    assert s.execute(text("""SELECT p.code FROM nav_menu_item i JOIN nav_menu_item p ON p.id = i.parent_id
+                             WHERE i.code = 'edt_m_masse_salariale'""")).scalar().startswith("edt_d_")
+    # héritage affiché
+    h = th.acces_menu(s, ADMIN, "MODELE", "FICHE_SYNTHESE_ANNUELLE")
+    assert not h["existe"] and h["herite_de"] == "dossier" and h["roles"] == ["administrateur"]
+    # lancement refusé hors accès
+    fiche = next(m for m in sv.lister_modeles(s, ADMIN) if m["code"] == "FICHE_SYNTHESE_ANNUELLE")
+    with pytest.raises(sv.Interdit):
+        th.lancer(s, PAIE, "PAIE", fiche["id"], {"periode": "2026-09"})
+    with pytest.raises(sv.Interdit):
+        th.regler_acces_menu(s, PAIE, "MODELE", "JOURNAL_PAIE", ["gestionnaire_paie"])

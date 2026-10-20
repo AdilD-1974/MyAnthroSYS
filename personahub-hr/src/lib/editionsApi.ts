@@ -161,6 +161,16 @@ export interface RubriqueInfo {
   assiettes?: string[];                                          // assiettes qu'elle alimente
 }
 
+export interface AccesEtat {
+  code: string;
+  existe: boolean;                 // l'élément a son propre écran de navigation
+  actif: boolean | null;
+  roles: string[];                 // rôles propres, ou hérités (herite_de)
+  herite_de: "dossier" | null;
+  roles_disponibles: { code: string; libelle: string }[];
+  peut_regler: boolean;
+}
+
 export interface SourceCatalogue {
   code: string;
   libelle: string;
@@ -465,6 +475,9 @@ export const editionsApi = {
   genererEcran: (type: "MODELE" | "DOSSIER", id: string, libelle?: string) =>
     appel<{ code: string; chemin: string; libelle: string; cree: boolean }>("POST", "/navigation", { type, id, libelle }),
   retirerEcran: (type: "MODELE" | "DOSSIER", id: string) => appel<{ ok: boolean }>("DELETE", `/navigation?type=${type}&id=${encodeURIComponent(id)}`),
+  // RG-EDT-ACCES-01..03 : rôles qui voient un état ou un dossier (rôles de son écran de navigation)
+  acces: (type: "MODELE" | "DOSSIER", id: string) => appel<AccesEtat>("GET", `/acces?type=${type}&id=${encodeURIComponent(id)}`),
+  reglerAcces: (type: "MODELE" | "DOSSIER", id: string, roles: string[]) => appel<AccesEtat>("PUT", "/acces", { type, id, roles }),
   publierNavigation: (module: string, avec_etats: boolean) =>
     appel<{ crees: number; mis_a_jour: number; retires: number }>("POST", "/navigation/publier", { module, avec_etats }),
   menuModule: (module: string, tout = false) => appel<ArbreMenu>("GET", `/menus/${module}${tout ? "?tout=true" : ""}`),
