@@ -35,7 +35,18 @@ THEMES_MODELES_SYSTEME = {
     "FICHE_SYNTHESE_ANNUELLE": "PAIE_SYNTHESE",
     "ECARTS_RUBRIQUES": "PAIE_CONTROLE", "CONTROLE_DEUX_PERIODES": "PAIE_CONTROLE", "COMPARATIF_RUBRIQUES": "PAIE_CONTROLE",
     "BULLETIN_RECAP_EXERCICE": "PAIE_BULLETINS",
+    # RG-EDT-RH : documents de sortie du salarié
+    "CERTIFICAT_TRAVAIL": "RH_DEPARTS", "RECU_SOLDE_TOUT_COMPTE": "RH_DEPARTS", "FICHE_SORTIE": "RH_DEPARTS",
 }
+# RG-EDT-THEME-05 (Adil DAIA) : dossiers livrés ajoutés après la migration 078 (créés au démarrage s'ils manquent)
+THEMES_SYSTEME_AJOUTES = [("RH_DEPARTS", "Départs et sortie", "RH", None, 30)]
+
+
+def assurer_themes_systeme(db: Session) -> None:
+    for code, libelle, module, categorie, ordre in THEMES_SYSTEME_AJOUTES:
+        if not db.execute(text("SELECT 1 FROM edt_theme WHERE code = :c AND societe_id IS NULL"), {"c": code}).first():
+            db.execute(text("""INSERT INTO edt_theme (code, libelle, module, categorie_defaut, ordre)
+                               VALUES (:c, :l, :m, :cat, :o)"""), {"c": code, "l": libelle, "m": module, "cat": categorie, "o": ordre})
 # catégories sans thème dédié → thème « standard » du module
 REPLI_CATEGORIE = {"AUTRE": "LISTE"}
 

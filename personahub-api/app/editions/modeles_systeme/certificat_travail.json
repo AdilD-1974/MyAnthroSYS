@@ -1,0 +1,395 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Mois de sortie",
+   "type": "MOIS"
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  },
+  {
+   "code": "date_document",
+   "libelle": "Date du document",
+   "type": "DATE",
+   "obligatoire": false,
+   "defaut": "DATEJOUR()"
+  },
+  {
+   "code": "libre",
+   "libelle": "Mention « libre de tout engagement »",
+   "type": "BOOLEEN",
+   "obligatoire": false,
+   "defaut": "VRAI"
+  }
+ ],
+ "jeux": [
+  {
+   "code": "d",
+   "source": "DEPART",
+   "role": "PRINCIPAL",
+   "tri": [
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 2,
+  "duplicata": true
+ },
+ "page": {
+  "marges": [
+   15.0,
+   15.0,
+   12.0,
+   15.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 24.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 70.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Ressources humaines\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 70.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Sortie le \" + FORMAT(depart.date_depart, \"DATE_FR\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "titre",
+   "type": "CORPS",
+   "hauteur": 26.0,
+   "elements": [
+    {
+     "id": "titre",
+     "x": 0.0,
+     "y": 4.0,
+     "l": 180.0,
+     "h": 10.0,
+     "style": {
+      "taille": 16.0,
+      "gras": true,
+      "casse": "PETITES_MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Certificat de travail\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "titre_filet",
+     "x": 65.0,
+     "y": 15.0,
+     "l": 50.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.0
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "reference",
+     "x": 0.0,
+     "y": 18.0,
+     "l": 180.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Réf. : CT-\" + identite.matricule + \"-\" + FORMAT(depart.date_depart, \"AAAAMMJJ\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "texte",
+   "type": "CORPS",
+   "hauteur": 44.0,
+   "extensible": true,
+   "elements": [
+    {
+     "id": "paragraphe",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 180.0,
+     "h": 40.0,
+     "style": {
+      "taille": 10.5
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Nous soussignés, {societe.raison_sociale}{SI(ESTVIDE(societe.forme_juridique), \"\", \", \" + societe.forme_juridique)}, dont le siège est situé {SIVIDE(societe.adresse, \"\")}{SI(ESTVIDE(societe.ville), \"\", \" à \" + societe.ville)}, immatriculée à la CNSS sous le n° {SIVIDE(societe.numero_cnss, \"—\")}, certifions que :\n\n{SIVIDE(identite.civilite, \"\") + \" \" + MAJUSCULE(identite.nom) + \" \" + identite.prenom}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, immatriculé(e) à la CNSS sous le n° {SIVIDE(identite.num_cnss, \"—\")}, a été employé(e) dans notre société du {SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} au {FORMAT(depart.date_depart, \"DATE_LONGUE\")}, en qualité de {SIVIDE(affectation.emploi_libelle, SIVIDE(qualification.fonction_libelle, \"salarié(e)\"))}{SI(ESTVIDE(qualification.categorie_professionnelle_libelle), \"\", \" (catégorie \" + qualification.categorie_professionnelle_libelle + \")\")}.\n\n{SI(@libre, \"L'intéressé(e) nous quitte libre de tout engagement.\", \"\")}\n\nEn foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit."
+    }
+   ]
+  },
+  {
+   "id": "cloture",
+   "type": "CORPS",
+   "hauteur": 66.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "fait_a",
+     "x": 95.0,
+     "y": 4.0,
+     "l": 85.0,
+     "h": 6.0,
+     "style": {
+      "taille": 10.0
+     },
+     "type": "CHAMP",
+     "valeur": "\"Fait à \" + SIVIDE(societe.ville, \"………\") + \", le \" + FORMAT(SIVIDE(@date_document, DATEJOUR()), \"DATE_LONGUE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "pour_societe",
+     "x": 95.0,
+     "y": 11.0,
+     "l": 85.0,
+     "h": 5.0,
+     "style": {
+      "taille": 10.0,
+      "gras": true
+     },
+     "type": "TEXTE",
+     "valeur": "\"Pour la société,\""
+    },
+    {
+     "id": "signataire",
+     "x": 95.0,
+     "y": 16.0,
+     "l": 85.0,
+     "h": 5.0,
+     "style": {
+      "taille": 10.0
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(societe.nom_gerant, \"La Direction\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "zone_signature",
+     "x": 95.0,
+     "y": 22.0,
+     "l": 70.0,
+     "h": 26.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 2.0
+    },
+    {
+     "id": "zone_signature_t",
+     "x": 97.0,
+     "y": 42.0,
+     "l": 66.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.0,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Signature et cachet\""
+    },
+    {
+     "id": "note",
+     "x": 0.0,
+     "y": 50.0,
+     "l": 90.0,
+     "h": 10.0,
+     "style": {
+      "taille": 7.0,
+      "italique": true,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE_RICHE",
+     "contenu": "Certificat de travail délivré à la cessation du contrat, conformément au Code du travail ; exonéré des droits de timbre et d'enregistrement."
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 12.0,
+   "elements": [
+    {
+     "id": "ml_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 0.6
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "ml_legal",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 180.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale + SI(ESTVIDE(societe.forme_juridique), \"\", \" — \" + societe.forme_juridique) + SI(ESTVIDE(societe.registre_commerce), \"\", \" — RC \" + societe.registre_commerce) + SI(ESTVIDE(societe.identifiant_fiscal), \"\", \" — IF \" + societe.identifiant_fiscal) + SI(ESTVIDE(societe.patente), \"\", \" — Patente \" + societe.patente) + SI(ESTVIDE(societe.ice), \"\", \" — ICE \" + societe.ice)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ml_contact",
+     "x": 0.0,
+     "y": 6.0,
+     "l": 180.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(societe.adresse, \"\") + SI(ESTVIDE(societe.telephone), \"\", \" — Tél. \" + societe.telephone) + SI(ESTVIDE(societe.email), \"\", \" — \" + societe.email)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Certificat_travail_\" + identite.matricule",
+  "eclatement": "collaborateur_id"
+ }
+}

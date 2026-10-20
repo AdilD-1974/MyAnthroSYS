@@ -449,10 +449,9 @@ def actualiser_registre(db: Session) -> None:
 def relation(db: Session, source: str, code: Optional[str]) -> Optional[dict]:
     if not code:
         return None
-    if not present(db):
-        return None
-    r = db.execute(text("""SELECT source_code, code, cible_code, cle_source, cle_cible, cardinalite, perso
-                           FROM edt_source_relation WHERE source_code = :s AND code = :c"""),
+    perso = "perso" if present(db) else "false AS perso"          # migration 081 absente : relations du code
+    r = db.execute(text(f"""SELECT source_code, code, cible_code, cle_source, cle_cible, cardinalite, {perso}
+                            FROM edt_source_relation WHERE source_code = :s AND code = :c"""),
                    {"s": source, "c": code}).mappings().first()
     return dict(r) if r else None
 

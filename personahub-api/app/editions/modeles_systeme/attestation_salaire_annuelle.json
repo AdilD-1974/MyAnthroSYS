@@ -1,0 +1,743 @@
+{
+ "parametres": [
+  {
+   "code": "annee",
+   "libelle": "Année",
+   "type": "ANNEE"
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  },
+  {
+   "code": "date_document",
+   "libelle": "Date du document",
+   "type": "DATE",
+   "obligatoire": false,
+   "defaut": "DATEJOUR()"
+  },
+  {
+   "code": "objet",
+   "libelle": "Objet",
+   "type": "LISTE",
+   "obligatoire": false,
+   "defaut": "\"pour servir et valoir ce que de droit\"",
+   "valeurs": [
+    "pour servir et valoir ce que de droit",
+    "pour la constitution d'un dossier de crédit bancaire",
+    "pour la constitution d'un dossier de visa",
+    "pour la constitution d'un dossier administratif",
+    "pour la constitution d'un dossier de location"
+   ]
+  },
+  {
+   "code": "objet_libre",
+   "libelle": "Autre objet (remplace la liste)",
+   "type": "TEXTE",
+   "obligatoire": false
+  }
+ ],
+ "jeux": [
+  {
+   "code": "b",
+   "source": "BULLETIN",
+   "role": "PRINCIPAL",
+   "tri": [
+    {
+     "champ": "collaborateur_id"
+    },
+    {
+     "champ": "periode.date_fin"
+    },
+    {
+     "champ": "plan.code"
+    }
+   ],
+   "groupes": [
+    "collaborateur_id"
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 3,
+  "duplicata": true
+ },
+ "page": {
+  "marges": [
+   15.0,
+   15.0,
+   12.0,
+   15.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 24.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 70.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Ressources humaines\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 70.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Année \" + @annee",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "tete",
+   "type": "EN_TETE_GROUPE",
+   "niveau_groupe": 1,
+   "hauteur": 67.0,
+   "elements": [
+    {
+     "id": "titre",
+     "x": 0.0,
+     "y": 4.0,
+     "l": 180.0,
+     "h": 10.0,
+     "style": {
+      "taille": 16.0,
+      "gras": true,
+      "casse": "PETITES_MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Attestation de salaire — année \" + @annee",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "titre_filet",
+     "x": 65.0,
+     "y": 15.0,
+     "l": 50.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.0
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "reference",
+     "x": 0.0,
+     "y": 18.0,
+     "l": 180.0,
+     "h": 5.0,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Réf. : AS-\" + @annee + \"-\" + identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "paragraphe",
+     "x": 0.0,
+     "y": 26.0,
+     "l": 180.0,
+     "h": 30.0,
+     "style": {
+      "taille": 10.0
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Nous soussignés, {societe.raison_sociale}, immatriculée à la CNSS sous le n° {SIVIDE(societe.numero_cnss, \"—\")}, attestons que {SIVIDE(identite.civilite, \"\") + \" \" + MAJUSCULE(identite.nom) + \" \" + identite.prenom}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, matricule {identite.matricule}, employé(e) dans notre société depuis le {SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} en qualité de {SIVIDE(affectation.emploi_libelle, SIVIDE(qualification.fonction_libelle, \"salarié(e)\"))}, a perçu au titre de l'année {@annee} les rémunérations suivantes (en dirhams) :"
+    },
+    {
+     "id": "c_fond",
+     "x": 0.0,
+     "y": 58.0,
+     "l": 180.0,
+     "h": 8.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "c_mois",
+     "x": 0.8,
+     "y": 58.0,
+     "l": 42.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "GAUCHE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Période\""
+    },
+    {
+     "id": "c_brut",
+     "x": 44.8,
+     "y": 58.0,
+     "l": 26.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salaire brut\""
+    },
+    {
+     "id": "c_imp",
+     "x": 72.8,
+     "y": 58.0,
+     "l": 26.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Brut imposable\""
+    },
+    {
+     "id": "c_cot",
+     "x": 100.8,
+     "y": 58.0,
+     "l": 24.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Cotisations\""
+    },
+    {
+     "id": "c_net_imp",
+     "x": 126.8,
+     "y": 58.0,
+     "l": 25.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net imposable\""
+    },
+    {
+     "id": "c_net",
+     "x": 153.8,
+     "y": 58.0,
+     "l": 25.4,
+     "h": 8.0,
+     "style": {
+      "taille": 7.0,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Net payé\""
+    }
+   ]
+  },
+  {
+   "id": "detail",
+   "type": "CORPS",
+   "hauteur": 5.0,
+   "elements": [
+    {
+     "id": "v_mois",
+     "x": 0.8,
+     "y": 0.0,
+     "l": 42.4,
+     "h": 5.0,
+     "style": {
+      "taille": 8.5,
+      "alignement": "GAUCHE"
+     },
+     "type": "CHAMP",
+     "valeur": "periode.intitule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "v_brut",
+     "x": 44.8,
+     "y": 0.0,
+     "l": 26.4,
+     "h": 5.0,
+     "style": {
+      "taille": 8.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_imp",
+     "x": 72.8,
+     "y": 0.0,
+     "l": 26.4,
+     "h": 5.0,
+     "style": {
+      "taille": 8.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_brut_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_cot",
+     "x": 100.8,
+     "y": 0.0,
+     "l": 24.4,
+     "h": 5.0,
+     "style": {
+      "taille": 8.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "total_cot_salariale",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_net_imp",
+     "x": 126.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 5.0,
+     "style": {
+      "taille": 8.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_imposable",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_net",
+     "x": 153.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 5.0,
+     "style": {
+      "taille": 8.5,
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "net_a_payer",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "v_sep",
+     "x": 0.0,
+     "y": 4.8,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "style_trait": "POINTILLES",
+      "epaisseur_bordure": 0.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "total",
+   "type": "PIED_ETAT",
+   "hauteur": 72.0,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "t_fond",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 180.0,
+     "h": 7.0,
+     "style": {
+      "fond": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"\""
+    },
+    {
+     "id": "t_lib",
+     "x": 1.0,
+     "y": 0.0,
+     "l": 44.0,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Total de l'année\"",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "t_brut",
+     "x": 44.8,
+     "y": 0.0,
+     "l": 26.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_imp",
+     "x": 72.8,
+     "y": 0.0,
+     "l": 26.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_brut_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_cot",
+     "x": 100.8,
+     "y": 0.0,
+     "l": 24.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(total_cot_salariale, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_net_imp",
+     "x": 126.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_imposable, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "t_net",
+     "x": 153.8,
+     "y": 0.0,
+     "l": 25.4,
+     "h": 7.0,
+     "style": {
+      "taille": 7.5,
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "TOTAL(net_a_payer, ETAT)",
+     "affichage": {
+      "masque": "MONTANT"
+     }
+    },
+    {
+     "id": "usage",
+     "x": 0.0,
+     "y": 11.0,
+     "l": 180.0,
+     "h": 12.0,
+     "style": {
+      "taille": 10.0
+     },
+     "extensible": true,
+     "type": "TEXTE_RICHE",
+     "contenu": "Soit un salaire net annuel de {FORMAT(TOTAL(net_a_payer, ETAT), \"MONTANT\")} dirhams. La présente attestation est délivrée à l'intéressé(e), sur sa demande, {SI(ESTVIDE(@objet_libre), SIVIDE(@objet, \"pour servir et valoir ce que de droit\"), @objet_libre)}."
+    },
+    {
+     "id": "fait_a",
+     "x": 95.0,
+     "y": 26.0,
+     "l": 85.0,
+     "h": 6.0,
+     "style": {
+      "taille": 10.0
+     },
+     "type": "CHAMP",
+     "valeur": "\"Fait à \" + SIVIDE(societe.ville, \"………\") + \", le \" + FORMAT(SIVIDE(@date_document, DATEJOUR()), \"DATE_LONGUE\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "pour_societe",
+     "x": 95.0,
+     "y": 33.0,
+     "l": 85.0,
+     "h": 5.0,
+     "style": {
+      "taille": 10.0,
+      "gras": true
+     },
+     "type": "TEXTE",
+     "valeur": "\"Pour la société,\""
+    },
+    {
+     "id": "signataire",
+     "x": 95.0,
+     "y": 38.0,
+     "l": 85.0,
+     "h": 5.0,
+     "style": {
+      "taille": 10.0
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(societe.nom_gerant, \"La Direction\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "zone_signature",
+     "x": 95.0,
+     "y": 44.0,
+     "l": 70.0,
+     "h": 26.0,
+     "style": {
+      "couleur_bordure": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "CADRE",
+     "arrondi": 2.0
+    },
+    {
+     "id": "zone_signature_t",
+     "x": 97.0,
+     "y": 64.0,
+     "l": 66.0,
+     "h": 5.0,
+     "style": {
+      "taille": 7.0,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Signature et cachet\""
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 12.0,
+   "elements": [
+    {
+     "id": "ml_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 0.6
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "ml_legal",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 180.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale + SI(ESTVIDE(societe.forme_juridique), \"\", \" — \" + societe.forme_juridique) + SI(ESTVIDE(societe.registre_commerce), \"\", \" — RC \" + societe.registre_commerce) + SI(ESTVIDE(societe.identifiant_fiscal), \"\", \" — IF \" + societe.identifiant_fiscal) + SI(ESTVIDE(societe.patente), \"\", \" — Patente \" + societe.patente) + SI(ESTVIDE(societe.ice), \"\", \" — ICE \" + societe.ice)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ml_contact",
+     "x": 0.0,
+     "y": 6.0,
+     "l": 180.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(societe.adresse, \"\") + SI(ESTVIDE(societe.telephone), \"\", \" — Tél. \" + societe.telephone) + SI(ESTVIDE(societe.email), \"\", \" — \" + societe.email)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Attestation_salaire_\" + @annee + \"_\" + identite.matricule",
+  "eclatement": "collaborateur_id"
+ }
+}

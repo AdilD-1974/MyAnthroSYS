@@ -89,6 +89,12 @@ MODELES_SYSTEME = {
     "controle_deux_periodes.json": ("CONTROLE_DEUX_PERIODES", "Contrôle entre deux périodes de paie (rapprochement)", "AUTRE"),
     "comparatif_rubriques.json": ("COMPARATIF_RUBRIQUES", "Comparatif des rubriques entre deux périodes", "AUTRE"),
     "bulletin_recapitulatif.json": ("BULLETIN_RECAP_EXERCICE", "Bulletin récapitulatif de l'exercice (12 mois)", "AUTRE"),
+    # documents RH administratifs (RG-EDT-RH-01..05)
+    "certificat_travail.json": ("CERTIFICAT_TRAVAIL", "Certificat de travail (sortie)", "ATTESTATION"),
+    "recu_solde_tout_compte.json": ("RECU_SOLDE_TOUT_COMPTE", "Reçu pour solde de tout compte", "ATTESTATION"),
+    "attestation_salaire_annuelle.json": ("ATTESTATION_SALAIRE_ANNUELLE", "Attestation de salaire annuelle", "ATTESTATION"),
+    "domiciliation_salaire.json": ("DOMICILIATION_SALAIRE", "Attestation de domiciliation de salaire (banque)", "COURRIER"),
+    "fiche_sortie.json": ("FICHE_SORTIE", "Fiche de sortie du collaborateur", "AUTRE"),
 }
 CATEGORIES = ("BULLETIN", "JOURNAL", "ATTESTATION", "COURRIER", "LISTE", "DECLARATION", "AUTRE")
 TYPES_DEPENDANCE = {"SOURCE", "CHAMP", "RUBRIQUE", "CONSTANTE", "MASQUE", "ASSET", "SOUS_MODELE", "TABLE"}
@@ -603,6 +609,12 @@ def installer_modeles_systeme(db: Session, dossier: Path = DOSSIER_SYSTEME) -> l
 def initialiser(db: Session) -> dict:
     """Démarrage de l'API : catalogue des sources puis modèles système."""
     bilan = cat.synchroniser(db)
+    try:
+        from app.editions import themes as _th
+        with db.begin_nested():
+            _th.assurer_themes_systeme(db)                 # RG-EDT-THEME-05
+    except Exception:
+        log.exception("Dossiers livrés des éditions")
     bilan["modeles_systeme"] = installer_modeles_systeme(db)
     # RG-EDT-NAV-06 : modèles livrés nouveaux ou renommés → écrans de la navigation (si le menu y est publié)
     try:

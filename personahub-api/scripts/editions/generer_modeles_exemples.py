@@ -1944,6 +1944,258 @@ def bulletin_recapitulatif() -> dict:
     return transposer_recapitulatif(d)
 
 
+# =============================================================================
+# DOCUMENTS RH ADMINISTRATIFS — sortie du salarié, salaire annuel, domiciliation (RG-EDT-RH-01..05)
+# =============================================================================
+PARAM_MOIS_SORTIE = {"code": "periode", "libelle": "Mois de sortie", "type": "MOIS"}
+PARAM_DATE_DOC = {"code": "date_document", "libelle": "Date du document", "type": "DATE", "obligatoire": False, "defaut": "DATEJOUR()"}
+DATE_DOC = "SIVIDE(@date_document, DATEJOUR())"
+SALARIE = 'SIVIDE(identite.civilite, "") + " " + MAJUSCULE(identite.nom) + " " + identite.prenom'
+EMPLOI = 'SIVIDE(affectation.emploi_libelle, SIVIDE(qualification.fonction_libelle, "salarié(e)"))'
+
+
+def _titre_doc(titre_expr, reference, L=180.0):
+    return [champ("titre", 0, 4, L, 10, titre_expr, taille=16, gras=True, couleur=BLEU, alignement="CENTRE", casse="PETITES_MAJUSCULES"),
+            ligne("titre_filet", 65, 15, 50, couleur=BLEU, epaisseur=1),
+            champ("reference", 0, 18, L, 5, reference, taille=8, couleur=GRIS, alignement="CENTRE")]
+
+
+def _signature(y, droite="Pour la société,", gauche=None, L=180.0):
+    el = [champ("fait_a", 95, y, 85, 6, '"Fait à " + SIVIDE(societe.ville, "………") + ", le " + FORMAT(' + DATE_DOC + ', "DATE_LONGUE")',
+                taille=10),
+          texte("pour_societe", 95, y + 7, 85, 5, droite, taille=10, gras=True),
+          champ("signataire", 95, y + 12, 85, 5, 'SIVIDE(societe.nom_gerant, "La Direction")', taille=10),
+          cadre("zone_signature", 95, y + 18, 70, 26, couleur=GRIS_CLAIR, arrondi=2),
+          texte("zone_signature_t", 97, y + 38, 66, 5, "Signature et cachet", taille=7, italique=True, couleur=GRIS, alignement="CENTRE")]
+    if gauche:
+        el += [texte("salarie_t", 0, y + 7, 85, 5, gauche[0], taille=10, gras=True),
+               riche("salarie_mention", 0, y + 12, 85, 6, gauche[1], taille=7.5, italique=True, couleur=GRIS),
+               cadre("salarie_signature", 0, y + 18, 70, 26, couleur=GRIS_CLAIR, arrondi=2)]
+    return el
+
+
+def certificat_travail() -> dict:
+    """RG-EDT-RH-01 : certificat de travail remis à la sortie : dates d'entrée et de sortie, emploi(s) occupé(s)
+    — et rien d'autre (ni motif de départ, ni appréciation). Mention « libre de tout engagement » au choix."""
+    L = 180.0
+    texte_ = riche("paragraphe", 0, 2, L, 40,
+        "Nous soussignés, {societe.raison_sociale}{SI(ESTVIDE(societe.forme_juridique), \"\", \", \" + societe.forme_juridique)}, "
+        "dont le siège est situé {SIVIDE(societe.adresse, \"\")}{SI(ESTVIDE(societe.ville), \"\", \" à \" + societe.ville)}, "
+        "immatriculée à la CNSS sous le n° {SIVIDE(societe.numero_cnss, \"—\")}, certifions que :\n\n"
+        "{" + SALARIE + "}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, immatriculé(e) à la CNSS sous le n° "
+        "{SIVIDE(identite.num_cnss, \"—\")}, a été employé(e) dans notre société du "
+        "{SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} au "
+        "{FORMAT(depart.date_depart, \"DATE_LONGUE\")}, en qualité de {" + EMPLOI + "}"
+        "{SI(ESTVIDE(qualification.categorie_professionnelle_libelle), \"\", \" (catégorie \" + qualification.categorie_professionnelle_libelle + \")\")}.\n\n"
+        "{SI(@libre, \"L'intéressé(e) nous quitte libre de tout engagement.\", \"\")}\n\n"
+        "En foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit.", taille=10.5)
+    note = {**riche("note", 0, 50, 90, 10, "Certificat de travail délivré à la cessation du contrat, conformément au Code du travail ; "
+                    "exonéré des droits de timbre et d'enregistrement.", taille=7, italique=True, couleur=GRIS), "extensible": False}
+    return definition(
+        [PARAM_MOIS_SORTIE, PARAM_COLLABS, PARAM_DATE_DOC,
+         {"code": "libre", "libelle": "Mention « libre de tout engagement »", "type": "BOOLEEN", "obligatoire": False, "defaut": "VRAI"}],
+        [{"code": "d", "source": "DEPART", "role": "PRINCIPAL", "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Ressources humaines", '"Sortie le " + FORMAT(depart.date_depart, "DATE_FR")')),
+         bande("titre", "CORPS", 26, _titre_doc('"Certificat de travail"', '"Réf. : CT-" + identite.matricule + "-" + FORMAT(depart.date_depart, "AAAAMMJJ")')),
+         bande("texte", "CORPS", 44, [texte_], extensible=True),
+         bande("cloture", "CORPS", 66, _signature(4) + [note], insecable=True),
+         bande("pied", "PIED_PAGE", 12, mentions_legales(L))],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [15, 15, 12, 15]},
+        {"formats": ["PDF"], "nom_fichier": '"Certificat_travail_" + identite.matricule', "eclatement": "collaborateur_id"},
+        usages={"confidentialite": 2, "duplicata": True})
+
+
+def recu_solde_tout_compte() -> dict:
+    """RG-EDT-RH-02 : reçu pour solde de tout compte : somme nette du bulletin de sortie en chiffres et en lettres,
+    détail des éléments payés et retenus (lignes du bulletin de sortie), mode de paiement, double exemplaire,
+    délai de dénonciation de soixante jours, signature du salarié précédée de « Lu et approuvé »."""
+    L = 180.0
+    texte_ = riche("paragraphe", 0, 2, L, 34,
+        "Je soussigné(e), {" + SALARIE + "}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, matricule {identite.matricule}, "
+        "ayant été employé(e) par {societe.raison_sociale} du "
+        "{SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} au "
+        "{FORMAT(depart.date_depart, \"DATE_LONGUE\")} en qualité de {" + EMPLOI + "}, reconnais avoir reçu de mon employeur, "
+        "pour solde de tout compte, la somme nette de {FORMAT(net_a_payer, \"MONTANT\")} dirhams "
+        "({MONTANT_EN_LETTRES(net_a_payer)}), en paiement des salaires, accessoires de salaire, indemnités et de toutes "
+        "les sommes qui m'étaient dues au titre de l'exécution et de la cessation de mon contrat de travail, "
+        "selon le détail ci-dessous{SI(ESTVIDE(bulletin_periode), \"\", \" (bulletin de sortie : \" + bulletin_periode + \")\")} :",
+        taille=10)
+    cols = [col("c_lib", "Désignation", 100, "libelle"),
+            col("c_base", "Base / nombre", 26, "SIVIDE(base, nombre)", "MONTANT_SANS_ZERO", alignement="DROITE"),
+            col("c_gain", "À payer", 27, 'SI(sens = "GAIN", montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE"),
+            col("c_ret", "Retenu", 27, 'SI(sens = "RETENUE", montant)', "MONTANT_SANS_ZERO", True, alignement="DROITE")]
+    detail = [{"id": "detail", "type": "TABLEAU", "x": 0, "y": 1, "l": L, "h": 12, "jeu": "l", "colonnes": cols,
+               "quadrillage": "COLONNES", "hauteur_ligne": 5, "ligne_total": True, "style_entete": STYLE_ENTETE_TAB,
+               "style": {"taille": 8.5}}]
+    net = [fond("net_fond", 0, 1, L, 7, BLEU_CLAIR),
+           champ("net_lib", 2, 1, 120, 7, '"Net payé pour solde de tout compte"', taille=10, gras=True, couleur=BLEU),
+           champ("net_val", 120, 1, 58, 7, "net_a_payer", masque="MONTANT", taille=11, gras=True, couleur=BLEU, alignement="DROITE"),
+           champ("mode", 0, 10, L, 5, '"Mode de paiement : " + SIVIDE(paiement.mode_libelle, "—") + SI(ESTVIDE(paiement.numero_compte), "", '
+                 '" — compte n° " + paiement.numero_compte) + SI(ESTVIDE(paiement.banque_libelle), "", " (" + paiement.banque_libelle + ")")', taille=9)]
+    mentions = [riche("mentions", 0, 2, L, 16,
+        "Le présent reçu est établi en double exemplaire, dont l'un m'a été remis. Il peut être dénoncé dans un délai de "
+        "soixante (60) jours suivant la date de sa signature ; passé ce délai, il devient libératoire pour l'employeur "
+        "quant aux sommes qui y sont mentionnées.", taille=9, italique=True)]
+    sig = _signature(2, "L'employeur,", ("Le salarié,", "Date, mention manuscrite « Lu et approuvé, bon pour solde de tout compte » et signature"))
+    return definition(
+        [PARAM_MOIS_SORTIE, PARAM_COLLABS, PARAM_DATE_DOC],
+        [{"code": "d", "source": "DEPART", "role": "PRINCIPAL", "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]},
+         {"code": "l", "source": "BULLETIN_LIGNE", "role": "SECONDAIRE", "parent": "d", "relation": "lignes",
+          "filtres": ['sens = "GAIN" OU sens = "RETENUE"', "COALESCE(montant, 0) <> 0"], "tri": [{"champ": "ordre_affichage"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Ressources humaines", '"Sortie le " + FORMAT(depart.date_depart, "DATE_FR")')),
+         bande("titre", "CORPS", 26, _titre_doc('"Reçu pour solde de tout compte"', '"Réf. : STC-" + identite.matricule + "-" + FORMAT(depart.date_depart, "AAAAMMJJ")')),
+         bande("texte", "CORPS", 36, [texte_], extensible=True),
+         bande("detail", "CORPS", 14, detail, extensible=True),
+         bande("net", "CORPS", 17, net, insecable=True),
+         bande("mentions", "CORPS", 18, mentions, extensible=True),
+         bande("cloture", "CORPS", 66, sig, insecable=True),
+         bande("pied", "PIED_PAGE", 12, mentions_legales(L))],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [15, 15, 12, 15]},
+        {"formats": ["PDF"], "nom_fichier": '"Solde_tout_compte_" + identite.matricule', "eclatement": "collaborateur_id"},
+        usages={"confidentialite": 4, "nb_exemplaires": 2})
+
+
+def attestation_salaire_annuelle() -> dict:
+    """RG-EDT-RH-03 : attestation de salaire de l'année (banques, administrations) : un document par salarié,
+    une ligne par bulletin de l'année, totaux, objet et date au choix."""
+    L = 180.0
+    cols = [("mois", "Période", 44, "periode.intitule", None, "GAUCHE"),
+            ("brut", "Salaire brut", 28, "total_brut", "MONTANT", "DROITE"),
+            ("imp", "Brut imposable", 28, "total_brut_imposable", "MONTANT", "DROITE"),
+            ("cot", "Cotisations", 26, "total_cot_salariale", "MONTANT", "DROITE"),
+            ("net_imp", "Net imposable", 27, "net_imposable", "MONTANT", "DROITE"),
+            ("net", "Net payé", 27, "net_a_payer", "MONTANT", "DROITE")]
+    intro = riche("paragraphe", 0, 2, L, 30,
+        "Nous soussignés, {societe.raison_sociale}, immatriculée à la CNSS sous le n° {SIVIDE(societe.numero_cnss, \"—\")}, attestons que "
+        "{" + SALARIE + "}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, matricule {identite.matricule}, employé(e) dans notre "
+        "société depuis le {SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} en qualité de "
+        "{" + EMPLOI + "}, a perçu au titre de l'année {@annee} les rémunérations suivantes (en dirhams) :", taille=10)
+    tete = _titre_doc('"Attestation de salaire — année " + @annee', '"Réf. : AS-" + @annee + "-" + identite.matricule')
+    tete += [{**intro, "y": 26}] + entete_colonnes("c", cols, 58, L)
+    total = totaux_colonnes("t", cols, "ETAT", 0, 7, BLANC, BLEU, '"Total de l\'année"', l_lib=44)
+    total += [riche("usage", 0, 11, L, 12,
+        "Soit un salaire net annuel de {FORMAT(TOTAL(net_a_payer, ETAT), \"MONTANT\")} dirhams. La présente attestation est délivrée "
+        "à l'intéressé(e), sur sa demande, {SI(ESTVIDE(@objet_libre), SIVIDE(@objet, \"pour servir et valoir ce que de droit\"), @objet_libre)}.",
+        taille=10)] + _signature(26)
+    return definition(
+        [{"code": "annee", "libelle": "Année", "type": "ANNEE"}, PARAM_COLLABS, PARAM_DATE_DOC,
+         {"code": "objet", "libelle": "Objet", "type": "LISTE", "obligatoire": False, "valeurs": OBJETS_ATTESTATION,
+          "defaut": '"' + OBJETS_ATTESTATION[0] + '"'},
+         {"code": "objet_libre", "libelle": "Autre objet (remplace la liste)", "type": "TEXTE", "obligatoire": False}],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "groupes": ["collaborateur_id"],
+          "tri": [{"champ": "collaborateur_id"}, {"champ": "periode.date_fin"}, {"champ": "plan.code"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Ressources humaines", '"Année " + @annee')),
+         {**bande("tete", "EN_TETE_GROUPE", 67, tete), "niveau_groupe": 1},
+         bande("detail", "CORPS", 5, ligne_valeurs("v", cols, taille=8.5)),
+         bande("total", "PIED_ETAT", 72, total, insecable=True),
+         bande("pied", "PIED_PAGE", 12, mentions_legales(L))],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [15, 15, 12, 15]},
+        {"formats": ["PDF"], "nom_fichier": '"Attestation_salaire_" + @annee + "_" + identite.matricule', "eclatement": "collaborateur_id"},
+        usages={"confidentialite": 3, "duplicata": True})
+
+
+def domiciliation_salaire() -> dict:
+    """RG-EDT-RH-04 : attestation de domiciliation (virement irrévocable) du salaire, adressée à la banque du salarié :
+    emploi, ancienneté, salaire net du mois choisi, compte, engagement de virer le solde de tout compte."""
+    L = 180.0
+    dest = [champ("dest_banque", 100, 0, 80, 6, 'SIVIDE(paiement.banque_libelle, "Banque ……………")', taille=10.5, gras=True),
+            champ("dest_agence", 100, 6, 80, 5, 'SI(ESTVIDE(paiement.nom_agence), "Agence ……………", "Agence " + paiement.nom_agence)', taille=10),
+            champ("objet", 0, 18, L, 6, '"Objet : domiciliation irrévocable de salaire — " + ' + SALARIE, taille=10, gras=True, couleur=BLEU)]
+    corps_ = riche("lettre", 0, 2, L, 70,
+        "Madame, Monsieur,\n\n"
+        "Nous soussignés, {societe.raison_sociale}, attestons que {" + SALARIE + "}, titulaire de la CIN n° {SIVIDE(identite.cin, \"—\")}, "
+        "matricule {identite.matricule}, est employé(e) au sein de notre société depuis le "
+        "{SI(ESTVIDE(contrat.date_embauche), \"……………\", FORMAT(contrat.date_embauche, \"DATE_LONGUE\"))} en qualité de {" + EMPLOI + "}"
+        "{SI(ESTVIDE(contrat.type_contrat_libelle), \"\", \", sous contrat \" + contrat.type_contrat_libelle)}, et qu'il (elle) perçoit un salaire "
+        "mensuel net de {FORMAT(net_a_payer, \"MONTANT\")} dirhams ({MONTANT_EN_LETTRES(net_a_payer)}) (salaire de "
+        "{FORMAT(@periode.date_fin, \"MOIS_ANNEE\")}).\n\n"
+        "À sa demande, nous nous engageons à virer irrévocablement son salaire mensuel au compte n° "
+        "{SIVIDE(paiement.numero_compte, \"……………………………\")} ouvert en vos livres, et à ne modifier cette domiciliation qu'après "
+        "mainlevée écrite de votre part.\n\n"
+        "En cas de cessation de ses fonctions, pour quelque cause que ce soit, nous nous engageons à vous en informer et à virer "
+        "à ce même compte les sommes qui lui resteraient dues au titre de son solde de tout compte.\n\n"
+        "Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.", taille=10)
+    sig = _signature(4, "Pour la société,", ("Lu et accepté, le salarié,", "Signature précédée de la mention « Lu et accepté »"))
+    return definition(
+        [PARAM_MOIS, PARAM_COLLABS, PARAM_DATE_DOC],
+        [{"code": "b", "source": "BULLETIN", "role": "PRINCIPAL", "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Ressources humaines", '"Domiciliation de salaire"')),
+         bande("destinataire", "CORPS", 26, dest),
+         bande("texte", "CORPS", 74, [corps_], extensible=True),
+         bande("cloture", "CORPS", 66, sig, insecable=True),
+         bande("pied", "PIED_PAGE", 12, mentions_legales(L))],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [15, 15, 12, 15]},
+        {"formats": ["PDF"], "nom_fichier": '"Domiciliation_salaire_" + identite.matricule', "eclatement": "collaborateur_id"},
+        usages={"confidentialite": 4})
+
+
+def fiche_sortie() -> dict:
+    """RG-EDT-RH-05 : fiche de sortie (document interne) : dates, ancienneté, motif, préavis, indemnités, congés,
+    CNSS / AMO, documents remis et matériel restitué."""
+    L = 180.0
+    oui = lambda c: f'SI({c}, "Oui", "Non")'
+    info = [*paires("ia", 0, 2, 38, 52, [
+                ("Salarié", SALARIE), ("Matricule", "identite.matricule"), ("Emploi", EMPLOI),
+                ("Affectation", 'SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, "—"))'),
+                ("Catégorie", 'SIVIDE(qualification.categorie_professionnelle_libelle, "—")')], pas=5.5, taille=8.5),
+            *paires("ib", 92, 2, 38, 50, [
+                ("Embauche", 'SI(ESTVIDE(contrat.date_embauche), "—", FORMAT(contrat.date_embauche, "DATE_FR"))'),
+                ("Sortie", 'FORMAT(depart.date_depart, "DATE_FR")'), ("Ancienneté", 'SIVIDE(depart.anciennete_texte, "—")'),
+                ("Motif", 'SIVIDE(depart.motif_libelle, "—")'), ("Décision", 'SIVIDE(depart.reference_decision, "—")')], pas=5.5, taille=8.5)]
+
+    def grille(id_, y, titre, lignes, largeur_val=40, masque=None):
+        titre = titre or "Situation"
+        g = {"id": id_, "type": "GRILLE", "x": 0, "y": y, "l": 120, "h": 6 + 5.5 * len(lignes), "largeur_titres": 80,
+             "hauteur_ligne": 5.5, "quadrillage": "COMPLET", "style": {"taille": 8.5, "couleur_bordure": GRIS_CLAIR},
+             "style_entete": {"gras": True, "couleur": BLANC, "fond": BLEU, "alignement": "CENTRE"}, "style_titres": {"couleur": BLEU},
+             "colonnes": [{"id": "v", "titre": titre, "largeur": largeur_val, **({"affichage": {"masque": masque}} if masque else {}),
+                           "style": {"alignement": "DROITE" if masque else "CENTRE"}}],
+             "lignes": [{"id": f"{id_}_{k}", "titre": t, "valeurs": {"v": e}} for k, (t, e) in enumerate(lignes)]}
+        return g
+    preavis = grille("preavis", 2, "Préavis", [
+        ("Durée (jours)", 'SIVIDE(depart.preavis_duree_jours, "—")'),
+        ("Du", 'SI(ESTVIDE(depart.preavis_date_debut), "—", FORMAT(depart.preavis_date_debut, "DATE_FR"))'),
+        ("Au", 'SI(ESTVIDE(depart.preavis_date_fin), "—", FORMAT(depart.preavis_date_fin, "DATE_FR"))'),
+        ("Effectué", oui("depart.preavis_effectue")), ("Dispensé", oui("depart.preavis_dispense"))])
+    indemn = grille("indemnites", 2, "Montant (DH)", [
+        ("Indemnité de préavis (dispense)", "depart.preavis_dispense_indemnite"),
+        ("Indemnité de licenciement / ancienneté", "depart.indemnite_anciennete"),
+        ("Indemnité pour perte d'emploi", "depart.indemnite_perte_emploi"),
+        ("Indemnité de départ à la retraite", "depart.indemnite_depart_retraite"),
+        ("Indemnité de congés payés", "depart.indemnite_conges_payes"),
+        ("Indemnité compensatrice", "depart.indemnite_compensatrice"),
+        ("Indemnité transactionnelle", "depart.indemnite_transactionnelle"),
+        ("13e mois au prorata", "depart.indemnite_13eme_mois"),
+        ("Total des indemnités", "depart.indemnite_total")], masque="MONTANT_SANS_ZERO")
+    social = grille("social", 2, "", [
+        ("Solde de congés (jours)", 'SIVIDE(depart.solde_conges_jours, "—")'),
+        ("Radiation CNSS", 'SI(ESTVIDE(depart.cnss_radiation_date), "—", FORMAT(depart.cnss_radiation_date, "DATE_FR"))'),
+        ("Dernière déclaration CNSS", 'SIVIDE(depart.cnss_derniere_declaration, "—")'),
+        ("Clôture AMO", 'SI(ESTVIDE(depart.amo_cloture_date), "—", FORMAT(depart.amo_cloture_date, "DATE_FR"))'),
+        ("Net du bulletin de sortie", 'SI(ESTVIDE(bulletin_id), "—", FORMAT(net_a_payer, "MONTANT") + " (" + SIVIDE(bulletin_periode, "") + ")")')])
+    docs = grille("documents", 2, "", [(t, oui(f"depart.{c}")) for c, t in (
+        ("doc_attestation_travail", "Certificat de travail remis"), ("doc_recu_stc", "Reçu pour solde de tout compte signé"),
+        ("doc_radiation_cnss", "Radiation CNSS remise"), ("doc_attestation_amo", "Attestation AMO remise"),
+        ("doc_certificat_conges", "Certificat de congés remis"), ("materiel_badge_restitue", "Badge restitué"),
+        ("materiel_ordinateur_restitue", "Ordinateur restitué"), ("materiel_telephone_restitue", "Téléphone restitué"),
+        ("materiel_vehicule_restitue", "Véhicule restitué"), ("acces_si_desactive", "Accès SI désactivés"),
+        ("acces_email_desactive", "Messagerie désactivée"))])
+    def bloc(id_, titre, g):
+        return bande(id_, "CORPS", g["h"] + 10, [texte(f"{id_}_t", 0, 1, L, 5, titre, taille=9.5, gras=True, couleur=BLEU),
+                                                  {**g, "y": 7}], insecable=True)
+    return definition(
+        [PARAM_MOIS_SORTIE, PARAM_COLLABS],
+        [{"code": "d", "source": "DEPART", "role": "PRINCIPAL", "tri": [{"champ": "identite.nom"}, {"champ": "identite.prenom"}]}],
+        [bande("en_tete", "EN_TETE_PAGE", 24, entete_societe(L, "Fiche de sortie", '"Sortie le " + FORMAT(depart.date_depart, "DATE_FR")')),
+         bande("identite", "CORPS", 32, info),
+         bloc("b_preavis", "Préavis", preavis), bloc("b_indemnites", "Indemnités de fin de contrat", indemn),
+         bloc("b_social", "Congés, CNSS et AMO", social), bloc("b_documents", "Documents remis, matériel et accès", docs),
+         bande("pied", "PIED_PAGE", 8, pied_page(L, "Fiche de sortie — document interne"))],
+        {"format": "A4", "orientation": "PORTRAIT", "marges": [12, 15, 10, 15]},
+        {"formats": ["PDF"], "nom_fichier": '"Fiche_sortie_" + identite.matricule', "eclatement": "collaborateur_id"},
+        usages={"confidentialite": 4})
+
+
 # RG-EDT-EXERCICE-03 (Adil DAIA) : rien n'est figé dans la mise en forme du récapitulatif. Tout ce qu'il
 # imprime vient du paramétrage (onglet Données) : rubriques dans les corps « Activité » et
 # « Récapitulatif », synthèse de l'exercice dans le corps à cases « Synthèse » (cartes du bas), fiche
@@ -2080,6 +2332,11 @@ MODELES = {
     "controle_deux_periodes.json": controle_deux_periodes,
     "comparatif_rubriques.json": comparatif_rubriques,
     "bulletin_recapitulatif.json": bulletin_recapitulatif,
+    "certificat_travail.json": certificat_travail,
+    "recu_solde_tout_compte.json": recu_solde_tout_compte,
+    "attestation_salaire_annuelle.json": attestation_salaire_annuelle,
+    "domiciliation_salaire.json": domiciliation_salaire,
+    "fiche_sortie.json": fiche_sortie,
 }
 
 if __name__ == "__main__":

@@ -25,6 +25,8 @@ AUTRES_PARAMETRES = {
     "BULLETIN_RECAP_EXERCICE": ({"annee": 2026}, 2),
 }
 P_AOU = "aaaaaaaa-0000-0000-0000-000000000008"
+# documents RH administratifs : testés plus bas (le module des départs est créé par le test)
+DOCUMENTS_RH = {"CERTIFICAT_TRAVAIL", "RECU_SOLDE_TOUT_COMPTE", "ATTESTATION_SALAIRE_ANNUELLE", "DOMICILIATION_SALAIRE", "FICHE_SORTIE"}
 
 
 @pytest.fixture
@@ -39,7 +41,7 @@ def s(db, tmp_path, monkeypatch):
 
 def test_un_exemple_par_type_produit_sans_anomalie(s):
     modeles = {m["code"]: m for m in sv.lister_modeles(s, PAIE) if m["est_systeme"]}
-    assert set(modeles) == set(ATTENDUS) | set(AUTRES_PARAMETRES)
+    assert set(modeles) == set(ATTENDUS) | set(AUTRES_PARAMETRES) | DOCUMENTS_RH
     assert {c for c, _ in ATTENDUS.values()} == set(sv.CATEGORIES)          # tous les types couverts
     lancements = [(code, {"periode": P_SEP}, nb) for code, (_c, nb) in ATTENDUS.items()]
     lancements += [(code, p, nb) for code, (p, nb) in AUTRES_PARAMETRES.items()]
@@ -60,7 +62,9 @@ def test_exemples_ranges_dans_le_menu_de_la_paie(s):
                                            "CONTROLE_DEUX_PERIODES", "COMPARATIF_RUBRIQUES"}
     assert a["États de synthèse"] == {"MASSE_SALARIALE", "MASSE_SALARIALE_COLLABORATEURS", "FICHE_SYNTHESE_ANNUELLE"}
     rh = {t["libelle"]: {m["code"] for m in t["modeles"]} for t in th.arbre(s, PAIE, "RH")["themes"]}
-    assert rh == {"Attestations": {"ATTESTATION_TRAVAIL_SALAIRE"}, "Courriers": {"NOTIFICATION_REMUNERATION"}}
+    assert rh == {"Attestations": {"ATTESTATION_TRAVAIL_SALAIRE", "ATTESTATION_SALAIRE_ANNUELLE"},
+                  "Courriers": {"NOTIFICATION_REMUNERATION", "DOMICILIATION_SALAIRE"},
+                  "Départs et sortie": {"CERTIFICAT_TRAVAIL", "RECU_SOLDE_TOUT_COMPTE", "FICHE_SORTIE"}}
 
 
 def test_quatre_bulletins_au_choix_dans_le_menu(s):
@@ -348,3 +352,76 @@ def test_attestation_reglable_au_lancement_et_copie_actualisee(s):
     t = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(docs[0].contenu)).pages)
     assert "TRAVAIL ET DE SALAIRE" not in t.upper().replace("\n", " ") and "Rémunération" not in t
     assert "dossier de bourse" in t and "15 octobre 2026" in t and not docs[0].anomalies
+
+
+SQL_DEPARTS = """
+CREATE TABLE IF NOT EXISTS ref_motif_depart (code varchar(30) PRIMARY KEY, libelle varchar(150));
+CREATE TABLE IF NOT EXISTS collaborateur_departs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), collaborateur_id uuid NOT NULL, date_depart date NOT NULL,
+  motif_depart varchar(100), code_motif_depart varchar(30), reference_decision varchar(100), statut varchar(30),
+  preavis_duree_jours int, preavis_date_debut date, preavis_date_fin date, preavis_effectue boolean, preavis_dispense boolean,
+  preavis_dispense_indemnite numeric(14,2), indemnite_anciennete numeric(14,2), indemnite_conges_payes numeric(14,2),
+  indemnite_total numeric(14,2), solde_conges_jours numeric(6,2), cnss_radiation_date date,
+  doc_attestation_travail boolean, doc_recu_stc boolean, doc_attestation_travail_path varchar(255),
+  materiel_badge_restitue boolean, acces_si_desactive boolean, cree_le timestamp DEFAULT now());
+INSERT INTO ref_motif_depart VALUES ('DEM', 'Démission');
+INSERT INTO collaborateur_departs (collaborateur_id, date_depart, code_motif_depart, statut, preavis_duree_jours, preavis_effectue,
+  indemnite_conges_payes, indemnite_total, solde_conges_jours, doc_recu_stc, materiel_badge_restitue, doc_attestation_travail_path)
+VALUES ('c0000000-0000-0000-0000-000000000001', '2026-09-30', 'DEM', 'VALIDE', 30, true, 1250.40, 1250.40, 7.5, true, true, '/x.pdf'),
+       ('c0000000-0000-0000-0000-000000000002', '2026-09-15', 'DEM', 'ANNULE', 30, false, 0, 0, 0, false, false, NULL);
+"""
+
+
+def _texte_pdf(doc):
+    import io
+    from pypdf import PdfReader
+    return "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(doc.contenu)).pages)
+
+
+def test_documents_de_sortie(s):
+    """RG-EDT-RH-01/02/05 : certificat de travail, reçu pour solde de tout compte et fiche de sortie (source DEPART)."""
+    from app.editions.definition import Definition
+    from app.editions.moteur import executeur
+    from app.editions.sources import ContexteSecurite
+    s.execute(text(SQL_DEPARTS))
+    sec = ContexteSecurite(None, "11111111-1111-1111-1111-111111111111", frozenset(), True)
+    import json
+    from pathlib import Path
+    rep = Path(sv.__file__).parent / "modeles_systeme"
+    lire = lambda f: Definition.model_validate(json.loads((rep / f).read_text(encoding="utf-8")))
+    params = {"periode": P_SEP}
+    ct = executeur.executer(s, lire("certificat_travail.json"), {**params, "date_document": "2026-10-01"}, sec)
+    assert len(ct) == 1 and not ct[0].anomalies, ct[0].anomalies[:3]          # départ annulé d'Omar ignoré
+    t = _texte_pdf(ct[0])
+    assert "30 septembre 2026" in t and "libre de tout engagement" in t and "Démission" not in t
+    stc = executeur.executer(s, lire("recu_solde_tout_compte.json"), params, sec)
+    assert len(stc) == 1 and not stc[0].anomalies, stc[0].anomalies[:3]
+    t = _texte_pdf(stc[0])
+    assert "Salaire de base" in t and "soixante" in t and "Lu et approuvé" in t
+    fs = executeur.executer(s, lire("fiche_sortie.json"), params, sec)
+    assert len(fs) == 1 and not fs[0].anomalies, fs[0].anomalies[:3]
+    t = _texte_pdf(fs[0])
+    assert "Démission" in t and "1 250,40" in t.replace(" ", " ").replace("\xa0", " ")
+
+
+def test_attestations_salaire_annuelle_et_domiciliation(s):
+    """RG-EDT-RH-03/04."""
+    import json
+    from pathlib import Path
+    from app.editions.definition import Definition
+    from app.editions.moteur import executeur
+    from app.editions.sources import ContexteSecurite
+    sec = ContexteSecurite(None, "11111111-1111-1111-1111-111111111111", frozenset(), True)
+    rep = Path(sv.__file__).parent / "modeles_systeme"
+    lire = lambda f: Definition.model_validate(json.loads((rep / f).read_text(encoding="utf-8")))
+    a = executeur.executer(s, lire("attestation_salaire_annuelle.json"), {"annee": 2026}, sec)
+    assert a and all(not d.anomalies for d in a), [x for d in a for x in d.anomalies][:3]
+    assert "Total de l'année" in _texte_pdf(a[0])
+    d = executeur.executer(s, lire("domiciliation_salaire.json"), {"periode": P_SEP}, sec)
+    assert len(d) == 2 and all(not x.anomalies for x in d), [x for y in d for x in y.anomalies][:3]
+    assert "irrévocablement" in _texte_pdf(d[0])
+
+
+def test_documents_de_sortie_dans_le_dossier_departs(s):
+    assert s.execute(text("SELECT module FROM edt_theme WHERE code = 'RH_DEPARTS'")).scalar() == "RH"
+    assert th.THEMES_MODELES_SYSTEME["RECU_SOLDE_TOUT_COMPTE"] == "RH_DEPARTS"

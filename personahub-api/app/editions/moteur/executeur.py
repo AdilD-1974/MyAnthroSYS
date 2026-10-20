@@ -245,6 +245,11 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
         if getattr(fe, "perso", False) and rel and rel.get("perso"):          # RG-EDT-DICO-03
             cle_parent = (lambda l, c=rel["cle_source"]: None if _lire(l, c) is None else str(_lire(l, c)))
             groupes = fe.lire_par(db, rel["cle_cible"], [cle_parent(l) for l in lignes], sec, parametres)
+        elif rel and rel.get("cle_source") not in (None, "", "id") and not getattr(fe, "avec_parents", False):
+            # RG-EDT-DEPART-02 : relation par une autre clé que l'identifiant (départ → lignes du bulletin de sortie)
+            cle_parent = (lambda l, c=rel["cle_source"]: None if _lire(l, c) is None else str(_lire(l, c)))
+            groupes = fe.lire_enfants(db, [k for k in {cle_parent(l) for l in lignes} if k], sec, parametres)
+            groupes = {str(k): v for k, v in groupes.items()}
         elif getattr(fe, "avec_parents", False):
             groupes = fe.lire_enfants(db, [l["id"] for l in lignes], sec, parametres, parents=lignes)
         else:
@@ -253,7 +258,7 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
             dico.completer(db, jeu.source, [x for lot in groupes.values() for x in lot], parametres, sec)
         par_parent = {}
         for l in lignes:
-            lot = [dict(x) for x in groupes.get(cle_parent(l), [])] if getattr(fe, "perso", False) else groupes.get(l["id"], [])
+            lot = [dict(x) for x in groupes.get(cle_parent(l), [])] if cle_parent is not None and (getattr(fe, "perso", False) or (rel and rel.get("cle_source") not in (None, "", "id"))) else groupes.get(l["id"], [])
             fe.masquer(lot, sec, _sensibles(db, jeu.source))
             par_parent[l["id"]] = _appliquer_jeu(jeu, lot, parametres, societe, parent=l)
         enfants[jeu.code] = par_parent
@@ -262,6 +267,10 @@ def _preparer(db: Session, d: Definition, parametres_bruts: dict, sec: ContexteS
         rubriques = index_rubriques(db, lignes, comparer=bool(parametres.get("_comparaison_detaillee")))
     elif principal.source == "EXERCICE_SALARIE" and lignes:                   # RG-EDT-EXERCICE-02
         rubriques = index_exercice(db, lignes)
+    elif principal.source == "DEPART" and lignes:                             # RG-EDT-DEPART-02 : bulletin de sortie
+        avec = [l for l in lignes if l.get("bulletin_id")]
+        par_bulletin = index_rubriques(db, [{**l, "id": l["bulletin_id"]} for l in avec]) if avec else {}
+        rubriques = {str(l["id"]): par_bulletin.get(str(l["bulletin_id"]), {}) for l in avec}
     else:
         rubriques = {}
     periode = parametres.get("periode")

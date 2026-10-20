@@ -106,7 +106,7 @@ def test_synchronisation_du_catalogue(db):
 
     bilan = catalogue.synchroniser(db)
     # BULLETIN, BULLETIN_LIGNE, SOCIETE + écarts par rubrique, comparaison des rubriques, exercice
-    assert bilan["sources"] == 6 and bilan["champs_ajoutes"] > 80 and bilan["relations"] == 2
+    assert bilan["sources"] == 7 and bilan["champs_ajoutes"] > 80 and bilan["relations"] == 3   # + DEPART (RG-EDT-RH)
     # l'administrateur renomme un champ et lève sa sensibilité : la synchro les respecte
     db.execute(text("""UPDATE edt_source_champ SET libelle = 'N° de RIB', libelle_modifie = true, sensible = false
                        WHERE source_code = 'BULLETIN' AND code = 'paiement.numero_compte'"""))

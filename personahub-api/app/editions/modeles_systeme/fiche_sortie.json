@@ -1,0 +1,963 @@
+{
+ "parametres": [
+  {
+   "code": "periode",
+   "libelle": "Mois de sortie",
+   "type": "MOIS"
+  },
+  {
+   "code": "collaborateurs",
+   "libelle": "Collaborateurs",
+   "type": "COLLABORATEUR",
+   "obligatoire": false,
+   "multiple": true
+  }
+ ],
+ "jeux": [
+  {
+   "code": "d",
+   "source": "DEPART",
+   "role": "PRINCIPAL",
+   "tri": [
+    {
+     "champ": "identite.nom"
+    },
+    {
+     "champ": "identite.prenom"
+    }
+   ]
+  }
+ ],
+ "usages": {
+  "confidentialite": 4
+ },
+ "page": {
+  "marges": [
+   12.0,
+   15.0,
+   10.0,
+   15.0
+  ]
+ },
+ "bandes": [
+  {
+   "id": "en_tete",
+   "type": "EN_TETE_PAGE",
+   "hauteur": 24.0,
+   "elements": [
+    {
+     "id": "h_logo",
+     "x": 0.0,
+     "y": 0.0,
+     "l": 28.0,
+     "h": 16.0,
+     "type": "IMAGE",
+     "valeur": "CHARTE(\"logo\")"
+    },
+    {
+     "id": "h_societe",
+     "x": 31.0,
+     "y": 0.0,
+     "l": 95.0,
+     "h": 6.0,
+     "style": {
+      "taille": 11.0,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.raison_sociale",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_adresse",
+     "x": 31.0,
+     "y": 6.0,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "societe.adresse + SI(ESTVIDE(societe.ville), \"\", \" — \" + societe.ville)",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_ids",
+     "x": 31.0,
+     "y": 10.5,
+     "l": 95.0,
+     "h": 4.5,
+     "style": {
+      "taille": 7.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"ICE \" + SIVIDE(societe.ice, \"—\") + \"   ·   CNSS \" + SIVIDE(societe.numero_cnss, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_titre",
+     "x": 70.0,
+     "y": 0.0,
+     "l": 110.0,
+     "h": 8.0,
+     "style": {
+      "taille": 14.0,
+      "gras": true,
+      "casse": "MAJUSCULES",
+      "couleur": "#0E3D5C",
+      "alignement": "DROITE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Fiche de sortie\""
+    },
+    {
+     "id": "h_sous_titre",
+     "x": 70.0,
+     "y": 8.0,
+     "l": 110.0,
+     "h": 6.0,
+     "style": {
+      "taille": 9.0,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Sortie le \" + FORMAT(depart.date_depart, \"DATE_FR\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "h_filet",
+     "x": 0.0,
+     "y": 17.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#0E3D5C",
+      "epaisseur_bordure": 1.2
+     },
+     "type": "LIGNE"
+    }
+   ]
+  },
+  {
+   "id": "identite",
+   "type": "CORPS",
+   "hauteur": 32.0,
+   "elements": [
+    {
+     "id": "ia_l0",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Salarié\""
+    },
+    {
+     "id": "ia_v0",
+     "x": 38.0,
+     "y": 2.0,
+     "l": 52.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(identite.civilite, \"\") + \" \" + MAJUSCULE(identite.nom) + \" \" + identite.prenom",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ia_l1",
+     "x": 0.0,
+     "y": 7.5,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Matricule\""
+    },
+    {
+     "id": "ia_v1",
+     "x": 38.0,
+     "y": 7.5,
+     "l": 52.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "identite.matricule",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ia_l2",
+     "x": 0.0,
+     "y": 13.0,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Emploi\""
+    },
+    {
+     "id": "ia_v2",
+     "x": 38.0,
+     "y": 13.0,
+     "l": 52.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(affectation.emploi_libelle, SIVIDE(qualification.fonction_libelle, \"salarié(e)\"))",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ia_l3",
+     "x": 0.0,
+     "y": 18.5,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Affectation\""
+    },
+    {
+     "id": "ia_v3",
+     "x": 38.0,
+     "y": 18.5,
+     "l": 52.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(affectation.uo_chemin, SIVIDE(affectation.organisation_libelle, \"—\"))",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ia_l4",
+     "x": 0.0,
+     "y": 24.0,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Catégorie\""
+    },
+    {
+     "id": "ia_v4",
+     "x": 38.0,
+     "y": 24.0,
+     "l": 52.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(qualification.categorie_professionnelle_libelle, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ib_l0",
+     "x": 92.0,
+     "y": 2.0,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Embauche\""
+    },
+    {
+     "id": "ib_v0",
+     "x": 130.0,
+     "y": 2.0,
+     "l": 50.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SI(ESTVIDE(contrat.date_embauche), \"—\", FORMAT(contrat.date_embauche, \"DATE_FR\"))",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ib_l1",
+     "x": 92.0,
+     "y": 7.5,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Sortie\""
+    },
+    {
+     "id": "ib_v1",
+     "x": 130.0,
+     "y": 7.5,
+     "l": 50.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "FORMAT(depart.date_depart, \"DATE_FR\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ib_l2",
+     "x": 92.0,
+     "y": 13.0,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Ancienneté\""
+    },
+    {
+     "id": "ib_v2",
+     "x": 130.0,
+     "y": 13.0,
+     "l": 50.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(depart.anciennete_texte, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ib_l3",
+     "x": 92.0,
+     "y": 18.5,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Motif\""
+    },
+    {
+     "id": "ib_v3",
+     "x": 130.0,
+     "y": 18.5,
+     "l": 50.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(depart.motif_libelle, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "ib_l4",
+     "x": 92.0,
+     "y": 24.0,
+     "l": 38.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.0,
+      "couleur": "#6B7C88"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Décision\""
+    },
+    {
+     "id": "ib_v4",
+     "x": 130.0,
+     "y": 24.0,
+     "l": 50.0,
+     "h": 5.5,
+     "style": {
+      "taille": 8.5,
+      "gras": true
+     },
+     "type": "CHAMP",
+     "valeur": "SIVIDE(depart.reference_decision, \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  },
+  {
+   "id": "b_preavis",
+   "type": "CORPS",
+   "hauteur": 43.5,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "b_preavis_t",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 180.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Préavis\""
+    },
+    {
+     "id": "preavis",
+     "x": 0.0,
+     "y": 7.0,
+     "l": 120.0,
+     "h": 33.5,
+     "style": {
+      "taille": 8.5,
+      "couleur_bordure": "#D5DEE3"
+     },
+     "type": "GRILLE",
+     "colonnes": [
+      {
+       "id": "v",
+       "titre": "Préavis",
+       "largeur": 40.0,
+       "style": {
+        "alignement": "CENTRE"
+       }
+      }
+     ],
+     "lignes": [
+      {
+       "id": "preavis_0",
+       "titre": "Durée (jours)",
+       "valeurs": {
+        "v": "SIVIDE(depart.preavis_duree_jours, \"—\")"
+       }
+      },
+      {
+       "id": "preavis_1",
+       "titre": "Du",
+       "valeurs": {
+        "v": "SI(ESTVIDE(depart.preavis_date_debut), \"—\", FORMAT(depart.preavis_date_debut, \"DATE_FR\"))"
+       }
+      },
+      {
+       "id": "preavis_2",
+       "titre": "Au",
+       "valeurs": {
+        "v": "SI(ESTVIDE(depart.preavis_date_fin), \"—\", FORMAT(depart.preavis_date_fin, \"DATE_FR\"))"
+       }
+      },
+      {
+       "id": "preavis_3",
+       "titre": "Effectué",
+       "valeurs": {
+        "v": "SI(depart.preavis_effectue, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "preavis_4",
+       "titre": "Dispensé",
+       "valeurs": {
+        "v": "SI(depart.preavis_dispense, \"Oui\", \"Non\")"
+       }
+      }
+     ],
+     "largeur_titres": 80.0,
+     "hauteur_ligne": 5.5,
+     "style_entete": {
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "fond": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "style_titres": {
+      "couleur": "#0E3D5C"
+     }
+    }
+   ]
+  },
+  {
+   "id": "b_indemnites",
+   "type": "CORPS",
+   "hauteur": 65.5,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "b_indemnites_t",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 180.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Indemnités de fin de contrat\""
+    },
+    {
+     "id": "indemnites",
+     "x": 0.0,
+     "y": 7.0,
+     "l": 120.0,
+     "h": 55.5,
+     "style": {
+      "taille": 8.5,
+      "couleur_bordure": "#D5DEE3"
+     },
+     "type": "GRILLE",
+     "colonnes": [
+      {
+       "id": "v",
+       "titre": "Montant (DH)",
+       "largeur": 40.0,
+       "affichage": {
+        "masque": "MONTANT_SANS_ZERO"
+       },
+       "style": {
+        "alignement": "DROITE"
+       }
+      }
+     ],
+     "lignes": [
+      {
+       "id": "indemnites_0",
+       "titre": "Indemnité de préavis (dispense)",
+       "valeurs": {
+        "v": "depart.preavis_dispense_indemnite"
+       }
+      },
+      {
+       "id": "indemnites_1",
+       "titre": "Indemnité de licenciement / ancienneté",
+       "valeurs": {
+        "v": "depart.indemnite_anciennete"
+       }
+      },
+      {
+       "id": "indemnites_2",
+       "titre": "Indemnité pour perte d'emploi",
+       "valeurs": {
+        "v": "depart.indemnite_perte_emploi"
+       }
+      },
+      {
+       "id": "indemnites_3",
+       "titre": "Indemnité de départ à la retraite",
+       "valeurs": {
+        "v": "depart.indemnite_depart_retraite"
+       }
+      },
+      {
+       "id": "indemnites_4",
+       "titre": "Indemnité de congés payés",
+       "valeurs": {
+        "v": "depart.indemnite_conges_payes"
+       }
+      },
+      {
+       "id": "indemnites_5",
+       "titre": "Indemnité compensatrice",
+       "valeurs": {
+        "v": "depart.indemnite_compensatrice"
+       }
+      },
+      {
+       "id": "indemnites_6",
+       "titre": "Indemnité transactionnelle",
+       "valeurs": {
+        "v": "depart.indemnite_transactionnelle"
+       }
+      },
+      {
+       "id": "indemnites_7",
+       "titre": "13e mois au prorata",
+       "valeurs": {
+        "v": "depart.indemnite_13eme_mois"
+       }
+      },
+      {
+       "id": "indemnites_8",
+       "titre": "Total des indemnités",
+       "valeurs": {
+        "v": "depart.indemnite_total"
+       }
+      }
+     ],
+     "largeur_titres": 80.0,
+     "hauteur_ligne": 5.5,
+     "style_entete": {
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "fond": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "style_titres": {
+      "couleur": "#0E3D5C"
+     }
+    }
+   ]
+  },
+  {
+   "id": "b_social",
+   "type": "CORPS",
+   "hauteur": 43.5,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "b_social_t",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 180.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Congés, CNSS et AMO\""
+    },
+    {
+     "id": "social",
+     "x": 0.0,
+     "y": 7.0,
+     "l": 120.0,
+     "h": 33.5,
+     "style": {
+      "taille": 8.5,
+      "couleur_bordure": "#D5DEE3"
+     },
+     "type": "GRILLE",
+     "colonnes": [
+      {
+       "id": "v",
+       "titre": "Situation",
+       "largeur": 40.0,
+       "style": {
+        "alignement": "CENTRE"
+       }
+      }
+     ],
+     "lignes": [
+      {
+       "id": "social_0",
+       "titre": "Solde de congés (jours)",
+       "valeurs": {
+        "v": "SIVIDE(depart.solde_conges_jours, \"—\")"
+       }
+      },
+      {
+       "id": "social_1",
+       "titre": "Radiation CNSS",
+       "valeurs": {
+        "v": "SI(ESTVIDE(depart.cnss_radiation_date), \"—\", FORMAT(depart.cnss_radiation_date, \"DATE_FR\"))"
+       }
+      },
+      {
+       "id": "social_2",
+       "titre": "Dernière déclaration CNSS",
+       "valeurs": {
+        "v": "SIVIDE(depart.cnss_derniere_declaration, \"—\")"
+       }
+      },
+      {
+       "id": "social_3",
+       "titre": "Clôture AMO",
+       "valeurs": {
+        "v": "SI(ESTVIDE(depart.amo_cloture_date), \"—\", FORMAT(depart.amo_cloture_date, \"DATE_FR\"))"
+       }
+      },
+      {
+       "id": "social_4",
+       "titre": "Net du bulletin de sortie",
+       "valeurs": {
+        "v": "SI(ESTVIDE(bulletin_id), \"—\", FORMAT(net_a_payer, \"MONTANT\") + \" (\" + SIVIDE(bulletin_periode, \"\") + \")\")"
+       }
+      }
+     ],
+     "largeur_titres": 80.0,
+     "hauteur_ligne": 5.5,
+     "style_entete": {
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "fond": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "style_titres": {
+      "couleur": "#0E3D5C"
+     }
+    }
+   ]
+  },
+  {
+   "id": "b_documents",
+   "type": "CORPS",
+   "hauteur": 76.5,
+   "insecable": true,
+   "elements": [
+    {
+     "id": "b_documents_t",
+     "x": 0.0,
+     "y": 1.0,
+     "l": 180.0,
+     "h": 5.0,
+     "style": {
+      "taille": 9.5,
+      "gras": true,
+      "couleur": "#0E3D5C"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Documents remis, matériel et accès\""
+    },
+    {
+     "id": "documents",
+     "x": 0.0,
+     "y": 7.0,
+     "l": 120.0,
+     "h": 66.5,
+     "style": {
+      "taille": 8.5,
+      "couleur_bordure": "#D5DEE3"
+     },
+     "type": "GRILLE",
+     "colonnes": [
+      {
+       "id": "v",
+       "titre": "Situation",
+       "largeur": 40.0,
+       "style": {
+        "alignement": "CENTRE"
+       }
+      }
+     ],
+     "lignes": [
+      {
+       "id": "documents_0",
+       "titre": "Certificat de travail remis",
+       "valeurs": {
+        "v": "SI(depart.doc_attestation_travail, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_1",
+       "titre": "Reçu pour solde de tout compte signé",
+       "valeurs": {
+        "v": "SI(depart.doc_recu_stc, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_2",
+       "titre": "Radiation CNSS remise",
+       "valeurs": {
+        "v": "SI(depart.doc_radiation_cnss, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_3",
+       "titre": "Attestation AMO remise",
+       "valeurs": {
+        "v": "SI(depart.doc_attestation_amo, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_4",
+       "titre": "Certificat de congés remis",
+       "valeurs": {
+        "v": "SI(depart.doc_certificat_conges, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_5",
+       "titre": "Badge restitué",
+       "valeurs": {
+        "v": "SI(depart.materiel_badge_restitue, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_6",
+       "titre": "Ordinateur restitué",
+       "valeurs": {
+        "v": "SI(depart.materiel_ordinateur_restitue, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_7",
+       "titre": "Téléphone restitué",
+       "valeurs": {
+        "v": "SI(depart.materiel_telephone_restitue, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_8",
+       "titre": "Véhicule restitué",
+       "valeurs": {
+        "v": "SI(depart.materiel_vehicule_restitue, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_9",
+       "titre": "Accès SI désactivés",
+       "valeurs": {
+        "v": "SI(depart.acces_si_desactive, \"Oui\", \"Non\")"
+       }
+      },
+      {
+       "id": "documents_10",
+       "titre": "Messagerie désactivée",
+       "valeurs": {
+        "v": "SI(depart.acces_email_desactive, \"Oui\", \"Non\")"
+       }
+      }
+     ],
+     "largeur_titres": 80.0,
+     "hauteur_ligne": 5.5,
+     "style_entete": {
+      "gras": true,
+      "couleur": "#FFFFFF",
+      "fond": "#0E3D5C",
+      "alignement": "CENTRE"
+     },
+     "style_titres": {
+      "couleur": "#0E3D5C"
+     }
+    }
+   ]
+  },
+  {
+   "id": "pied",
+   "type": "PIED_PAGE",
+   "hauteur": 8.0,
+   "elements": [
+    {
+     "id": "p_filet",
+     "x": 0.0,
+     "y": 0.5,
+     "l": 180.0,
+     "h": 0.4,
+     "style": {
+      "couleur": "#D5DEE3",
+      "epaisseur_bordure": 0.4
+     },
+     "type": "LIGNE"
+    },
+    {
+     "id": "p_edition",
+     "x": 0.0,
+     "y": 2.0,
+     "l": 72.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Édité le \" + FORMAT(DATEJOUR(), \"DATE_FR\") + \" par \" + SIVIDE(UTILISATEUR(\"nom\"), \"—\")",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    },
+    {
+     "id": "p_mention",
+     "x": 72.0,
+     "y": 2.0,
+     "l": 72.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "italique": true,
+      "couleur": "#6B7C88",
+      "alignement": "CENTRE"
+     },
+     "type": "TEXTE",
+     "valeur": "\"Fiche de sortie — document interne\""
+    },
+    {
+     "id": "p_page",
+     "x": 144.0,
+     "y": 2.0,
+     "l": 36.0,
+     "h": 4.0,
+     "style": {
+      "taille": 6.5,
+      "couleur": "#6B7C88",
+      "alignement": "DROITE"
+     },
+     "type": "CHAMP",
+     "valeur": "\"Page \" + PAGE() + \" / \" + NB_PAGES()",
+     "affichage": {
+      "valeur_si_vide": ""
+     }
+    }
+   ]
+  }
+ ],
+ "sortie": {
+  "nom_fichier": "\"Fiche_sortie_\" + identite.matricule",
+  "eclatement": "collaborateur_id"
+ }
+}
