@@ -93,6 +93,8 @@ const EtatNouveauPage         = lazy(() => import("@/pages/configuration/Edition
 const EditionsPage            = lazy(() => import("@/pages/editions/EditionsPage"));             // ✅ ÉDITIONS UNIFIÉES — bibliothèque et lancement
 const EditionsDesignerPage    = lazy(() => import("@/pages/editions/designer/DesignerPage"));    // ✅ ÉDITIONS UNIFIÉES — designer (lot 2)
 const EditionsDictionnairePage = lazy(() => import("@/pages/editions/DictionnairePage"));     // ✅ ÉDITIONS — dictionnaire des données (RG-EDT-DICO, Adil DAIA)
+const EditionsEtatEcranPage   = lazy(() => import("@/pages/editions/EcranNavigation"));          // ✅ ÉDITIONS — écran généré pour un état (RG-EDT-NAV-02, Adil DAIA)
+const EditionsModulePage      = lazy(() => import("@/pages/editions/MenuEditions").then(m => ({ default: m.EditionsModulePage })));  // ✅ ÉDITIONS — menu d'éditions d'un module (RG-EDT-NAV-02)
 const EditionsPaiePage        = lazy(() => import("@/pages/editions/MenuEditions").then(m => ({ default: m.EditionsPaiePage })));  // ✅ Paie › Éditions de la paie, arborescence (RG-EDT-MENU-01, Adil DAIA)
 const ClotureAnnuellePage     = lazy(() => import("@/pages/paie/ClotureAnnuellePage"));  // clôture annuelle (Adil DAIA)
 const LancementPaiePage       = lazy(() => import("@/pages/paie/LancementPaiePage"));    // lancement en masse (Adil DAIA)
@@ -470,6 +472,8 @@ const App = () => (
                   {/* ── ✅ ÉDITIONS UNIFIÉES — accès contrôlé côté serveur par require_menu_access("editions")
                        (menu_role) et par les droits fins edt_droit : pas de liste de rôles figée ici. ── */}
                   <Route path="/editions" element={<EditionsPage />} />
+                  <Route path="/editions/etat/:code" element={<EditionsEtatEcranPage />} />
+                  <Route path="/editions/menu/:module" element={<EditionsModulePage />} />
                   <Route path="/editions/dictionnaire" element={<EditionsDictionnairePage />} />
                   <Route path="/editions/:modeleId/designer" element={<EditionsDesignerPage />} />
                   <Route path="/paie/declarations/ir" element={

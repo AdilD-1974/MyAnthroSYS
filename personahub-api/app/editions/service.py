@@ -1144,3 +1144,34 @@ def dictionnaire_ecrire(db: Session, u: Utilisateur, action: str, *args) -> Any:
     auditer(db, u, "DICTIONNAIRE_" + action.upper(), "SOURCE", None,
             {"arguments": [a if isinstance(a, str) else {k: v for k, v in a.items() if k != "conditions"} for a in args]})
     return res if res is not None else {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Écrans générés dans la navigation — RG-EDT-NAV-02..04 (app/editions/navigation.py)
+# ---------------------------------------------------------------------------
+def ecran_navigation(db: Session, u: Utilisateur, type_: str, ident: str) -> dict:
+    from app.editions import navigation as nav
+    exiger(db, u, "VOIR")
+    return {**nav.etat(db, type_, ident, u.societe_id), "peut_generer": peut(db, u, "ADMINISTRER")}
+
+
+def generer_ecran_navigation(db: Session, u: Utilisateur, type_: str, ident: str, libelle: Optional[str] = None) -> dict:
+    from app.editions import navigation as nav
+    exiger(db, u, "ADMINISTRER")
+    try:
+        res = nav.generer(db, type_, ident, u.societe_id, libelle)
+    except nav.ErreurNavigation as e:
+        raise Invalide(str(e))
+    auditer(db, u, "ECRAN_NAVIGATION", type_, None, {"element": ident, **res})
+    return res
+
+
+def retirer_ecran_navigation(db: Session, u: Utilisateur, type_: str, ident: str) -> dict:
+    from app.editions import navigation as nav
+    exiger(db, u, "ADMINISTRER")
+    try:
+        nav.retirer(db, type_, ident, u.societe_id)
+    except nav.ErreurNavigation as e:
+        raise Invalide(str(e))
+    auditer(db, u, "ECRAN_NAVIGATION_RETRAIT", type_, None, {"element": ident})
+    return {"ok": True}

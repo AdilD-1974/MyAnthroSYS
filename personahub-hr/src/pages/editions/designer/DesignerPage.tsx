@@ -31,6 +31,7 @@ import { changerPlan } from "./plans";
 import { BoutonMiseEnPage } from "./MiseEnPage";
 import { BoutonTriRegroupements } from "./TriRegroupements";
 import { BoutonMenus, libelleEcran } from "@/pages/editions/MenusModele";
+import { corpsAbsents, retirerCorpsDeLaForme } from "@/pages/editions/placement";
 import { useRetour } from "@/pages/editions/retour";
 import "../editions.css";
 import { coller, copier as copierObjets, deplacer as deplacerObjets, dupliquer, idsSelection, supprimer as supprimerObjets, trouver } from "./selection";
@@ -69,6 +70,7 @@ export default function DesignerPage() {
   const [copieDlg, setCopieDlg] = useState<{ ouvert: boolean; code: string; libelle: string }>({ ouvert: false, code: "", libelle: "" });
 
   const lectureSeule = !version || !["BROUILLON", "EN_REVUE"].includes(version.statut);
+  const absents = useMemo(() => (editeur.definition ? corpsAbsents(editeur.definition) : []), [editeur.definition]);
 
   // ── chargement ───────────────────────────────────────────────────────────
   const charger = useCallback(async () => {
@@ -426,6 +428,16 @@ export default function DesignerPage() {
               <AlertTriangle className="h-3.5 w-3.5" />{erreurs.length} point(s) à corriger avant publication
               <button type="button" className="ml-auto font-normal text-muted-foreground" onClick={() => setErreurs(null)}>Masquer</button>
             </div>
+            {/* RG-EDT-DONNEES-09 : corps supprimé mais encore imprimé → réparation en un clic */}
+            {!lectureSeule && absents.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap items-center gap-2 rounded border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-2 py-1.5 text-xs">
+                <span>La mise en forme imprime encore {absents.length > 1 ? "les corps" : "le corps"} <b>{absents.map((c) => `« ${c} »`).join(", ")}</b>, absent{absents.length > 1 ? "s" : ""} des données (supprimé ou renommé).</span>
+                <Button size="sm" variant="outline" className="h-7" onClick={() => {
+                  editeur.modifier((x) => { retirerCorpsDeLaForme(x, absents); }, "corps-absents");
+                  toast({ title: "Mise en forme réparée", description: "Enregistrez puis cliquez « Valider »." });
+                }}>Retirer ces éléments de la mise en forme</Button>
+              </div>
+            )}
             {erreurs.map((err, i) => (
               <button key={i} type="button" onClick={() => allerA(err)} title="Aller à l'anomalie"
                 className="block w-full truncate rounded px-1 text-left text-xs text-destructive hover:bg-destructive/10 hover:underline">

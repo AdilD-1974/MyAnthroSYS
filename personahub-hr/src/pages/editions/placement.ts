@@ -153,3 +153,64 @@ export function placerCorps(d: Definition, code: string): string {
   b.hauteur = Math.max(b.hauteur, y + el.h + 2);
   return `« ${c.libelle} » a été placé dans la bande ${libelleBande(b.type)} — ajustez sa position dans « 2. Mise en forme ».`;
 }
+
+/** Corps cités par la mise en forme (toutes les formes) mais absents des données : supprimés ou renommés. */
+export function corpsAbsents(d: Definition): string[] {
+  const connus = new Set((d.corps ?? []).map((c) => c.code));
+  const cites = new Set<string>();
+  const formules: string[] = [];
+  for (const bandes of [d.bandes, ...(d.formes ?? []).map((f) => f.bandes)]) {
+    for (const b of bandes) {
+      if (b.condition) formules.push(b.condition);
+      for (const el of b.elements) {
+        if (el.type === "TABLEAU") [el.corps, ...(el.corps_suivants ?? [])].forEach((c) => c && cites.add(c));
+        if (el.type === "GRILLE") el.lignes.forEach((l) => formules.push(...Object.values(l.valeurs ?? {})));
+      }
+    }
+  }
+  for (const f of formules) {
+    for (const m of f.matchAll(/TOTAL_CORPS\(\s*"([^"]+)"|\bcorps\.([a-z_][a-z0-9_]*)\./gi)) cites.add(m[1] ?? m[2]);
+  }
+  return [...cites].filter((c) => !connus.has(c));
+}
+
+/** RG-EDT-DONNEES-09 (Adil DAIA) : un corps supprimé disparaît aussi de la mise en forme (toutes les formes) :
+ *  tableau qui l'affichait (le corps suivant prend sa place, sinon le tableau est retiré), cases de grille
+ *  et conditions de bande qui le lisaient ; une bande « Corps » vidée est retirée s'il en reste une autre.
+ *  Rend le nombre de retouches. */
+export function retirerCorpsDeLaForme(d: Definition, codes: string[]): number {
+  const cible = new Set(codes);
+  const lit = (f?: string | null) => !!f && [...cible].some((c) =>
+    new RegExp(`TOTAL_CORPS\\(\\s*"${c}"|\\bcorps\\.${c}\\.`, "i").test(f));
+  let n = 0;
+  const traiter = (bandes: Bande[]): Bande[] => {
+    const res: Bande[] = [];
+    for (const b of bandes) {
+      if (lit(b.condition)) { delete b.condition; n++; }
+      const avant = b.elements.length;
+      b.elements = b.elements.flatMap((el): Element[] => {
+        if (el.type === "TABLEAU" && (el.corps && cible.has(el.corps) || (el.corps_suivants ?? []).some((c) => cible.has(c)))) {
+          const reste = [el.corps, ...(el.corps_suivants ?? [])].filter((c): c is string => !!c && !cible.has(c));
+          n++;
+          if (!el.corps) return [el];
+          if (!reste.length) return [];
+          el.corps = reste[0];
+          el.corps_suivants = reste.slice(1);
+          if (!el.corps_suivants.length) delete el.corps_suivants;
+          return [el];
+        }
+        if (el.type === "GRILLE") {
+          for (const l of el.lignes) for (const [k, f] of Object.entries(l.valeurs ?? {})) if (lit(f)) { delete l.valeurs![k]; n++; }
+        }
+        return [el];
+      });
+      const videe = avant > 0 && b.elements.length === 0;
+      if (videe && b.type === "CORPS" && bandes.some((x) => x !== b && x.type === "CORPS")) { n++; continue; }
+      res.push(b);
+    }
+    return res;
+  };
+  d.bandes = traiter(d.bandes);
+  for (const f of d.formes ?? []) f.bandes = traiter(f.bandes);
+  return n;
+}

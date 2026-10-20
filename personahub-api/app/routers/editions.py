@@ -614,3 +614,25 @@ def dictionnaire_creer_relation(corps: DicoRelation, u: sv.Utilisateur = Depends
 def dictionnaire_supprimer_relation(source: str, code: str, u: sv.Utilisateur = Depends(utilisateur),
                                     db: Session = Depends(get_db)):
     return _ecriture(db, sv.dictionnaire_ecrire, u, "supprimer_relation", source, code)
+
+
+# ---------------------------------------------------------------- écrans générés dans la navigation (RG-EDT-NAV-02..04)
+class EcranNavigation(BaseModel):
+    type: str                                  # MODELE | DOSSIER
+    id: str                                    # id ou code de l'état ; id du dossier
+    libelle: Optional[str] = None
+
+
+@router.get("/navigation")
+def ecran_navigation(type: str, id: str, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    return _lecture(db, sv.ecran_navigation, u, type.upper(), id)
+
+
+@router.post("/navigation")
+def generer_ecran_navigation(corps: EcranNavigation, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    return _ecriture(db, sv.generer_ecran_navigation, u, corps.type.upper(), corps.id, corps.libelle)
+
+
+@router.delete("/navigation")
+def retirer_ecran_navigation(type: str, id: str, u: sv.Utilisateur = Depends(utilisateur_metier), db: Session = Depends(get_db)):
+    return _ecriture(db, sv.retirer_ecran_navigation, u, type.upper(), id)

@@ -8,7 +8,9 @@
  * RG-EDT-DONNEES-01 à 05 ; affectations saisies à la main (décision du 16/10/2026).
  */
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Copy, Loader2, Play, Plus, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Copy, Loader2, Play, Plus, Search, Trash2 } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
@@ -23,7 +25,7 @@ import Liste from "../Liste";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useReferentiels } from "./contexte";
 import { deplacer, useGlisser } from "./glisser";
-import { EMPLACEMENTS, emplacementDe, libelleBande, placementConforme, placerCorps, usagesDuCorps, type Emplacement } from "@/pages/editions/placement";
+import { EMPLACEMENTS, emplacementDe, libelleBande, placementConforme, placerCorps, retirerCorpsDeLaForme, usagesDuCorps, type Emplacement } from "@/pages/editions/placement";
 import { Case, Choix, JeuxEditeur, Ligne, Nombre, ParametresEditeur, Texte, classeChamp, poser } from "./Inspecteur";
 import type { Editeur } from "./useEditeur";
 
@@ -212,8 +214,8 @@ function OngletDefinition({ d, editeur, version, ro, ouvrirCorps }: { d: Definit
                   {!ro && <>
                     <button type="button" className="ml-1" title="Monter" onClick={() => editeur.modifier((x) => { const z = x.corps!; if (i > 0) [z[i - 1], z[i]] = [z[i], z[i - 1]]; }, "co")}><ArrowUp className="inline h-3 w-3" /></button>
                     <button type="button" title="Descendre" onClick={() => editeur.modifier((x) => { const z = x.corps!; if (i < z.length - 1) [z[i + 1], z[i]] = [z[i], z[i + 1]]; }, "co")}><ArrowDown className="inline h-3 w-3" /></button>
-                    <button type="button" className="ml-1" title="Supprimer" onClick={() => confirm(`Supprimer le corps « ${c.libelle} » et ses ${(c.affectations ?? []).length} affectation(s) ? Les tableaux et grilles qui l'affichent seront à revoir.`)
-                      && editeur.modifier((x) => { x.corps = x.corps!.filter((z) => z.code !== c.code); }, "cs")}><Trash2 className="inline h-3 w-3 text-destructive" /></button>
+                    <button type="button" className="ml-1" title="Supprimer" onClick={() => confirm(`Supprimer le corps « ${c.libelle} » et ses ${(c.affectations ?? []).length} affectation(s) ? Les tableaux, cases de grille et conditions qui l'affichent seront aussi retirés de la mise en forme.`)
+                      && editeur.modifier((x) => { x.corps = x.corps!.filter((z) => z.code !== c.code); retirerCorpsDeLaForme(x, [c.code]); }, "cs")}><Trash2 className="inline h-3 w-3 text-destructive" /></button>
                   </>}
                 </td>
               </tr>
@@ -609,6 +611,12 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
               options={[...sections.map((x) => ({ v: x.code, l: x.libelle })), { v: "__sans__", l: "Sans section" }]} />
             <Button size="sm" variant="outline" disabled={!cibleSection} onClick={() => rattacherSelection(cibleSection === "__sans__" ? "" : cibleSection)}>Rattacher</Button>
           </>}
+          {exo && <>
+            <span className="ml-2 text-muted-foreground">Valeur imprimée</span>
+            <Liste compact className="w-40" value="" placeholder="Choisir…"
+              options={ATTRIBUTS_AFFECTABLES.map((x) => ({ v: x.code, l: LIBELLES_ATTRIBUT[x.code] }))}
+              onChange={(v) => { if (!v) return; majC((z) => { sel.forEach((k) => { const y = z.affectations![k]; if (y.rubrique) y.cibles = { [v]: "mois" }; }); }, "asel-attr"); }} />
+          </>}
           <Button size="sm" variant="outline" className="text-destructive" onClick={supprimerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" />Retirer du corps</Button>
           <button type="button" className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => setSel(new Set())}>Tout désélectionner</button>
         </div>
@@ -647,9 +655,9 @@ function GrilleAffectations({ c, ci, d, ro, majC, editeur }: { c: Corps; ci: num
                   </>
                 ) : (
                   <>
-                    <td className={`${td} min-w-[180px]`}>
-                      <div className="font-mono text-xs">{a.rubrique}</div>
-                      <div className="truncate text-[11px] text-muted-foreground" title={nomRub(a.rubrique)}>{nomRub(a.rubrique)}</div>
+                    <td className={`${td} min-w-[200px]`}>
+                      {/* RG-EDT-RUBRIQUES-03 (Adil DAIA) : la rubrique d'une ligne se change sur place, réglages conservés */}
+                      <ChoixRubrique value={a.rubrique ?? ""} disabled={ro} onChange={(code) => majA(i, (z) => { z.rubrique = code; }, "rub")} />
                     </td>
                     {exo ? (
                       <td className={`${td} w-56`}>
@@ -805,6 +813,47 @@ function GrilleSections({ c, ci, ro, majC }: { c: Corps; ci: number; ro: boolean
         </div>
       )}
     </>
+  );
+}
+
+/** RG-EDT-RUBRIQUES-03 : liste déroulante avec recherche (code, libellé, famille, nature) pour changer la rubrique d'une ligne. */
+function ChoixRubrique({ value, onChange, disabled }: { value: string; onChange: (code: string) => void; disabled?: boolean }) {
+  const { rubriques } = useReferentiels();
+  const [ouvert, setOuvert] = useState(false);
+  const toutes = useMemo(() => [...rubriques, ...RUBRIQUES_EN_TETE.filter((t) => !rubriques.some((r) => r.code === t.code))] as RubriqueInfo[], [rubriques]);
+  const courante = toutes.find((r) => r.code === value);
+  return (
+    <Popover open={ouvert} onOpenChange={(o) => !disabled && setOuvert(o)}>
+      <PopoverTrigger asChild>
+        <button type="button" disabled={disabled} title="Changer de rubrique"
+          className="flex w-full items-center gap-1 rounded border border-transparent px-1 py-0.5 text-left hover:border-input hover:bg-background disabled:cursor-default disabled:hover:border-transparent">
+          <span className="min-w-0 flex-1">
+            <span className="block font-mono text-xs">{value || "—"}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{courante?.libelle ?? (value ? "rubrique inconnue" : "")}</span>
+          </span>
+          {!disabled && <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="ecran-editions-texte w-[26rem] p-0" align="start" onKeyDown={(e) => e.stopPropagation()}>
+        <Command filter={(v, recherche) => (v.toLowerCase().includes(recherche.toLowerCase()) ? 1 : 0)}>
+          <CommandInput placeholder="Code, libellé, famille, nature…" />
+          <CommandList className="max-h-72">
+            <CommandEmpty>Aucune rubrique.</CommandEmpty>
+            <CommandGroup>
+              {toutes.map((r) => (
+                <CommandItem key={r.code} value={`${r.code} ${r.libelle} ${r.famille_libelle ?? r.famille ?? ""} ${r.type_libelle ?? r.type ?? ""}`}
+                  onSelect={() => { onChange(r.code); setOuvert(false); }}
+                  className={r.code === value ? "bg-primary/10" : undefined}>
+                  <span className="w-28 shrink-0 font-mono text-xs">{r.code}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{r.libelle}</span>
+                  {(r.type_libelle || r.type) && <span className="ml-1 shrink-0 rounded bg-muted px-1 text-[10px]">{r.type_libelle || r.type}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 

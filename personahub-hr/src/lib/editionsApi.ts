@@ -459,6 +459,12 @@ export const editionsApi = {
   /** theme_id : undefined = inchangé, null = thème de la catégorie. */
   reglerModele: (modeleId: string, corps: { actif?: boolean; theme_id?: string | null; ordre?: number }) =>
     appel<Modele>("PUT", `/modeles/${modeleId}/reglage`, { ...corps, theme_id: corps.theme_id === undefined ? "" : corps.theme_id }),
+  // RG-EDT-NAV-02 : un état ou un dossier devient un écran de la navigation
+  ecranNavigation: (type: "MODELE" | "DOSSIER", id: string) =>
+    appel<{ disponible: boolean; existe: boolean; peut_generer: boolean; chemin?: string; libelle?: string }>("GET", `/navigation?type=${type}&id=${encodeURIComponent(id)}`),
+  genererEcran: (type: "MODELE" | "DOSSIER", id: string, libelle?: string) =>
+    appel<{ code: string; chemin: string; libelle: string; cree: boolean }>("POST", "/navigation", { type, id, libelle }),
+  retirerEcran: (type: "MODELE" | "DOSSIER", id: string) => appel<{ ok: boolean }>("DELETE", `/navigation?type=${type}&id=${encodeURIComponent(id)}`),
   menuModule: (module: string, tout = false) => appel<ArbreMenu>("GET", `/menus/${module}${tout ? "?tout=true" : ""}`),
   lancerMenu: (module: string, corps: { modele_id: string; parametres?: Record<string, unknown>; forme?: string }) =>
     appel<{ demande_id: string; statut: string; documents: DocumentProduit[]; modele: { id: string; code: string; libelle: string } }>(

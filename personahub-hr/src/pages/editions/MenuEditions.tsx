@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { editionsApi, type ArbreMenu, type ModeleEcran, type ThemeMenu } from "@/lib/editionsApi";
 import { PanneauProduction } from "./LanceurEcran";
+import { BoutonEcranNavigation } from "./EcranNavigation";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useRetour } from "./retour";
 import "./editions.css";
 import ReturnTrail from "@/components/navigation/ReturnTrail";
@@ -69,7 +71,17 @@ export default function MenuEditions({ module, titre, description }: { module: s
   useEffect(charger, [charger]);
   useEffect(() => { ecrire(cleOuverts(module), JSON.stringify([...ouverts])); }, [ouverts, module]);
 
-  const racines = useMemo(() => construire(arbre?.themes ?? [], filtre), [arbre, filtre]);
+  // RG-EDT-NAV-02 : écran généré pour un dossier (?dossier=<id>) : l'arborescence se limite à ce dossier
+  const [recherche] = useSearchParams();
+  const dossier = recherche.get("dossier");
+  const themeDossier = dossier ? arbre?.themes.find((t) => t.id === dossier) : undefined;
+  const racines = useMemo(() => {
+    const tout = construire(arbre?.themes ?? [], filtre);
+    if (!dossier) return tout;
+    const chercher = (l: Noeud[]): Noeud | null => { for (const n of l) { if (n.theme.id === dossier) return n; const t = chercher(n.enfants); if (t) return t; } return null; };
+    const n = chercher(tout);
+    return n ? [n] : [];
+  }, [arbre, filtre, dossier]);
   const tous = useMemo(() => (arbre?.themes ?? []).flatMap((t) => t.modeles.map((m) => ({ m, t }))), [arbre]);
   const selection = tous.find((x) => x.m.id === choix) ?? null;
   const chemin = (t: ThemeMenu | undefined): string[] => {
@@ -122,6 +134,7 @@ export default function MenuEditions({ module, titre, description }: { module: s
           {organiser && (
             <span className="ml-1 hidden items-center gap-0.5 group-hover:inline-flex" onClick={(e) => e.stopPropagation()}>
               <button type="button" title="Nouveau sous-dossier" className="rounded p-0.5 hover:bg-background" onClick={() => nouveauDossier(t)}><FolderPlus className="h-3.5 w-3.5" /></button>
+              <BoutonEcranNavigation type="DOSSIER" id={t.id} libelle={t.libelle} compact />
               {!t.est_systeme && <>
                 <button type="button" title="Renommer" className="rounded p-0.5 hover:bg-background" onClick={() => renommer(t)}><Pencil className="h-3.5 w-3.5" /></button>
                 <button type="button" title="Supprimer" className="rounded p-0.5 text-destructive hover:bg-background" onClick={() => supprimer(t)}><Trash2 className="h-3.5 w-3.5" /></button>
@@ -156,11 +169,11 @@ export default function MenuEditions({ module, titre, description }: { module: s
 
   return (
     <div className="ecran-editions w-full">
-      <ReturnTrail current={titre} />
+      <ReturnTrail current={themeDossier?.libelle ?? titre} />
       <div className="w-full space-y-3 px-6 py-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="titre-ecran text-xl font-semibold tracking-tight">{titre}</h1>
+          <h1 className="titre-ecran text-xl font-semibold tracking-tight">{themeDossier?.libelle ?? titre}</h1>
           {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
         </div>
         <Button variant={organiser ? "default" : "outline"} size="sm" onClick={() => setOrganiser((o) => !o)}
@@ -210,7 +223,8 @@ export default function MenuEditions({ module, titre, description }: { module: s
                       <h2 className="text-base font-semibold">{selection.m.libelle}</h2>
                       {selection.m.est_systeme && <span className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"><ShieldCheck className="h-2.5 w-2.5" />Système</span>}
                     </div>
-                    <div className="text-xs text-muted-foreground">{selection.m.code} · version {selection.m.numero_publie}</div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{selection.m.code} · version {selection.m.numero_publie}
+                      <span className="ml-auto"><BoutonEcranNavigation type="MODELE" id={selection.m.code} libelle={selection.m.libelle} /></span></div>
                     {selection.m.description && <p className="mt-1 text-xs text-muted-foreground">{selection.m.description}</p>}
                   </div>
                 } />
@@ -245,4 +259,11 @@ export function EditionsPaiePage() {
     <MenuEditions module="PAIE" titre="Éditions de la paie"
       description="Bulletins, journaux, états de contrôle et de synthèse : choisissez un état, renseignez ses paramètres et imprimez." />
   );
+}
+
+/** Menu d'éditions d'un autre module (/editions/menu/:module), ex. RH ; ?dossier=<id> pour un écran de dossier. */
+export function EditionsModulePage() {
+  const { module = "PAIE" } = useParams();
+  const m = module.toUpperCase();
+  return <MenuEditions module={m} titre={m === "RH" ? "Éditions RH" : `Éditions ${m}`} />;
 }
