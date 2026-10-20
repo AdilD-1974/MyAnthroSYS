@@ -416,7 +416,8 @@ def test_attestations_salaire_annuelle_et_domiciliation(s):
     lire = lambda f: Definition.model_validate(json.loads((rep / f).read_text(encoding="utf-8")))
     a = executeur.executer(s, lire("attestation_salaire_annuelle.json"), {"annee": 2026}, sec)
     assert a and all(not d.anomalies for d in a), [x for d in a for x in d.anomalies][:3]
-    assert "Total de l'année" in _texte_pdf(a[0])
+    t = _texte_pdf(a[0])
+    assert "Total de l'année" in t and "septembre 2026" in t.lower() and "août 2026" in t.lower()     # mois même sans intitulé
     d = executeur.executer(s, lire("domiciliation_salaire.json"), {"periode": P_SEP}, sec)
     assert len(d) == 2 and all(not x.anomalies for x in d), [x for y in d for x in y.anomalies][:3]
     assert "irrévocablement" in _texte_pdf(d[0])

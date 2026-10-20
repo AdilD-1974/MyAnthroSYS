@@ -371,7 +371,7 @@
       "alignement": "GAUCHE"
      },
      "type": "CHAMP",
-     "valeur": "periode.intitule",
+     "valeur": "FORMAT(SIVIDE(periode.date_fin, periode.date_debut), \"MOIS_ANNEE\")",
      "affichage": {
       "valeur_si_vide": ""
      }

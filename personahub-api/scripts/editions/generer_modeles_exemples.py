@@ -2060,7 +2060,8 @@ def attestation_salaire_annuelle() -> dict:
     """RG-EDT-RH-03 : attestation de salaire de l'année (banques, administrations) : un document par salarié,
     une ligne par bulletin de l'année, totaux, objet et date au choix."""
     L = 180.0
-    cols = [("mois", "Période", 44, "periode.intitule", None, "GAUCHE"),
+    # le mois de la période (l'intitulé du calendrier peut être vide ou libre : « Paie Janvier »…)
+    cols = [("mois", "Période", 44, 'FORMAT(SIVIDE(periode.date_fin, periode.date_debut), "MOIS_ANNEE")', None, "GAUCHE"),
             ("brut", "Salaire brut", 28, "total_brut", "MONTANT", "DROITE"),
             ("imp", "Brut imposable", 28, "total_brut_imposable", "MONTANT", "DROITE"),
             ("cot", "Cotisations", 26, "total_cot_salariale", "MONTANT", "DROITE"),
