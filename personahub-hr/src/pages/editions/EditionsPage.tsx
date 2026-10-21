@@ -28,6 +28,7 @@ import ParametresForm, { parametresManquants, type Valeurs } from "./ParametresF
 import FiltresPopulation, { filtresUtiles, type Filtres } from "./FiltresPopulation";
 import ActionIcone from "./ActionIcone";
 import { BoutonMenus, libelleEcran, useEcransCategorie } from "./MenusModele";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 
 
@@ -43,6 +44,8 @@ export default function EditionsPage() {
   const [vue, setVue] = useState<"BADGES" | "LISTE">(() => { try { return localStorage.getItem("editions.vue") === "LISTE" ? "LISTE" : "BADGES"; } catch { return "BADGES"; } });
   const changerVue = (v: "BADGES" | "LISTE") => { setVue(v); try { localStorage.setItem("editions.vue", v); } catch { /* préférence facultative */ } };
   const [archives, setArchives] = useState(false);
+  // RG-EDT-ACTIF-02 (Adil DAIA) : seuls les états actifs sont listés ; case « Afficher les inactifs » pour les autres
+  const [inactifs, setInactifs] = useState(false);
   const [tri, setTri] = useState<{ cle: "libelle" | "categorie" | "dossier" | "version"; sens: 1 | -1 }>({ cle: "libelle", sens: 1 });
   const trier = (cle: typeof tri.cle) => setTri((t) => ({ cle, sens: t.cle === cle ? (-t.sens as 1 | -1) : 1 }));
   const [creation, setCreation] = useState<{ ouvert: boolean; code: string; libelle: string; categorie: Categorie; visibilite: Visibilite; origine: string; occupe?: boolean }>(
@@ -58,19 +61,23 @@ export default function EditionsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(charger, [archives]);
 
+  // actifs seulement, sauf case cochée (un modèle archivé, montré par « Afficher les archives », reste visible)
+  const presents = useMemo(() => (modeles ?? []).filter((m) => inactifs || m.archive || m.actif !== false), [modeles, inactifs]);
+  const nbInactifs = useMemo(() => (modeles ?? []).filter((m) => !m.archive && m.actif === false).length, [modeles]);
+
   const visibles = useMemo(() => {
     const bas = q.trim().toLowerCase();
-    return (modeles ?? [])
+    return presents
       .filter((m) => !categorie || m.categorie === categorie)
       .filter((m) => !bas || m.libelle.toLowerCase().includes(bas) || m.code.toLowerCase().includes(bas) || (m.description ?? "").toLowerCase().includes(bas));
-  }, [modeles, categorie, q]);
+  }, [presents, categorie, q]);
 
   const tries = useMemo(() => {
     const cle = (m: Modele) => tri.cle === "categorie" ? m.categorie : tri.cle === "dossier" ? (m.theme_libelle ?? "")
       : tri.cle === "version" ? String(m.numero_publie ?? 0).padStart(5, "0") : m.libelle;
     return [...visibles].sort((a, b) => cle(a).localeCompare(cle(b), "fr", { numeric: true }) * tri.sens);
   }, [visibles, tri]);
-  const nbParCategorie = useMemo(() => (modeles ?? []).reduce<Record<string, number>>((n, m) => ({ ...n, [m.categorie]: (n[m.categorie] ?? 0) + 1 }), {}), [modeles]);
+  const nbParCategorie = useMemo(() => presents.reduce<Record<string, number>>((n, m) => ({ ...n, [m.categorie]: (n[m.categorie] ?? 0) + 1 }), {}), [presents]);
 
   // RG-EDT-MODELE-04/05 : archiver (réversible, garde l'historique) ≠ supprimer (définitif, jamais publié)
   const archiver = async (m: Modele, archive: boolean) => {
@@ -200,15 +207,19 @@ export default function EditionsPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setCategorie("")}
-          className={`rounded-full px-3 py-1 text-xs ${categorie === "" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Tous <span className="opacity-60">{modeles?.length ?? ""}</span></button>
+          className={`rounded-full px-3 py-1 text-xs ${categorie === "" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Tous <span className="opacity-60">{modeles ? presents.length : ""}</span></button>
         {CATEGORIES.map((c) => (
           <button key={c.code} type="button" onClick={() => setCategorie(c.code)}
             className={`rounded-full px-3 py-1 text-xs ${categorie === c.code ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
             {c.libelle}{nbParCategorie[c.code] ? <span className="ml-1 opacity-60">{nbParCategorie[c.code]}</span> : null}
           </button>
         ))}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground" title="Montrer aussi les modèles archivés">
-          <Switch checked={archives} onCheckedChange={setArchives} />Afficher les archives
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground" title="Montrer aussi les états désactivés (indicateur Actif)">
+          <Checkbox checked={inactifs} onCheckedChange={(v) => setInactifs(v === true)} />
+          Afficher les inactifs{nbInactifs ? <span className="opacity-60">({nbInactifs})</span> : null}
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground" title="Montrer aussi les modèles archivés">
+          <Checkbox checked={archives} onCheckedChange={(v) => setArchives(v === true)} />Afficher les archives
         </label>
         <div className="inline-flex rounded-md border bg-card p-0.5" role="group" aria-label="Affichage">
           <button type="button" onClick={() => changerVue("BADGES")} title="Affichage par badges"
